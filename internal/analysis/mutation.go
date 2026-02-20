@@ -279,19 +279,32 @@ func isPointerArgStore(store *ssa.Store, ptrParams map[string]*ssa.Parameter) (s
 // tracesToParam walks up the SSA value chain to check if a value
 // ultimately derives from a specific parameter.
 func tracesToParam(v ssa.Value, param *ssa.Parameter) bool {
+	visited := make(map[ssa.Value]bool)
+	return tracesToParamVisited(v, param, visited)
+}
+
+// tracesToParamVisited is the recursive implementation with cycle
+// detection via a visited set. Phi nodes in SSA can form cycles
+// (e.g., loop back edges), so we must track visited values.
+func tracesToParamVisited(v ssa.Value, param *ssa.Parameter, visited map[ssa.Value]bool) bool {
 	if v == param {
 		return true
 	}
+	if visited[v] {
+		return false
+	}
+	visited[v] = true
+
 	switch val := v.(type) {
 	case *ssa.FieldAddr:
-		return tracesToParam(val.X, param)
+		return tracesToParamVisited(val.X, param, visited)
 	case *ssa.IndexAddr:
-		return tracesToParam(val.X, param)
+		return tracesToParamVisited(val.X, param, visited)
 	case *ssa.UnOp:
-		return tracesToParam(val.X, param)
+		return tracesToParamVisited(val.X, param, visited)
 	case *ssa.Phi:
 		for _, edge := range val.Edges {
-			if tracesToParam(edge, param) {
+			if tracesToParamVisited(edge, param, visited) {
 				return true
 			}
 		}
