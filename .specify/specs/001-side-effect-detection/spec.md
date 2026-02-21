@@ -160,8 +160,8 @@ outputs are correct and parseable.
 - **FR-012**: Gaze MUST use the `go/ast`, `go/types`, and
   `golang.org/x/tools/go/ssa` packages (or equivalent) for
   analysis. It MUST NOT require modifying the target source code.
-- **FR-013**: Gaze MUST support Go 1.21+ (current and two prior
-  minor releases).
+- **FR-013**: Gaze MUST support Go 1.24+ (consistent with go.mod
+  and Spec 004 FR-016).
 - **FR-014**: Analysis scope for v1 is direct function body only.
   Transitive side effects (effects in called functions) are
   explicitly out of scope and MUST be documented.

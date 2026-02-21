@@ -121,14 +121,10 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 			CRAP:         crapScore,
 		}
 
-		// When contract coverage is unavailable, GazeCRAP uses
-		// line coverage as a fallback (same as classic CRAP).
-		// This keeps quadrant classification functional: Q1/Q4
-		// only until contract coverage diverges the axes.
-		gazeCRAP := crapScore
-		score.GazeCRAP = &gazeCRAP
-		q := ClassifyQuadrant(crapScore, gazeCRAP, opts.CRAPThreshold, opts.GazeCRAPThreshold)
-		score.Quadrant = &q
+		// GazeCRAP, ContractCoverage, and Quadrant remain nil
+		// until contract coverage is available (Specs 002-003).
+		// Per FR-015: report as unavailable and exclude from
+		// GazeCRAPload counts.
 
 		scores = append(scores, score)
 	}
