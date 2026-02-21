@@ -138,7 +138,7 @@ func AnalyzeP1Effects(
 
 		case *ast.CallExpr:
 			// Channel close: close(ch).
-			if isCloseCall(node) && len(node.Args) == 1 {
+			if isCloseCall(node, info) && len(node.Args) == 1 {
 				name := exprName(node.Args[0])
 				key := "chclose:" + name
 				if !seen[key] {
@@ -204,8 +204,17 @@ func AnalyzeP1Effects(
 	return effects
 }
 
-// collectLocals returns a set of names that are local to the
-// function (parameters, named returns, and locally declared vars).
+// collectLocals returns a set of names that are unambiguously local
+// to the function signature (parameters, named returns, and
+// receiver). This is used as a fast-path in isGlobalIdent to skip
+// the more expensive type-info lookup for obvious locals.
+//
+// Note: Body-level declarations (:=, var, range) are intentionally
+// excluded because they can shadow package-level variables in inner
+// scopes. Including them caused false negatives where a global
+// mutation was missed because a same-named variable was declared
+// in a different scope. The type-based check in isGlobalIdent
+// handles scoping correctly.
 func collectLocals(fd *ast.FuncDecl) map[string]bool {
 	locals := make(map[string]bool)
 
@@ -236,46 +245,14 @@ func collectLocals(fd *ast.FuncDecl) map[string]bool {
 		}
 	}
 
-	// Walk body for local variable declarations.
-	if fd.Body != nil {
-		ast.Inspect(fd.Body, func(n ast.Node) bool {
-			switch node := n.(type) {
-			case *ast.AssignStmt:
-				if node.Tok.String() == ":=" {
-					for _, lhs := range node.Lhs {
-						if ident, ok := lhs.(*ast.Ident); ok {
-							locals[ident.Name] = true
-						}
-					}
-				}
-			case *ast.GenDecl:
-				for _, spec := range node.Specs {
-					if vs, ok := spec.(*ast.ValueSpec); ok {
-						for _, n := range vs.Names {
-							locals[n.Name] = true
-						}
-					}
-				}
-			case *ast.RangeStmt:
-				if ident, ok := node.Key.(*ast.Ident); ok {
-					locals[ident.Name] = true
-				}
-				if node.Value != nil {
-					if ident, ok := node.Value.(*ast.Ident); ok {
-						locals[ident.Name] = true
-					}
-				}
-			}
-			return true
-		})
-	}
-
 	return locals
 }
 
 // isGlobalIdent checks if an identifier refers to a package-level
-// variable (not a local or parameter).
+// variable (not a local or parameter) using type resolution.
 func isGlobalIdent(ident *ast.Ident, info *types.Info, locals map[string]bool) bool {
+	// Fast-path: signature-level locals (params, named returns,
+	// receiver) can never be globals.
 	if locals[ident.Name] {
 		return false
 	}
@@ -321,13 +298,25 @@ func isSliceType(info *types.Info, expr ast.Expr) bool {
 }
 
 // isCloseCall checks if a call expression is a call to the
-// builtin close() function.
-func isCloseCall(call *ast.CallExpr) bool {
+// builtin close() function using type resolution to avoid false
+// positives from user-defined functions named "close".
+func isCloseCall(call *ast.CallExpr, info *types.Info) bool {
 	ident, ok := call.Fun.(*ast.Ident)
 	if !ok {
 		return false
 	}
-	return ident.Name == "close"
+	if ident.Name != "close" {
+		return false
+	}
+	// Verify this is the builtin close, not a user-defined function.
+	if info != nil {
+		if obj := info.Uses[ident]; obj != nil {
+			_, isBuiltin := obj.(*types.Builtin)
+			return isBuiltin
+		}
+	}
+	// Fallback: accept name match when type info is unavailable.
+	return true
 }
 
 // isWriterType checks if an expression implements io.Writer.

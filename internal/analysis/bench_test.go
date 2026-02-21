@@ -9,7 +9,7 @@ import (
 )
 
 func BenchmarkAnalyzeFunction_Returns(b *testing.B) {
-	pkg := loadTestPackageBench(b, "returns")
+	pkg, ssaPkg := loadTestPackageBenchWithSSA(b, "returns")
 	fd := analysis.FindFuncDecl(pkg, "ErrorReturn")
 	if fd == nil {
 		b.Fatal("ErrorReturn not found")
@@ -17,12 +17,12 @@ func BenchmarkAnalyzeFunction_Returns(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		analysis.AnalyzeFunction(pkg, fd)
+		analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
 	}
 }
 
 func BenchmarkAnalyzeFunction_Mutation(b *testing.B) {
-	pkg := loadTestPackageBench(b, "mutation")
+	pkg, ssaPkg := loadTestPackageBenchWithSSA(b, "mutation")
 	fd := analysis.FindMethodDecl(pkg, "*Counter", "Increment")
 	if fd == nil {
 		b.Fatal("(*Counter).Increment not found")
@@ -30,7 +30,7 @@ func BenchmarkAnalyzeFunction_Mutation(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		analysis.AnalyzeFunction(pkg, fd)
+		analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
 	}
 }
 

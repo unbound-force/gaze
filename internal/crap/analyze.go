@@ -65,6 +65,16 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 			return nil, fmt.Errorf("generating coverage: %w", err)
 		}
 		defer os.Remove(coverProfile)
+	} else {
+		// Validate user-supplied cover profile path.
+		coverProfile = filepath.Clean(coverProfile)
+		info, err := os.Stat(coverProfile)
+		if err != nil {
+			return nil, fmt.Errorf("cover profile %q: %w", coverProfile, err)
+		}
+		if info.IsDir() {
+			return nil, fmt.Errorf("cover profile %q is a directory, not a file", coverProfile)
+		}
 	}
 
 	// Step 2: Compute cyclomatic complexity for all functions.
@@ -150,9 +160,12 @@ func generateCoverProfile(moduleDir string, patterns []string) (string, error) {
 	profilePath := tmpFile.Name()
 	tmpFile.Close()
 
-	// Use "--" to separate go test flags from package patterns,
-	// preventing flag injection via user-supplied patterns.
-	args := []string{"test", "-coverprofile=" + profilePath, "--"}
+	// Build args for go test. Patterns come from Cobra positional
+	// args (already past flag parsing) and Go package patterns
+	// (e.g., "./...") are syntactically distinct from flags.
+	// Note: do NOT use "--" separator here — go test doesn't
+	// support POSIX-style "--" and would ignore the patterns.
+	args := []string{"test", "-coverprofile=" + profilePath}
 	args = append(args, patterns...)
 
 	cmd := exec.Command("go", args...)

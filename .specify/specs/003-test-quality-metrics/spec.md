@@ -201,7 +201,7 @@ exit codes.
 - **FR-013**: Ambiguous side effects (confidence 50-79) MUST be
   excluded from both Contract Coverage and Over-Specification
   calculations and reported in a separate section.
-- **FR-014**: Gaze MUST support Go 1.21+ (consistent with
+- **FR-014**: Gaze MUST support Go 1.24+ (consistent with
   Specs 001 and 002).
 - **FR-015**: For v1, assertion detection covers standard Go test
   patterns: `if got != want`, `t.Errorf`, `t.Fatalf`, and

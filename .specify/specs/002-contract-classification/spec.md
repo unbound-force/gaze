@@ -224,7 +224,7 @@ to the reported confidence score.
   AnalysisResult JSON schema (additive, not breaking).
 - **FR-014**: Each classification MUST include a signal breakdown
   accessible via verbose/detailed output mode.
-- **FR-015**: Gaze MUST support Go 1.21+ (consistent with
+- **FR-015**: Gaze MUST support Go 1.24+ (consistent with
   Spec 001).
 
 ### Key Entities

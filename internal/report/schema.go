@@ -42,7 +42,7 @@ const Schema = `{
         },
         "function": {
           "type": "string",
-          "description": "Function or method name"
+          "description": "Function or method name. The value '<package>' indicates package-level declarations (e.g., sentinel errors) not associated with a specific function."
         },
         "receiver": {
           "type": "string",

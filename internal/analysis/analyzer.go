@@ -68,12 +68,19 @@ func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, er
 		if opts.FunctionFilter == "" {
 			sentinels := AnalyzeSentinels(fset, file, pkg.PkgPath)
 			if len(sentinels) > 0 {
-				// Attach sentinels to a synthetic package-level result.
+				// Attach sentinels to a synthetic package-level
+				// result. The function name "<package>" indicates
+				// these are package-level declarations, not
+				// associated with any specific function. Each
+				// sentinel's Target field identifies the specific
+				// variable (e.g., "ErrNotFound") and the Location
+				// field points to its declaration site.
+				fileName := fset.Position(file.Pos()).Filename
 				results = append(results, taxonomy.AnalysisResult{
 					Target: taxonomy.FunctionTarget{
 						Package:  pkg.PkgPath,
 						Function: "<package>",
-						Location: fset.Position(file.Pos()).String(),
+						Location: fileName,
 					},
 					SideEffects: sentinels,
 					Metadata:    buildMetadata(start, opts.Version),
@@ -91,15 +98,31 @@ func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, er
 }
 
 // AnalyzeFunction performs side effect analysis on a single function.
+// For analyzing multiple functions in the same package, prefer
+// Analyze() which builds SSA once, or use AnalyzeFunctionWithSSA
+// with a pre-built SSA package.
 func AnalyzeFunction(
 	pkg *packages.Package,
 	fd *ast.FuncDecl,
 ) taxonomy.AnalysisResult {
+	return AnalyzeFunctionWithSSA(pkg, fd, nil)
+}
+
+// AnalyzeFunctionWithSSA performs side effect analysis on a single
+// function using a pre-built SSA package. If ssaPkg is nil, SSA is
+// built on-demand. Pre-building SSA via BuildSSA and reusing it
+// across multiple calls avoids redundant SSA construction.
+func AnalyzeFunctionWithSSA(
+	pkg *packages.Package,
+	fd *ast.FuncDecl,
+	ssaPkg *ssa.Package,
+) taxonomy.AnalysisResult {
 	start := time.Now()
 	fset := pkg.Fset
 
-	// Build SSA for single-function analysis.
-	ssaPkg := BuildSSA(pkg)
+	if ssaPkg == nil {
+		ssaPkg = BuildSSA(pkg)
+	}
 
 	result := analyzeFunction(fset, pkg, ssaPkg, fd)
 	result.Metadata = buildMetadata(start, "")
@@ -166,9 +189,9 @@ func buildMetadata(start time.Time, version string) taxonomy.Metadata {
 	}
 }
 
-// FindFuncDecl finds a FuncDecl by name in a package.
+// findFuncDecl finds a FuncDecl by name in a package.
 // Returns nil if not found.
-func FindFuncDecl(pkg *packages.Package, name string) *ast.FuncDecl {
+func findFuncDecl(pkg *packages.Package, name string) *ast.FuncDecl {
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
@@ -183,9 +206,9 @@ func FindFuncDecl(pkg *packages.Package, name string) *ast.FuncDecl {
 	return nil
 }
 
-// FindMethodDecl finds a method declaration by receiver type and
+// findMethodDecl finds a method declaration by receiver type and
 // method name. Returns nil if not found.
-func FindMethodDecl(pkg *packages.Package, recvType, methodName string) *ast.FuncDecl {
+func findMethodDecl(pkg *packages.Package, recvType, methodName string) *ast.FuncDecl {
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)

@@ -185,7 +185,7 @@ outputs are correct and parseable.
   - P0: `ReturnValue`, `ErrorReturn`, `SentinelError`,
     `ReceiverMutation`, `PointerArgMutation`
   - P1: `SliceMutation`, `MapMutation`, `GlobalMutation`,
-    `WriterOutput`, `HttpResponseWrite`, `ChannelSend`,
+    `WriterOutput`, `HTTPResponseWrite`, `ChannelSend`,
     `ChannelClose`, `DeferredReturnMutation`
   - P2: `FileSystemWrite`, `FileSystemDelete`, `FileSystemMeta`,
     `DatabaseWrite`, `DatabaseTransaction`, `GoroutineSpawn`,

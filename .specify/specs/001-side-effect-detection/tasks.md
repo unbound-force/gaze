@@ -14,11 +14,12 @@
 **Purpose**: Project initialization and Go module structure
 
 - [ ] T001 Initialize Go module `github.com/jflowers/gaze` with
-  `go.mod` (Go 1.21), add `golang.org/x/tools` and
+  `go.mod` (Go 1.24), add `golang.org/x/tools` and
   `github.com/spf13/cobra` dependencies
 - [ ] T002 [P] Create directory structure:
   `cmd/gaze/`, `internal/analysis/`, `internal/taxonomy/`,
-  `internal/loader/`, `internal/report/`, `internal/testdata/`
+  `internal/loader/`, `internal/report/`,
+  `internal/analysis/testdata/src/`
 - [ ] T003 [P] Create `cmd/gaze/main.go` with cobra root command
   and `analyze` subcommand skeleton
 
@@ -76,25 +77,31 @@ side effects, verify 100% detection with zero false positives.
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T013 [P] [US1] Create test fixtures for ReturnAnalyzer in
-  `internal/testdata/returns/` — functions with: single return,
-  multiple returns, `(T, error)`, named returns, named returns
-  modified in defer, pure functions (no returns), void functions
-- [ ] T014 [P] [US1] Create test fixtures for SentinelAnalyzer in
-  `internal/testdata/sentinel/` — package-level `Err*` vars
-  with `errors.New()`, `fmt.Errorf("...%w...")`, functions that
-  return/wrap these sentinels, functions with no sentinel usage
-- [ ] T015 [P] [US1] Create test fixtures for MutationAnalyzer in
-  `internal/testdata/mutation/` — pointer receiver methods that
-  mutate fields, value receiver methods (should NOT detect
-  mutation), pointer params that are written through, non-pointer
-  params, deep field mutations (`s.config.nested.timeout`)
-- [ ] T016 [P] [US1] Write ReturnAnalyzer tests in
-  `internal/analysis/returns_test.go` using `analysistest.Run()`
-- [ ] T017 [P] [US1] Write SentinelAnalyzer tests in
-  `internal/analysis/sentinel_test.go` using `analysistest.Run()`
-- [ ] T018 [P] [US1] Write MutationAnalyzer tests in
-  `internal/analysis/mutation_test.go` using `analysistest.Run()`
+- [ ] T013 [P] [US1] Create test fixtures for return analysis in
+  `internal/analysis/testdata/src/returns/` — functions with:
+  single return, multiple returns, `(T, error)`, named returns,
+  named returns modified in defer, pure functions (no returns),
+  void functions
+- [ ] T014 [P] [US1] Create test fixtures for sentinel analysis in
+  `internal/analysis/testdata/src/sentinel/` — package-level
+  `Err*` vars with `errors.New()`, `fmt.Errorf("...%w...")`,
+  functions that return/wrap these sentinels, functions with no
+  sentinel usage
+- [ ] T015 [P] [US1] Create test fixtures for mutation analysis in
+  `internal/analysis/testdata/src/mutation/` — pointer receiver
+  methods that mutate fields, value receiver methods (should NOT
+  detect mutation), pointer params that are written through,
+  non-pointer params, deep field mutations
+  (`s.config.nested.timeout`)
+- [ ] T016 [P] [US1] Write return analysis tests in
+  `internal/analysis/analysis_test.go` using `go/packages` +
+  direct function calls
+- [ ] T017 [P] [US1] Write sentinel analysis tests in
+  `internal/analysis/analysis_test.go` using `go/packages` +
+  direct function calls
+- [ ] T018 [P] [US1] Write mutation analysis tests in
+  `internal/analysis/analysis_test.go` using `go/packages` +
+  direct function calls
 
 ### Implementation for User Story 1
 

@@ -9,8 +9,10 @@ import (
 	"github.com/jflowers/gaze/internal/taxonomy"
 )
 
-// p2SelectorEffects maps package identifier → function name →
-// SideEffectType for P2 effects detectable via selector calls (pkg.Func).
+// p2SelectorEffects maps import path → function name →
+// SideEffectType for P2 effects detectable via selector calls
+// (pkg.Func). Keys are full import paths (not short names) so
+// that import aliases are handled correctly via resolveImportPath.
 var p2SelectorEffects = map[string]map[string]taxonomy.SideEffectType{
 	"os": {
 		// FileSystemWrite
@@ -46,7 +48,7 @@ var p2SelectorEffects = map[string]map[string]taxonomy.SideEffectType{
 		"Panicf":  taxonomy.LogWrite,
 		"Panicln": taxonomy.LogWrite,
 	},
-	"slog": {
+	"log/slog": {
 		// LogWrite (log/slog)
 		"Debug": taxonomy.LogWrite,
 		"Info":  taxonomy.LogWrite,
@@ -109,7 +111,7 @@ func AnalyzeP2Effects(
 
 		case *ast.CallExpr:
 			// Panic: builtin panic() call.
-			if isPanicCall(node) {
+			if isPanicCall(node, info) {
 				key := fmt.Sprintf("panic:%d", fset.Position(node.Pos()).Line)
 				if !seen[key] {
 					seen[key] = true
@@ -127,7 +129,14 @@ func AnalyzeP2Effects(
 			// Selector-based detection (pkg.Func pattern).
 			if sel, ok := node.Fun.(*ast.SelectorExpr); ok {
 				if ident, ok := sel.X.(*ast.Ident); ok {
-					if funcs, ok := p2SelectorEffects[ident.Name]; ok {
+					// Resolve the identifier to its actual import
+					// path via types.Info, falling back to the AST
+					// name if type info is unavailable. This
+					// correctly handles import aliases (e.g.,
+					// import myos "os") and avoids false positives
+					// from user packages with the same short name.
+					pkgName := resolveImportPath(ident, info)
+					if funcs, ok := p2SelectorEffects[pkgName]; ok {
 						if effectType, ok := funcs[sel.Sel.Name]; ok {
 							key := fmt.Sprintf("%s:%s.%s:%d",
 								effectType, ident.Name, sel.Sel.Name,
@@ -197,14 +206,42 @@ func AnalyzeP2Effects(
 	return effects
 }
 
+// resolveImportPath resolves an AST identifier to its actual import
+// path using type information. For example, if the source has
+// `import myos "os"`, then `myos.WriteFile(...)` will resolve to
+// "os". Falls back to the AST identifier name if type info is
+// unavailable or the identifier is not a package name.
+func resolveImportPath(ident *ast.Ident, info *types.Info) string {
+	if info != nil {
+		if obj := info.Uses[ident]; obj != nil {
+			if pkgName, ok := obj.(*types.PkgName); ok {
+				return pkgName.Imported().Path()
+			}
+		}
+	}
+	return ident.Name
+}
+
 // isPanicCall checks if a call expression is a call to the
-// builtin panic() function.
-func isPanicCall(call *ast.CallExpr) bool {
+// builtin panic() function using type resolution to avoid false
+// positives from user-defined functions named "panic".
+func isPanicCall(call *ast.CallExpr, info *types.Info) bool {
 	ident, ok := call.Fun.(*ast.Ident)
 	if !ok {
 		return false
 	}
-	return ident.Name == "panic"
+	if ident.Name != "panic" {
+		return false
+	}
+	// Verify this is the builtin panic, not a user-defined function.
+	if info != nil {
+		if obj := info.Uses[ident]; obj != nil {
+			_, isBuiltin := obj.(*types.Builtin)
+			return isBuiltin
+		}
+	}
+	// Fallback: accept name match when type info is unavailable.
+	return true
 }
 
 // collectFuncParams returns a set of parameter names that have

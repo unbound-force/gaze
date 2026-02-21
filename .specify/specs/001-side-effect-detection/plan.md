@@ -6,28 +6,28 @@
 ## Summary
 
 Build a Go CLI tool (`gaze`) that statically analyzes Go functions
-to detect all P0-tier observable side effects: return values,
-error returns (including sentinel/wrapped errors), pointer receiver
-mutations, and pointer argument mutations. Uses `go/ast` +
-`go/types` for signature and pattern analysis, `go/ssa` for
-field-level mutation tracking, and the `go/analysis` framework
-for composition and testing. Outputs structured JSON and
-human-readable text.
+to detect observable side effects across P0-P2 tiers: return
+values, error returns (including sentinel/wrapped errors), pointer
+receiver mutations, pointer argument mutations, global mutations,
+channel operations, file system effects, database operations,
+and more. Uses `go/ast` + `go/types` for signature and pattern
+analysis, `go/ssa` for field-level mutation tracking, and direct
+function composition for analyzer orchestration. Outputs
+structured JSON and human-readable text.
 
 ## Technical Context
 
-**Language/Version**: Go 1.21+
+**Language/Version**: Go 1.24+
 **Primary Dependencies**:
   - `golang.org/x/tools/go/packages` (package loading)
   - `golang.org/x/tools/go/ssa` + `ssautil` (SSA construction)
-  - `golang.org/x/tools/go/analysis` (analyzer framework)
   - `github.com/spf13/cobra` (CLI framework)
 **Storage**: N/A (stateless analysis, output to stdout)
-**Testing**: `go test`, `analysistest.Run()` for analyzer tests
+**Testing**: `go test` with standard library `testing` package
 **Target Platform**: macOS, Linux (any platform with Go toolchain)
 **Project Type**: Single CLI tool
 **Performance Goals**: < 500ms single function, < 5s for 50 functions
-**Constraints**: Must not modify target source code; Go 1.21+
+**Constraints**: Must not modify target source code; Go 1.24+
 **Scale/Scope**: P0-tier effects only for v1 (5 side effect types)
 
 ## Constitution Check
@@ -76,24 +76,27 @@ internal/
 │   └── loader_test.go
 ├── report/
 │   ├── json.go              # JSON output formatter
-│   ├── json_test.go
 │   ├── text.go              # Human-readable text formatter
-│   ├── text_test.go
+│   ├── report_test.go
 │   └── schema.go            # JSON Schema definition
-└── testdata/
-    ├── returns/             # Test fixtures for ReturnAnalyzer
-    ├── sentinel/            # Test fixtures for SentinelAnalyzer
-    └── mutation/            # Test fixtures for MutationAnalyzer
+└── analysis/testdata/src/
+    ├── returns/             # Test fixtures for return analysis
+    ├── sentinel/            # Test fixtures for sentinel analysis
+    ├── mutation/            # Test fixtures for mutation analysis
+    ├── p1effects/           # Test fixtures for P1 effects
+    ├── p2effects/           # Test fixtures for P2 effects
+    └── edgecases/           # Test fixtures for edge cases
 
 go.mod
 go.sum
 ```
 
 **Structure Decision**: Go-idiomatic `cmd/` + `internal/` layout.
-The `internal/analysis/` package contains one analyzer per P0
-side effect category, composed via the `go/analysis` framework.
-Test fixtures live in `internal/testdata/` following `analysistest`
-conventions.
+The `internal/analysis/` package contains one analyzer per side
+effect category, composed via direct function calls. Packages are
+loaded via `go/packages` with manual AST/SSA traversal.
+Test fixtures live in `internal/analysis/testdata/src/` as real
+Go packages loaded during tests.
 
 ## Design Decisions
 
@@ -184,7 +187,7 @@ JSON output follows a flat structure:
   ],
   "metadata": {
     "gaze_version": "0.1.0",
-    "go_version": "1.21",
+    "go_version": "1.24",
     "duration_ms": 145,
     "warnings": []
   }
@@ -227,6 +230,6 @@ analysis patterns and stays within P0 scope.
 
 | Decision | Justification |
 |---|---|
-| 3 sub-analyzers instead of 1 | Composability via `go/analysis` framework; each is independently testable |
+| Multiple analyzer functions | Composability via direct function calls; each is independently testable |
 | SSA for mutations only | AST is sufficient for return values and sentinel errors; SSA only needed for field-level tracking |
 | Cobra for CLI | Industry standard, minimal overhead, good subcommand support for future commands |

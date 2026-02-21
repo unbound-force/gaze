@@ -45,7 +45,8 @@ gaze analyze --format=json ./internal/analysis
 | Tier | Effects |
 |------|---------|
 | P0 | `ReturnValue`, `ErrorReturn`, `SentinelError`, `ReceiverMutation`, `PointerArgMutation` |
-| P1 | `SliceMutation`, `MapMutation`, `GlobalMutation`, `WriterOutput`, `HttpResponseWrite`, `ChannelSend`, `ChannelClose`, `DeferredReturnMutation` |
+| P1 | `SliceMutation`, `MapMutation`, `GlobalMutation`, `WriterOutput`, `HTTPResponseWrite`, `ChannelSend`, `ChannelClose`, `DeferredReturnMutation` |
+| P2 | `FileSystemWrite`, `FileSystemDelete`, `FileSystemMeta`, `DatabaseWrite`, `DatabaseTransaction`, `GoroutineSpawn`, `Panic`, `CallbackInvocation`, `LogWrite`, `ContextCancellation` |
 
 Example output:
 
@@ -135,6 +136,7 @@ internal/
     sentinel.go     Sentinel error detection (AST)
     mutation.go     Receiver/pointer mutation (SSA)
     p1effects.go    P1-tier effects (AST)
+    p2effects.go    P2-tier effects (AST)
   taxonomy/         Side effect type system and stable IDs
   loader/           Go package loading wrapper
   report/           JSON and text formatters for analysis output
@@ -144,7 +146,7 @@ internal/
 ## Known Limitations
 
 - **Direct function body only.** Gaze analyzes the immediate function body. Transitive side effects (effects produced by called functions) are out of scope for v1.
-- **P2-P4 side effects not yet detected.** The taxonomy defines types for file system writes, database operations, goroutine spawning, and other effects, but detection logic is not yet implemented for tiers P2 through P4.
+- **P3-P4 side effects not yet detected.** The taxonomy defines types for stdout/stderr writes, environment mutations, mutex operations, reflection, unsafe, and other P3-P4 effects, but detection logic is not yet implemented for these tiers.
 - **Contract coverage not yet available.** GazeCRAP currently uses line coverage as a fallback. Full contract-aware coverage requires the contractual classification engine (Spec 002) and test quality metrics (Spec 003), which are planned but not yet built.
 - **No CGo or unsafe analysis.** Functions using `cgo` or `unsafe.Pointer` are not analyzed for their specific side effects.
 - **Single package loading.** The `analyze` command processes one package at a time. Use shell loops or scripting for multi-package analysis.

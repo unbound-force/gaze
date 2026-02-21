@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/jflowers/gaze/internal/analysis"
 	"github.com/jflowers/gaze/internal/taxonomy"
 	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/ssa"
 )
 
 // testdataPath returns the absolute path to a testdata fixture package.
@@ -50,24 +52,80 @@ func loadTestdataPackage(pkgName string) (*packages.Package, error) {
 	return pkgs[0], nil
 }
 
+// pkgCacheEntry holds a loaded package and its pre-built SSA for
+// reuse across test cases, avoiding the expensive SSA
+// reconstruction per test that caused CI timeouts.
+type pkgCacheEntry struct {
+	pkg    *packages.Package
+	ssaPkg *ssa.Package
+}
+
+var (
+	pkgCacheMu sync.Mutex
+	pkgCache   = make(map[string]*pkgCacheEntry)
+)
+
+// cachedTestPackage returns a cached package + SSA pair, loading
+// and building SSA only once per fixture package across all tests.
+func cachedTestPackage(pkgName string) (*pkgCacheEntry, error) {
+	pkgCacheMu.Lock()
+	defer pkgCacheMu.Unlock()
+
+	if entry, ok := pkgCache[pkgName]; ok {
+		return entry, nil
+	}
+
+	pkg, err := loadTestdataPackage(pkgName)
+	if err != nil {
+		return nil, err
+	}
+	ssaPkg := analysis.BuildSSA(pkg)
+
+	entry := &pkgCacheEntry{pkg: pkg, ssaPkg: ssaPkg}
+	pkgCache[pkgName] = entry
+	return entry, nil
+}
+
 // loadTestPackage loads one of the test fixture packages from testdata.
 func loadTestPackage(t *testing.T, pkgName string) *packages.Package {
 	t.Helper()
-	pkg, err := loadTestdataPackage(pkgName)
+	entry, err := cachedTestPackage(pkgName)
 	if err != nil {
 		t.Fatalf("failed to load test package %q: %v", pkgName, err)
 	}
-	return pkg
+	return entry.pkg
+}
+
+// loadTestPackageWithSSA loads a test fixture package with pre-built
+// SSA for efficient single-function analysis.
+func loadTestPackageWithSSA(t *testing.T, pkgName string) (*packages.Package, *ssa.Package) {
+	t.Helper()
+	entry, err := cachedTestPackage(pkgName)
+	if err != nil {
+		t.Fatalf("failed to load test package %q: %v", pkgName, err)
+	}
+	return entry.pkg, entry.ssaPkg
 }
 
 // loadTestPackageBench loads one of the test fixture packages for benchmarks.
 func loadTestPackageBench(b *testing.B, pkgName string) *packages.Package {
 	b.Helper()
-	pkg, err := loadTestdataPackage(pkgName)
+	entry, err := cachedTestPackage(pkgName)
 	if err != nil {
 		b.Fatalf("failed to load test package %q: %v", pkgName, err)
 	}
-	return pkg
+	return entry.pkg
+}
+
+// loadTestPackageBenchWithSSA loads a test fixture package with
+// pre-built SSA for benchmarks.
+func loadTestPackageBenchWithSSA(b *testing.B, pkgName string) (*packages.Package, *ssa.Package) {
+	b.Helper()
+	entry, err := cachedTestPackage(pkgName)
+	if err != nil {
+		b.Fatalf("failed to load test package %q: %v", pkgName, err)
+	}
+	return entry.pkg, entry.ssaPkg
 }
 
 // hasEffect checks if a side effect of the given type exists in the list.
@@ -101,15 +159,35 @@ func effectWithTarget(effects []taxonomy.SideEffect, typ taxonomy.SideEffectType
 	return nil
 }
 
+// analyzeFunc is a test helper that loads a fixture package with
+// cached SSA and analyzes a single function. This avoids the
+// expensive per-call SSA reconstruction that caused CI timeouts.
+func analyzeFunc(t *testing.T, pkgName, funcName string) taxonomy.AnalysisResult {
+	t.Helper()
+	pkg, ssaPkg := loadTestPackageWithSSA(t, pkgName)
+	fd := analysis.FindFuncDecl(pkg, funcName)
+	if fd == nil {
+		t.Fatalf("%s not found in package %s", funcName, pkgName)
+	}
+	return analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
+}
+
+// analyzeMethod is a test helper that loads a fixture package with
+// cached SSA and analyzes a single method.
+func analyzeMethod(t *testing.T, pkgName, recvType, methodName string) taxonomy.AnalysisResult {
+	t.Helper()
+	pkg, ssaPkg := loadTestPackageWithSSA(t, pkgName)
+	fd := analysis.FindMethodDecl(pkg, recvType, methodName)
+	if fd == nil {
+		t.Fatalf("(%s).%s not found in package %s", recvType, methodName, pkgName)
+	}
+	return analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
+}
+
 // --- Return Analyzer Tests ---
 
 func TestReturns_PureFunction(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "PureFunction")
-	if fd == nil {
-		t.Fatal("PureFunction not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "PureFunction")
 	if len(result.SideEffects) != 0 {
 		t.Errorf("PureFunction: expected 0 side effects, got %d: %v",
 			len(result.SideEffects), result.SideEffects)
@@ -117,12 +195,7 @@ func TestReturns_PureFunction(t *testing.T) {
 }
 
 func TestReturns_SingleReturn(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "SingleReturn")
-	if fd == nil {
-		t.Fatal("SingleReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "SingleReturn")
 
 	if count := countEffects(result.SideEffects, taxonomy.ReturnValue); count != 1 {
 		t.Errorf("expected 1 ReturnValue, got %d", count)
@@ -134,12 +207,7 @@ func TestReturns_SingleReturn(t *testing.T) {
 }
 
 func TestReturns_MultipleReturns(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "MultipleReturns")
-	if fd == nil {
-		t.Fatal("MultipleReturns not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "MultipleReturns")
 
 	if count := countEffects(result.SideEffects, taxonomy.ReturnValue); count != 2 {
 		t.Errorf("expected 2 ReturnValue, got %d", count)
@@ -147,12 +215,7 @@ func TestReturns_MultipleReturns(t *testing.T) {
 }
 
 func TestReturns_ErrorReturn(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "ErrorReturn")
-	if fd == nil {
-		t.Fatal("ErrorReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "ErrorReturn")
 
 	if count := countEffects(result.SideEffects, taxonomy.ReturnValue); count != 1 {
 		t.Errorf("expected 1 ReturnValue (int), got %d", count)
@@ -163,12 +226,7 @@ func TestReturns_ErrorReturn(t *testing.T) {
 }
 
 func TestReturns_ErrorOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "ErrorOnly")
-	if fd == nil {
-		t.Fatal("ErrorOnly not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "ErrorOnly")
 
 	if count := countEffects(result.SideEffects, taxonomy.ErrorReturn); count != 1 {
 		t.Errorf("expected 1 ErrorReturn, got %d", count)
@@ -179,12 +237,7 @@ func TestReturns_ErrorOnly(t *testing.T) {
 }
 
 func TestReturns_TripleReturn(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "TripleReturn")
-	if fd == nil {
-		t.Fatal("TripleReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "TripleReturn")
 
 	if count := countEffects(result.SideEffects, taxonomy.ReturnValue); count != 2 {
 		t.Errorf("expected 2 ReturnValue (string, int), got %d", count)
@@ -195,12 +248,7 @@ func TestReturns_TripleReturn(t *testing.T) {
 }
 
 func TestReturns_NamedReturns(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "NamedReturns")
-	if fd == nil {
-		t.Fatal("NamedReturns not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "NamedReturns")
 
 	if count := countEffects(result.SideEffects, taxonomy.ReturnValue); count != 1 {
 		t.Errorf("expected 1 ReturnValue ([]byte), got %d", count)
@@ -220,12 +268,7 @@ func TestReturns_NamedReturns(t *testing.T) {
 }
 
 func TestReturns_NamedReturnModifiedInDefer(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "NamedReturnModifiedInDefer")
-	if fd == nil {
-		t.Fatal("NamedReturnModifiedInDefer not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "NamedReturnModifiedInDefer")
 
 	if !hasEffect(result.SideEffects, taxonomy.DeferredReturnMutation) {
 		t.Error("expected DeferredReturnMutation for named return 'err' modified in defer")
@@ -236,12 +279,7 @@ func TestReturns_NamedReturnModifiedInDefer(t *testing.T) {
 }
 
 func TestReturns_InterfaceReturn(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "InterfaceReturn")
-	if fd == nil {
-		t.Fatal("InterfaceReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "InterfaceReturn")
 
 	if count := countEffects(result.SideEffects, taxonomy.ReturnValue); count != 1 {
 		t.Errorf("expected 1 ReturnValue (io.Reader), got %d", count)
@@ -328,12 +366,7 @@ func TestSentinels_WrappedDetection(t *testing.T) {
 // --- Mutation Analyzer Tests ---
 
 func TestMutation_PointerReceiverIncrement(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Counter", "Increment")
-	if fd == nil {
-		t.Fatal("(*Counter).Increment not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Counter", "Increment")
 
 	e := effectWithTarget(result.SideEffects, taxonomy.ReceiverMutation, "count")
 	if e == nil {
@@ -342,12 +375,7 @@ func TestMutation_PointerReceiverIncrement(t *testing.T) {
 }
 
 func TestMutation_PointerReceiverSetName(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Counter", "SetName")
-	if fd == nil {
-		t.Fatal("(*Counter).SetName not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Counter", "SetName")
 
 	e := effectWithTarget(result.SideEffects, taxonomy.ReceiverMutation, "name")
 	if e == nil {
@@ -356,12 +384,7 @@ func TestMutation_PointerReceiverSetName(t *testing.T) {
 }
 
 func TestMutation_PointerReceiverSetBoth(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Counter", "SetBoth")
-	if fd == nil {
-		t.Fatal("(*Counter).SetBoth not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Counter", "SetBoth")
 
 	if countEffects(result.SideEffects, taxonomy.ReceiverMutation) != 2 {
 		t.Errorf("expected 2 ReceiverMutation effects, got %d",
@@ -376,12 +399,7 @@ func TestMutation_PointerReceiverSetBoth(t *testing.T) {
 }
 
 func TestMutation_ValueReceiverNoMutation(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "Counter", "Value")
-	if fd == nil {
-		t.Fatal("(Counter).Value not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "Counter", "Value")
 
 	if hasEffect(result.SideEffects, taxonomy.ReceiverMutation) {
 		t.Error("value receiver should NOT report ReceiverMutation")
@@ -393,12 +411,7 @@ func TestMutation_ValueReceiverNoMutation(t *testing.T) {
 }
 
 func TestMutation_ValueReceiverTrap(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "Counter", "ValueReceiverTrap")
-	if fd == nil {
-		t.Fatal("(Counter).ValueReceiverTrap not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "Counter", "ValueReceiverTrap")
 
 	if hasEffect(result.SideEffects, taxonomy.ReceiverMutation) {
 		t.Error("value receiver copy mutation should NOT report ReceiverMutation")
@@ -406,12 +419,7 @@ func TestMutation_ValueReceiverTrap(t *testing.T) {
 }
 
 func TestMutation_PointerArgument(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindFuncDecl(pkg, "Normalize")
-	if fd == nil {
-		t.Fatal("Normalize not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "mutation", "Normalize")
 
 	e := effectWithTarget(result.SideEffects, taxonomy.PointerArgMutation, "v")
 	if e == nil {
@@ -420,12 +428,7 @@ func TestMutation_PointerArgument(t *testing.T) {
 }
 
 func TestMutation_PointerArgFillSlice(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindFuncDecl(pkg, "FillSlice")
-	if fd == nil {
-		t.Fatal("FillSlice not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "mutation", "FillSlice")
 
 	e := effectWithTarget(result.SideEffects, taxonomy.PointerArgMutation, "dst")
 	if e == nil {
@@ -434,12 +437,7 @@ func TestMutation_PointerArgFillSlice(t *testing.T) {
 }
 
 func TestMutation_PointerArgReadOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindFuncDecl(pkg, "ReadOnly")
-	if fd == nil {
-		t.Fatal("ReadOnly not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "mutation", "ReadOnly")
 
 	if hasEffect(result.SideEffects, taxonomy.PointerArgMutation) {
 		t.Error("ReadOnly should NOT report PointerArgMutation (read-only access)")
@@ -451,12 +449,7 @@ func TestMutation_PointerArgReadOnly(t *testing.T) {
 }
 
 func TestMutation_NestedFieldMutation(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Config", "UpdateConfig")
-	if fd == nil {
-		t.Fatal("(*Config).UpdateConfig not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Config", "UpdateConfig")
 
 	e := effectWithTarget(result.SideEffects, taxonomy.ReceiverMutation, "Timeout")
 	if e == nil {
@@ -465,12 +458,7 @@ func TestMutation_NestedFieldMutation(t *testing.T) {
 }
 
 func TestMutation_DeepNestedMutation(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Config", "UpdateNested")
-	if fd == nil {
-		t.Fatal("(*Config).UpdateNested not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Config", "UpdateNested")
 
 	// Should report mutation to the top-level field 'Nested'.
 	e := effectWithTarget(result.SideEffects, taxonomy.ReceiverMutation, "Nested")
@@ -482,12 +470,7 @@ func TestMutation_DeepNestedMutation(t *testing.T) {
 // --- Analysis Metadata Tests ---
 
 func TestAnalysis_MetadataPopulated(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "SingleReturn")
-	if fd == nil {
-		t.Fatal("SingleReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "SingleReturn")
 
 	if result.Metadata.GazeVersion == "" {
 		t.Error("expected non-empty GazeVersion")
@@ -498,12 +481,7 @@ func TestAnalysis_MetadataPopulated(t *testing.T) {
 }
 
 func TestAnalysis_TargetPopulated(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
-	fd := analysis.FindFuncDecl(pkg, "SingleReturn")
-	if fd == nil {
-		t.Fatal("SingleReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "returns", "SingleReturn")
 
 	if result.Target.Function != "SingleReturn" {
 		t.Errorf("expected function name 'SingleReturn', got %q",
@@ -518,12 +496,7 @@ func TestAnalysis_TargetPopulated(t *testing.T) {
 }
 
 func TestAnalysis_MethodTargetHasReceiver(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Counter", "Increment")
-	if fd == nil {
-		t.Fatal("(*Counter).Increment not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Counter", "Increment")
 
 	if result.Target.Receiver != "*Counter" {
 		t.Errorf("expected receiver '*Counter', got %q",
@@ -534,14 +507,14 @@ func TestAnalysis_MethodTargetHasReceiver(t *testing.T) {
 // --- Side Effect ID Tests ---
 
 func TestAnalysis_StableIDs(t *testing.T) {
-	pkg := loadTestPackage(t, "returns")
+	pkg, ssaPkg := loadTestPackageWithSSA(t, "returns")
 	fd := analysis.FindFuncDecl(pkg, "ErrorReturn")
 	if fd == nil {
 		t.Fatal("ErrorReturn not found")
 	}
 
-	result1 := analysis.AnalyzeFunction(pkg, fd)
-	result2 := analysis.AnalyzeFunction(pkg, fd)
+	result1 := analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
+	result2 := analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
 
 	if len(result1.SideEffects) != len(result2.SideEffects) {
 		t.Fatalf("different side effect counts: %d vs %d",
@@ -606,12 +579,7 @@ func TestAnalyze_FunctionFilter(t *testing.T) {
 // --- All Tiers are P0 ---
 
 func TestAnalysis_AllP0EffectsAreP0(t *testing.T) {
-	pkg := loadTestPackage(t, "mutation")
-	fd := analysis.FindMethodDecl(pkg, "*Counter", "Increment")
-	if fd == nil {
-		t.Fatal("(*Counter).Increment not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeMethod(t, "mutation", "*Counter", "Increment")
 
 	for _, e := range result.SideEffects {
 		if e.Type == taxonomy.ReceiverMutation && e.Tier != taxonomy.TierP0 {
@@ -623,12 +591,7 @@ func TestAnalysis_AllP0EffectsAreP0(t *testing.T) {
 // --- P1 Side Effect Tests ---
 
 func TestP1_GlobalMutation(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "MutateGlobal")
-	if fd == nil {
-		t.Fatal("MutateGlobal not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "MutateGlobal")
 
 	if !hasEffect(result.SideEffects, taxonomy.GlobalMutation) {
 		t.Error("expected GlobalMutation for MutateGlobal")
@@ -636,12 +599,7 @@ func TestP1_GlobalMutation(t *testing.T) {
 }
 
 func TestP1_GlobalMutation_TwoGlobals(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "MutateTwoGlobals")
-	if fd == nil {
-		t.Fatal("MutateTwoGlobals not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "MutateTwoGlobals")
 
 	if count := countEffects(result.SideEffects, taxonomy.GlobalMutation); count != 2 {
 		t.Errorf("expected 2 GlobalMutation effects, got %d", count)
@@ -649,12 +607,7 @@ func TestP1_GlobalMutation_TwoGlobals(t *testing.T) {
 }
 
 func TestP1_GlobalMutation_ReadOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "ReadGlobal")
-	if fd == nil {
-		t.Fatal("ReadGlobal not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "ReadGlobal")
 
 	if hasEffect(result.SideEffects, taxonomy.GlobalMutation) {
 		t.Error("ReadGlobal should NOT produce GlobalMutation")
@@ -662,12 +615,7 @@ func TestP1_GlobalMutation_ReadOnly(t *testing.T) {
 }
 
 func TestP1_ChannelSend(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "SendOnChannel")
-	if fd == nil {
-		t.Fatal("SendOnChannel not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "SendOnChannel")
 
 	if !hasEffect(result.SideEffects, taxonomy.ChannelSend) {
 		t.Error("expected ChannelSend for SendOnChannel")
@@ -675,12 +623,7 @@ func TestP1_ChannelSend(t *testing.T) {
 }
 
 func TestP1_ChannelClose(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "CloseChannel")
-	if fd == nil {
-		t.Fatal("CloseChannel not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "CloseChannel")
 
 	if !hasEffect(result.SideEffects, taxonomy.ChannelClose) {
 		t.Error("expected ChannelClose for CloseChannel")
@@ -688,12 +631,7 @@ func TestP1_ChannelClose(t *testing.T) {
 }
 
 func TestP1_ChannelSendAndClose(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "SendAndClose")
-	if fd == nil {
-		t.Fatal("SendAndClose not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "SendAndClose")
 
 	if !hasEffect(result.SideEffects, taxonomy.ChannelSend) {
 		t.Error("expected ChannelSend")
@@ -704,12 +642,7 @@ func TestP1_ChannelSendAndClose(t *testing.T) {
 }
 
 func TestP1_WriterOutput(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "WriteToWriter")
-	if fd == nil {
-		t.Fatal("WriteToWriter not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "WriteToWriter")
 
 	if !hasEffect(result.SideEffects, taxonomy.WriterOutput) {
 		t.Error("expected WriterOutput for WriteToWriter")
@@ -717,12 +650,7 @@ func TestP1_WriterOutput(t *testing.T) {
 }
 
 func TestP1_WriterOutput_ReadOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "ReadFromWriter")
-	if fd == nil {
-		t.Fatal("ReadFromWriter not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "ReadFromWriter")
 
 	if hasEffect(result.SideEffects, taxonomy.WriterOutput) {
 		t.Error("ReadFromWriter should NOT produce WriterOutput")
@@ -730,12 +658,7 @@ func TestP1_WriterOutput_ReadOnly(t *testing.T) {
 }
 
 func TestP1_HTTPResponseWrite(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "HandleHTTP")
-	if fd == nil {
-		t.Fatal("HandleHTTP not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "HandleHTTP")
 
 	if !hasEffect(result.SideEffects, taxonomy.HTTPResponseWrite) {
 		t.Error("expected HTTPResponseWrite for HandleHTTP")
@@ -743,12 +666,7 @@ func TestP1_HTTPResponseWrite(t *testing.T) {
 }
 
 func TestP1_MapMutation(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "WriteToMap")
-	if fd == nil {
-		t.Fatal("WriteToMap not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "WriteToMap")
 
 	if !hasEffect(result.SideEffects, taxonomy.MapMutation) {
 		t.Error("expected MapMutation for WriteToMap")
@@ -756,12 +674,7 @@ func TestP1_MapMutation(t *testing.T) {
 }
 
 func TestP1_MapMutation_ReadOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "ReadFromMap")
-	if fd == nil {
-		t.Fatal("ReadFromMap not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "ReadFromMap")
 
 	if hasEffect(result.SideEffects, taxonomy.MapMutation) {
 		t.Error("ReadFromMap should NOT produce MapMutation")
@@ -769,12 +682,7 @@ func TestP1_MapMutation_ReadOnly(t *testing.T) {
 }
 
 func TestP1_SliceMutation(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "WriteToSlice")
-	if fd == nil {
-		t.Fatal("WriteToSlice not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "WriteToSlice")
 
 	if !hasEffect(result.SideEffects, taxonomy.SliceMutation) {
 		t.Error("expected SliceMutation for WriteToSlice")
@@ -782,12 +690,7 @@ func TestP1_SliceMutation(t *testing.T) {
 }
 
 func TestP1_SliceMutation_ReadOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "ReadFromSlice")
-	if fd == nil {
-		t.Fatal("ReadFromSlice not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "ReadFromSlice")
 
 	if hasEffect(result.SideEffects, taxonomy.SliceMutation) {
 		t.Error("ReadFromSlice should NOT produce SliceMutation")
@@ -795,12 +698,7 @@ func TestP1_SliceMutation_ReadOnly(t *testing.T) {
 }
 
 func TestP1_PureFunction(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "PureP1")
-	if fd == nil {
-		t.Fatal("PureP1 not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "PureP1")
 
 	// Should only have ReturnValue, no P1 effects.
 	for _, e := range result.SideEffects {
@@ -811,12 +709,7 @@ func TestP1_PureFunction(t *testing.T) {
 }
 
 func TestP1_EffectsAreP1Tier(t *testing.T) {
-	pkg := loadTestPackage(t, "p1effects")
-	fd := analysis.FindFuncDecl(pkg, "SendOnChannel")
-	if fd == nil {
-		t.Fatal("SendOnChannel not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p1effects", "SendOnChannel")
 
 	for _, e := range result.SideEffects {
 		if e.Type == taxonomy.ChannelSend && e.Tier != taxonomy.TierP1 {
@@ -830,12 +723,7 @@ func TestP1_EffectsAreP1Tier(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestP2_GoroutineSpawn(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "SpawnGoroutine")
-	if fd == nil {
-		t.Fatal("SpawnGoroutine not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "SpawnGoroutine")
 
 	if !hasEffect(result.SideEffects, taxonomy.GoroutineSpawn) {
 		t.Error("expected GoroutineSpawn for SpawnGoroutine")
@@ -843,12 +731,7 @@ func TestP2_GoroutineSpawn(t *testing.T) {
 }
 
 func TestP2_GoroutineSpawnWithFunc(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "SpawnGoroutineWithFunc")
-	if fd == nil {
-		t.Fatal("SpawnGoroutineWithFunc not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "SpawnGoroutineWithFunc")
 
 	if !hasEffect(result.SideEffects, taxonomy.GoroutineSpawn) {
 		t.Error("expected GoroutineSpawn for SpawnGoroutineWithFunc")
@@ -856,12 +739,7 @@ func TestP2_GoroutineSpawnWithFunc(t *testing.T) {
 }
 
 func TestP2_NoGoroutine(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "NoGoroutine")
-	if fd == nil {
-		t.Fatal("NoGoroutine not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "NoGoroutine")
 
 	if hasEffect(result.SideEffects, taxonomy.GoroutineSpawn) {
 		t.Error("NoGoroutine should NOT produce GoroutineSpawn")
@@ -869,12 +747,7 @@ func TestP2_NoGoroutine(t *testing.T) {
 }
 
 func TestP2_Panic(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "PanicWithString")
-	if fd == nil {
-		t.Fatal("PanicWithString not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "PanicWithString")
 
 	if !hasEffect(result.SideEffects, taxonomy.Panic) {
 		t.Error("expected Panic for PanicWithString")
@@ -882,12 +755,7 @@ func TestP2_Panic(t *testing.T) {
 }
 
 func TestP2_PanicWithError(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "PanicWithError")
-	if fd == nil {
-		t.Fatal("PanicWithError not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "PanicWithError")
 
 	if !hasEffect(result.SideEffects, taxonomy.Panic) {
 		t.Error("expected Panic for PanicWithError")
@@ -895,12 +763,7 @@ func TestP2_PanicWithError(t *testing.T) {
 }
 
 func TestP2_NoPanic(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "NoPanic")
-	if fd == nil {
-		t.Fatal("NoPanic not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "NoPanic")
 
 	if hasEffect(result.SideEffects, taxonomy.Panic) {
 		t.Error("NoPanic should NOT produce Panic")
@@ -908,12 +771,7 @@ func TestP2_NoPanic(t *testing.T) {
 }
 
 func TestP2_FileSystemWrite(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "WriteFileOS")
-	if fd == nil {
-		t.Fatal("WriteFileOS not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "WriteFileOS")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemWrite) {
 		t.Error("expected FileSystemWrite for WriteFileOS")
@@ -921,12 +779,7 @@ func TestP2_FileSystemWrite(t *testing.T) {
 }
 
 func TestP2_FileSystemWrite_Create(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "CreateFile")
-	if fd == nil {
-		t.Fatal("CreateFile not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "CreateFile")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemWrite) {
 		t.Error("expected FileSystemWrite for CreateFile")
@@ -934,12 +787,7 @@ func TestP2_FileSystemWrite_Create(t *testing.T) {
 }
 
 func TestP2_FileSystemWrite_Mkdir(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "MkdirCall")
-	if fd == nil {
-		t.Fatal("MkdirCall not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "MkdirCall")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemWrite) {
 		t.Error("expected FileSystemWrite for MkdirCall")
@@ -947,25 +795,23 @@ func TestP2_FileSystemWrite_Mkdir(t *testing.T) {
 }
 
 func TestP2_ReadFileOnly(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "ReadFileOnly")
-	if fd == nil {
-		t.Fatal("ReadFileOnly not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "ReadFileOnly")
 
 	if hasEffect(result.SideEffects, taxonomy.FileSystemWrite) {
 		t.Error("ReadFileOnly should NOT produce FileSystemWrite")
 	}
 }
 
-func TestP2_FileSystemDelete(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "RemoveFile")
-	if fd == nil {
-		t.Fatal("RemoveFile not found")
+func TestP2_OpenReadOnly(t *testing.T) {
+	result := analyzeFunc(t, "p2effects", "OpenReadOnly")
+
+	if hasEffect(result.SideEffects, taxonomy.FileSystemWrite) {
+		t.Error("OpenReadOnly should NOT produce FileSystemWrite (read-only open)")
 	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+}
+
+func TestP2_FileSystemDelete(t *testing.T) {
+	result := analyzeFunc(t, "p2effects", "RemoveFile")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemDelete) {
 		t.Error("expected FileSystemDelete for RemoveFile")
@@ -973,12 +819,7 @@ func TestP2_FileSystemDelete(t *testing.T) {
 }
 
 func TestP2_FileSystemDelete_RemoveAll(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "RemoveAllDir")
-	if fd == nil {
-		t.Fatal("RemoveAllDir not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "RemoveAllDir")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemDelete) {
 		t.Error("expected FileSystemDelete for RemoveAllDir")
@@ -986,12 +827,7 @@ func TestP2_FileSystemDelete_RemoveAll(t *testing.T) {
 }
 
 func TestP2_FileSystemMeta(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "ChmodFile")
-	if fd == nil {
-		t.Fatal("ChmodFile not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "ChmodFile")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemMeta) {
 		t.Error("expected FileSystemMeta for ChmodFile")
@@ -999,12 +835,7 @@ func TestP2_FileSystemMeta(t *testing.T) {
 }
 
 func TestP2_FileSystemMeta_Symlink(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "SymlinkFile")
-	if fd == nil {
-		t.Fatal("SymlinkFile not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "SymlinkFile")
 
 	if !hasEffect(result.SideEffects, taxonomy.FileSystemMeta) {
 		t.Error("expected FileSystemMeta for SymlinkFile")
@@ -1012,12 +843,7 @@ func TestP2_FileSystemMeta_Symlink(t *testing.T) {
 }
 
 func TestP2_StatFile_NoMeta(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "StatFile")
-	if fd == nil {
-		t.Fatal("StatFile not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "StatFile")
 
 	if hasEffect(result.SideEffects, taxonomy.FileSystemMeta) {
 		t.Error("StatFile should NOT produce FileSystemMeta")
@@ -1025,12 +851,7 @@ func TestP2_StatFile_NoMeta(t *testing.T) {
 }
 
 func TestP2_LogWrite(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "LogPrint")
-	if fd == nil {
-		t.Fatal("LogPrint not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "LogPrint")
 
 	if !hasEffect(result.SideEffects, taxonomy.LogWrite) {
 		t.Error("expected LogWrite for LogPrint")
@@ -1038,12 +859,7 @@ func TestP2_LogWrite(t *testing.T) {
 }
 
 func TestP2_LogWrite_Fatal(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "LogFatal")
-	if fd == nil {
-		t.Fatal("LogFatal not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "LogFatal")
 
 	if !hasEffect(result.SideEffects, taxonomy.LogWrite) {
 		t.Error("expected LogWrite for LogFatal")
@@ -1051,12 +867,7 @@ func TestP2_LogWrite_Fatal(t *testing.T) {
 }
 
 func TestP2_LogWrite_Slog(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "SlogInfo")
-	if fd == nil {
-		t.Fatal("SlogInfo not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "SlogInfo")
 
 	if !hasEffect(result.SideEffects, taxonomy.LogWrite) {
 		t.Error("expected LogWrite for SlogInfo")
@@ -1064,12 +875,7 @@ func TestP2_LogWrite_Slog(t *testing.T) {
 }
 
 func TestP2_NoLogging(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "NoLogging")
-	if fd == nil {
-		t.Fatal("NoLogging not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "NoLogging")
 
 	if hasEffect(result.SideEffects, taxonomy.LogWrite) {
 		t.Error("NoLogging should NOT produce LogWrite")
@@ -1077,12 +883,7 @@ func TestP2_NoLogging(t *testing.T) {
 }
 
 func TestP2_ContextCancellation(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "CancelContext")
-	if fd == nil {
-		t.Fatal("CancelContext not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "CancelContext")
 
 	if !hasEffect(result.SideEffects, taxonomy.ContextCancellation) {
 		t.Error("expected ContextCancellation for CancelContext")
@@ -1090,12 +891,7 @@ func TestP2_ContextCancellation(t *testing.T) {
 }
 
 func TestP2_ContextCancellation_Timeout(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "TimeoutContext")
-	if fd == nil {
-		t.Fatal("TimeoutContext not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "TimeoutContext")
 
 	if !hasEffect(result.SideEffects, taxonomy.ContextCancellation) {
 		t.Error("expected ContextCancellation for TimeoutContext")
@@ -1103,12 +899,7 @@ func TestP2_ContextCancellation_Timeout(t *testing.T) {
 }
 
 func TestP2_UseContextNoCancel(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "UseContextNoCancel")
-	if fd == nil {
-		t.Fatal("UseContextNoCancel not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "UseContextNoCancel")
 
 	if hasEffect(result.SideEffects, taxonomy.ContextCancellation) {
 		t.Error("UseContextNoCancel should NOT produce ContextCancellation")
@@ -1116,12 +907,7 @@ func TestP2_UseContextNoCancel(t *testing.T) {
 }
 
 func TestP2_CallbackInvocation(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "InvokeCallback")
-	if fd == nil {
-		t.Fatal("InvokeCallback not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "InvokeCallback")
 
 	if !hasEffect(result.SideEffects, taxonomy.CallbackInvocation) {
 		t.Error("expected CallbackInvocation for InvokeCallback")
@@ -1129,12 +915,7 @@ func TestP2_CallbackInvocation(t *testing.T) {
 }
 
 func TestP2_CallbackInvocation_WithArgs(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "InvokeCallbackWithArgs")
-	if fd == nil {
-		t.Fatal("InvokeCallbackWithArgs not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "InvokeCallbackWithArgs")
 
 	if !hasEffect(result.SideEffects, taxonomy.CallbackInvocation) {
 		t.Error("expected CallbackInvocation for InvokeCallbackWithArgs")
@@ -1142,12 +923,7 @@ func TestP2_CallbackInvocation_WithArgs(t *testing.T) {
 }
 
 func TestP2_NoCallback(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "NoCallback")
-	if fd == nil {
-		t.Fatal("NoCallback not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "NoCallback")
 
 	if hasEffect(result.SideEffects, taxonomy.CallbackInvocation) {
 		t.Error("NoCallback should NOT produce CallbackInvocation")
@@ -1155,12 +931,7 @@ func TestP2_NoCallback(t *testing.T) {
 }
 
 func TestP2_DatabaseWrite(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "DBExec")
-	if fd == nil {
-		t.Fatal("DBExec not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "DBExec")
 
 	if !hasEffect(result.SideEffects, taxonomy.DatabaseWrite) {
 		t.Error("expected DatabaseWrite for DBExec")
@@ -1168,12 +939,7 @@ func TestP2_DatabaseWrite(t *testing.T) {
 }
 
 func TestP2_DatabaseQuery_NoWrite(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "DBQuery")
-	if fd == nil {
-		t.Fatal("DBQuery not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "DBQuery")
 
 	if hasEffect(result.SideEffects, taxonomy.DatabaseWrite) {
 		t.Error("DBQuery should NOT produce DatabaseWrite")
@@ -1181,12 +947,7 @@ func TestP2_DatabaseQuery_NoWrite(t *testing.T) {
 }
 
 func TestP2_DatabaseTransaction(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "BeginTx")
-	if fd == nil {
-		t.Fatal("BeginTx not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "BeginTx")
 
 	if !hasEffect(result.SideEffects, taxonomy.DatabaseTransaction) {
 		t.Error("expected DatabaseTransaction for BeginTx")
@@ -1194,12 +955,7 @@ func TestP2_DatabaseTransaction(t *testing.T) {
 }
 
 func TestP2_PureP2(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "PureP2")
-	if fd == nil {
-		t.Fatal("PureP2 not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "PureP2")
 
 	var p2Effects []taxonomy.SideEffect
 	for _, e := range result.SideEffects {
@@ -1214,12 +970,7 @@ func TestP2_PureP2(t *testing.T) {
 }
 
 func TestP2_EffectsAreP2Tier(t *testing.T) {
-	pkg := loadTestPackage(t, "p2effects")
-	fd := analysis.FindFuncDecl(pkg, "SpawnGoroutine")
-	if fd == nil {
-		t.Fatal("SpawnGoroutine not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "p2effects", "SpawnGoroutine")
 
 	for _, e := range result.SideEffects {
 		if e.Type == taxonomy.GoroutineSpawn && e.Tier != taxonomy.TierP2 {
@@ -1235,12 +986,7 @@ func TestP2_EffectsAreP2Tier(t *testing.T) {
 // --- Generics ---
 
 func TestEdge_GenericIdentity(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "GenericIdentity")
-	if fd == nil {
-		t.Fatal("GenericIdentity not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "GenericIdentity")
 
 	// Generic identity returns its type parameter — should detect ReturnValue.
 	if !hasEffect(result.SideEffects, taxonomy.ReturnValue) {
@@ -1249,12 +995,7 @@ func TestEdge_GenericIdentity(t *testing.T) {
 }
 
 func TestEdge_GenericSwap(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "GenericSwap")
-	if fd == nil {
-		t.Fatal("GenericSwap not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "GenericSwap")
 
 	// Should detect two ReturnValue effects.
 	count := 0
@@ -1269,12 +1010,7 @@ func TestEdge_GenericSwap(t *testing.T) {
 }
 
 func TestEdge_GenericSliceMap(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "GenericSliceMap")
-	if fd == nil {
-		t.Fatal("GenericSliceMap not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "GenericSliceMap")
 
 	// Should detect ReturnValue (returns []U) and CallbackInvocation (calls fn).
 	if !hasEffect(result.SideEffects, taxonomy.ReturnValue) {
@@ -1286,7 +1022,7 @@ func TestEdge_GenericSliceMap(t *testing.T) {
 }
 
 func TestEdge_GenericContainerAdd(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
+	pkg, ssaPkg := loadTestPackageWithSSA(t, "edgecases")
 	fd := analysis.FindMethodDecl(pkg, "*GenericContainer[T]", "Add")
 	if fd == nil {
 		// Try alternate receiver name formats.
@@ -1295,7 +1031,7 @@ func TestEdge_GenericContainerAdd(t *testing.T) {
 	if fd == nil {
 		t.Skip("GenericContainer.Add not found — receiver format may differ")
 	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
 
 	// Known limitation: SSA-based mutation analysis doesn't fully
 	// resolve generic receiver types, so ReceiverMutation may not
@@ -1308,7 +1044,7 @@ func TestEdge_GenericContainerAdd(t *testing.T) {
 }
 
 func TestEdge_GenericContainerCount(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
+	pkg, ssaPkg := loadTestPackageWithSSA(t, "edgecases")
 	fd := analysis.FindMethodDecl(pkg, "*GenericContainer[T]", "Count")
 	if fd == nil {
 		fd = analysis.FindMethodDecl(pkg, "*GenericContainer", "Count")
@@ -1316,7 +1052,7 @@ func TestEdge_GenericContainerCount(t *testing.T) {
 	if fd == nil {
 		t.Skip("GenericContainer.Count not found — receiver format may differ")
 	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analysis.AnalyzeFunctionWithSSA(pkg, fd, ssaPkg)
 
 	// Should detect ReturnValue but no ReceiverMutation.
 	if !hasEffect(result.SideEffects, taxonomy.ReturnValue) {
@@ -1330,12 +1066,7 @@ func TestEdge_GenericContainerCount(t *testing.T) {
 // --- Unsafe ---
 
 func TestEdge_UnsafePointerCast(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "UnsafePointerCast")
-	if fd == nil {
-		t.Fatal("UnsafePointerCast not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "UnsafePointerCast")
 
 	// Should at least detect ReturnValue. UnsafeMutation detection is
 	// P4-tier and may not be implemented yet — this test documents the
@@ -1347,12 +1078,7 @@ func TestEdge_UnsafePointerCast(t *testing.T) {
 }
 
 func TestEdge_UnsafeSizeof(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "UnsafeSizeof")
-	if fd == nil {
-		t.Fatal("UnsafeSizeof not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "UnsafeSizeof")
 
 	// Sizeof is read-only — should only have ReturnValue.
 	if !hasEffect(result.SideEffects, taxonomy.ReturnValue) {
@@ -1366,12 +1092,7 @@ func TestEdge_UnsafeSizeof(t *testing.T) {
 // --- Empty / No-op functions ---
 
 func TestEdge_EmptyFunction(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "EmptyFunction")
-	if fd == nil {
-		t.Fatal("EmptyFunction not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "EmptyFunction")
 
 	if len(result.SideEffects) != 0 {
 		t.Errorf("EmptyFunction should have 0 side effects, got %d: %v",
@@ -1380,12 +1101,7 @@ func TestEdge_EmptyFunction(t *testing.T) {
 }
 
 func TestEdge_NoOpWithParams(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "NoOpWithParams")
-	if fd == nil {
-		t.Fatal("NoOpWithParams not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "NoOpWithParams")
 
 	if len(result.SideEffects) != 0 {
 		t.Errorf("NoOpWithParams should have 0 side effects, got %d: %v",
@@ -1396,12 +1112,7 @@ func TestEdge_NoOpWithParams(t *testing.T) {
 // --- Variadic functions ---
 
 func TestEdge_VariadicSum(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "VariadicSum")
-	if fd == nil {
-		t.Fatal("VariadicSum not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "VariadicSum")
 
 	if !hasEffect(result.SideEffects, taxonomy.ReturnValue) {
 		t.Error("VariadicSum should detect ReturnValue")
@@ -1409,12 +1120,7 @@ func TestEdge_VariadicSum(t *testing.T) {
 }
 
 func TestEdge_VariadicWithCallback(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "VariadicWithCallback")
-	if fd == nil {
-		t.Fatal("VariadicWithCallback not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "VariadicWithCallback")
 
 	// Known limitation: P2 callback detection looks for direct calls
 	// to func-typed parameters, but variadic params iterated via
@@ -1429,12 +1135,7 @@ func TestEdge_VariadicWithCallback(t *testing.T) {
 // --- Complex signatures ---
 
 func TestEdge_MultiReturn(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "MultiReturn")
-	if fd == nil {
-		t.Fatal("MultiReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "MultiReturn")
 
 	// Should detect 3 ReturnValues + 1 ErrorReturn = 4 total.
 	rv := 0
@@ -1456,12 +1157,7 @@ func TestEdge_MultiReturn(t *testing.T) {
 }
 
 func TestEdge_FuncReturningFunc(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "FuncReturningFunc")
-	if fd == nil {
-		t.Fatal("FuncReturningFunc not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "FuncReturningFunc")
 
 	if !hasEffect(result.SideEffects, taxonomy.ReturnValue) {
 		t.Error("FuncReturningFunc should detect ReturnValue")
@@ -1469,12 +1165,7 @@ func TestEdge_FuncReturningFunc(t *testing.T) {
 }
 
 func TestEdge_NamedMultiReturn(t *testing.T) {
-	pkg := loadTestPackage(t, "edgecases")
-	fd := analysis.FindFuncDecl(pkg, "NamedMultiReturn")
-	if fd == nil {
-		t.Fatal("NamedMultiReturn not found")
-	}
-	result := analysis.AnalyzeFunction(pkg, fd)
+	result := analyzeFunc(t, "edgecases", "NamedMultiReturn")
 
 	// Named returns: x int, y string, err error.
 	rv := 0

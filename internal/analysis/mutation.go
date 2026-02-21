@@ -56,18 +56,43 @@ func AnalyzeMutations(
 	return detectMutations(fset, ssaFn, fd, pkgPath, funcName)
 }
 
-// findSSAFunction locates the SSA function matching a types.Func object.
-func findSSAFunction(ssaPkg *ssa.Package, _ *types.Func, fd *ast.FuncDecl) *ssa.Function {
-	// For methods, look up via the type's method set.
+// findSSAFunction locates the SSA function matching a types.Func
+// object. It first attempts a precise lookup via
+// ssaPkg.Prog.FuncValue (for package-level functions) or
+// ssaPkg.Prog.MethodValue (for methods), falling back to
+// name-based lookup if the types.Func is nil.
+func findSSAFunction(ssaPkg *ssa.Package, fnObj *types.Func, fd *ast.FuncDecl) *ssa.Function {
+	// Prefer the precise lookup via types.Func when available.
+	if fnObj != nil {
+		if fd.Recv == nil {
+			// Package-level function: direct lookup.
+			if fn := ssaPkg.Prog.FuncValue(fnObj); fn != nil {
+				return fn
+			}
+		} else {
+			// Method: look up via the method set of the
+			// receiver type (both value and pointer).
+			recv := fnObj.Type().(*types.Signature).Recv()
+			if recv != nil {
+				mset := types.NewMethodSet(recv.Type())
+				for i := 0; i < mset.Len(); i++ {
+					sel := mset.At(i)
+					if sel.Obj().Id() == fnObj.Id() {
+						return ssaPkg.Prog.MethodValue(sel)
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: name-based lookup for cases where fnObj is nil.
 	if fd.Recv != nil {
-		// Try direct member lookup on the package.
 		typeName := baseTypeName(fd.Recv.List[0].Type)
 		member := ssaPkg.Members[typeName]
 		if member == nil {
 			return nil
 		}
 		if namedType, ok := member.(*ssa.Type); ok {
-			// Look through all methods of the named type.
 			mset := types.NewMethodSet(namedType.Type())
 			for i := 0; i < mset.Len(); i++ {
 				sel := mset.At(i)
@@ -75,7 +100,6 @@ func findSSAFunction(ssaPkg *ssa.Package, _ *types.Func, fd *ast.FuncDecl) *ssa.
 					return ssaPkg.Prog.MethodValue(sel)
 				}
 			}
-			// Also check pointer type method set.
 			ptrType := types.NewPointer(namedType.Type())
 			mset = types.NewMethodSet(ptrType)
 			for i := 0; i < mset.Len(); i++ {
@@ -88,7 +112,6 @@ func findSSAFunction(ssaPkg *ssa.Package, _ *types.Func, fd *ast.FuncDecl) *ssa.
 		return nil
 	}
 
-	// For package-level functions, direct lookup.
 	member := ssaPkg.Members[fd.Name.Name]
 	if member == nil {
 		return nil
