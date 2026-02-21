@@ -17,6 +17,9 @@ type JSONReport struct {
 
 // WriteJSON writes analysis results as formatted JSON to the writer.
 func WriteJSON(w io.Writer, results []taxonomy.AnalysisResult) error {
+	if results == nil {
+		results = []taxonomy.AnalysisResult{}
+	}
 	report := JSONReport{
 		Version: "0.1.0",
 		Results: results,

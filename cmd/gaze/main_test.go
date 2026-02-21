@@ -414,6 +414,45 @@ func TestCheckCIThresholds_BothExceeded(t *testing.T) {
 // go test -coverprofile which is slow and tested elsewhere)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// schema command tests
+// ---------------------------------------------------------------------------
+
+func TestSchemaCmd_OutputsValidJSON(t *testing.T) {
+	cmd := newSchemaCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("schema command failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Errorf("schema output is not valid JSON: %v", err)
+	}
+}
+
+func TestSchemaCmd_ContainsSchemaFields(t *testing.T) {
+	cmd := newSchemaCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+	for _, field := range []string{
+		`"$schema"`, `"title"`, `"AnalysisResult"`,
+		`"FunctionTarget"`, `"SideEffect"`, `"Metadata"`,
+	} {
+		if !strings.Contains(output, field) {
+			t.Errorf("schema output missing %s", field)
+		}
+	}
+}
+
 func TestRunCrap_InvalidFormat(t *testing.T) {
 	err := runCrap(crapParams{
 		patterns: []string{"./..."},

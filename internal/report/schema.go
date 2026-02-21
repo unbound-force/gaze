@@ -117,8 +117,11 @@ const Schema = `{
           "description": "Analysis duration in milliseconds"
         },
         "warnings": {
-          "type": "array",
-          "items": { "type": "string" }
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "null" }
+          ],
+          "description": "Analysis warnings, if any"
         }
       }
     }

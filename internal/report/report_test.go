@@ -3,10 +3,13 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func sampleResults() []taxonomy.AnalysisResult {
@@ -202,5 +205,92 @@ func TestWriteText_NoSideEffects(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "No side effects detected") {
 		t.Error("expected 'No side effects detected' for pure function")
+	}
+}
+
+func TestWriteJSON_ValidAgainstSchema(t *testing.T) {
+	// Compile the embedded JSON Schema.
+	sch, err := jsonschema.UnmarshalJSON(strings.NewReader(Schema))
+	if err != nil {
+		t.Fatalf("failed to parse schema JSON: %v", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("schema.json", sch); err != nil {
+		t.Fatalf("failed to add schema resource: %v", err)
+	}
+	compiled, err := compiler.Compile("schema.json")
+	if err != nil {
+		t.Fatalf("failed to compile schema: %v", err)
+	}
+
+	// Generate JSON output from sample data.
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, sampleResults()); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	// Parse and validate against schema.
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if err := compiled.Validate(inst); err != nil {
+		t.Errorf("JSON output does not conform to schema:\n%v", err)
+	}
+}
+
+// stripANSI removes ANSI escape sequences from text for width measurement.
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
+}
+
+func TestWriteText_FitsIn80Columns(t *testing.T) {
+	// SC-007: Human-readable output fits in an 80-column terminal
+	// without horizontal scrolling for typical results.
+	var buf bytes.Buffer
+	if err := WriteText(&buf, sampleResults()); err != nil {
+		t.Fatal(err)
+	}
+
+	const maxWidth = 80
+	lines := strings.Split(buf.String(), "\n")
+	for i, line := range lines {
+		plain := stripANSI(line)
+		width := utf8.RuneCountInString(plain)
+		if width > maxWidth {
+			t.Errorf("line %d exceeds %d columns (%d runes): %q",
+				i+1, maxWidth, width, plain)
+		}
+	}
+}
+
+func TestWriteJSON_EmptyResults_ValidAgainstSchema(t *testing.T) {
+	// Empty results should also validate.
+	sch, err := jsonschema.UnmarshalJSON(strings.NewReader(Schema))
+	if err != nil {
+		t.Fatalf("failed to parse schema JSON: %v", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("schema.json", sch); err != nil {
+		t.Fatalf("failed to add schema resource: %v", err)
+	}
+	compiled, err := compiler.Compile("schema.json")
+	if err != nil {
+		t.Fatalf("failed to compile schema: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if err := compiled.Validate(inst); err != nil {
+		t.Errorf("empty JSON output does not conform to schema:\n%v", err)
 	}
 }

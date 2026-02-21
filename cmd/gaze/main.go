@@ -6,11 +6,17 @@ import (
 	"os"
 	"strings"
 
+	charmlog "github.com/charmbracelet/log"
 	"github.com/jflowers/gaze/internal/analysis"
 	"github.com/jflowers/gaze/internal/crap"
 	"github.com/jflowers/gaze/internal/report"
 	"github.com/spf13/cobra"
 )
+
+// logger is the application-wide structured logger (writes to stderr).
+var logger = charmlog.NewWithOptions(os.Stderr, charmlog.Options{
+	ReportTimestamp: false,
+})
 
 // Set by build flags.
 var version = "dev"
@@ -27,6 +33,7 @@ produced by their test targets.`,
 
 	root.AddCommand(newAnalyzeCmd())
 	root.AddCommand(newCrapCmd())
+	root.AddCommand(newSchemaCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -40,14 +47,18 @@ type analyzeParams struct {
 	format            string
 	function          string
 	includeUnexported bool
+	interactive       bool
 	stdout            io.Writer
 	stderr            io.Writer
 }
 
 // runAnalyze is the extracted, testable body of the analyze command.
 func runAnalyze(p analyzeParams) error {
-	if p.format != "text" && p.format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	if p.format != "text" && p.format != "json" && p.format != "html" {
+		return fmt.Errorf("invalid format %q: must be 'text', 'json', or 'html'", p.format)
+	}
+	if p.format == "html" {
+		return fmt.Errorf("HTML report format is not yet implemented")
 	}
 
 	opts := analysis.Options{
@@ -55,6 +66,7 @@ func runAnalyze(p analyzeParams) error {
 		FunctionFilter:    p.function,
 	}
 
+	logger.Info("analyzing package", "pkg", p.pkgPath)
 	results, err := analysis.LoadAndAnalyze(p.pkgPath, opts)
 	if err != nil {
 		return err
@@ -64,8 +76,14 @@ func runAnalyze(p analyzeParams) error {
 		if p.function != "" {
 			return fmt.Errorf("function %q not found in package %q", p.function, p.pkgPath)
 		}
-		fmt.Fprintln(p.stderr, "no functions found to analyze")
+		logger.Warn("no functions found to analyze")
 		return nil
+	}
+
+	logger.Info("analysis complete", "functions", len(results))
+
+	if p.interactive {
+		return runInteractiveAnalyze(results)
 	}
 
 	switch p.format {
@@ -81,6 +99,7 @@ func newAnalyzeCmd() *cobra.Command {
 		function          string
 		format            string
 		includeUnexported bool
+		interactive       bool
 	)
 
 	cmd := &cobra.Command{
@@ -95,6 +114,7 @@ observable side effects each function produces.`,
 				format:            format,
 				function:          function,
 				includeUnexported: includeUnexported,
+				interactive:       interactive,
 				stdout:            os.Stdout,
 				stderr:            os.Stderr,
 			})
@@ -104,9 +124,11 @@ observable side effects each function produces.`,
 	cmd.Flags().StringVarP(&function, "function", "f", "",
 		"analyze a specific function (default: all exported)")
 	cmd.Flags().StringVar(&format, "format", "text",
-		"output format: text or json")
+		"output format: text, json, or html")
 	cmd.Flags().BoolVar(&includeUnexported, "include-unexported", false,
 		"include unexported functions")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false,
+		"launch interactive TUI for browsing results")
 
 	return cmd
 }
@@ -123,16 +145,37 @@ type crapParams struct {
 	stderr          io.Writer
 }
 
+func newSchemaCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "schema",
+		Short: "Print the JSON Schema for Gaze analysis output",
+		Long: `Print the JSON Schema (Draft 2020-12) that documents the
+structure of gaze analyze --format=json output. Useful for
+validating output or generating client types.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), report.Schema)
+			return err
+		},
+	}
+}
+
 // runCrap is the extracted, testable body of the crap command.
 func runCrap(p crapParams) error {
-	if p.format != "text" && p.format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	if p.format != "text" && p.format != "json" && p.format != "html" {
+		return fmt.Errorf("invalid format %q: must be 'text', 'json', or 'html'", p.format)
+	}
+	if p.format == "html" {
+		return fmt.Errorf("HTML report format is not yet implemented")
 	}
 
+	logger.Info("computing CRAP scores", "patterns", p.patterns)
 	rpt, err := crap.Analyze(p.patterns, p.moduleDir, p.opts)
 	if err != nil {
 		return err
 	}
+
+	logger.Info("analysis complete", "functions", len(rpt.Scores))
 
 	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
 		return err
@@ -241,7 +284,7 @@ automatically.`,
 	}
 
 	cmd.Flags().StringVar(&format, "format", "text",
-		"output format: text or json")
+		"output format: text, json, or html")
 	cmd.Flags().StringVar(&coverProfile, "coverprofile", "",
 		"path to coverage profile (default: generate via go test)")
 	cmd.Flags().Float64Var(&crapThreshold, "crap-threshold", 15,
