@@ -48,7 +48,7 @@ func AnalyzeMutations(
 }
 
 // findSSAFunction locates the SSA function matching a types.Func object.
-func findSSAFunction(ssaPkg *ssa.Package, fnObj *types.Func, fd *ast.FuncDecl) *ssa.Function {
+func findSSAFunction(ssaPkg *ssa.Package, _ *types.Func, fd *ast.FuncDecl) *ssa.Function {
 	// For methods, look up via the type's method set.
 	if fd.Recv != nil {
 		// Try direct member lookup on the package.

@@ -73,7 +73,7 @@ const Schema = `{
             "ReturnValue", "ErrorReturn", "SentinelError",
             "ReceiverMutation", "PointerArgMutation",
             "SliceMutation", "MapMutation", "GlobalMutation",
-            "WriterOutput", "HttpResponseWrite",
+            "WriterOutput", "HTTPResponseWrite",
             "ChannelSend", "ChannelClose", "DeferredReturnMutation",
             "FileSystemWrite", "FileSystemDelete", "FileSystemMeta",
             "DatabaseWrite", "DatabaseTransaction",

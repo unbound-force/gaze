@@ -56,7 +56,7 @@ func TestTierOf_AllTypesHaveTiers(t *testing.T) {
 		ReceiverMutation, PointerArgMutation,
 		// P1
 		SliceMutation, MapMutation, GlobalMutation,
-		WriterOutput, HttpResponseWrite, ChannelSend,
+		WriterOutput, HTTPResponseWrite, ChannelSend,
 		ChannelClose, DeferredReturnMutation,
 		// P2
 		FileSystemWrite, FileSystemDelete, FileSystemMeta,

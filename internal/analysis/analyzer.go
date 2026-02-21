@@ -110,7 +110,7 @@ func AnalyzeFunction(
 func analyzeFunction(
 	fset *token.FileSet,
 	pkg *packages.Package,
-	file *ast.File,
+	_ *ast.File,
 	fd *ast.FuncDecl,
 ) taxonomy.AnalysisResult {
 	funcName := fd.Name.Name

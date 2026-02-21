@@ -1,5 +1,5 @@
 # Build artifacts
-gaze
+/gaze
 *.exe
 
 # Test artifacts

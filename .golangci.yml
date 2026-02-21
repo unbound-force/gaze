@@ -1,19 +1,22 @@
+version: "2"
+
 linters:
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
-    - gosimple
     - ineffassign
     - unused
+    - misspell
+  settings:
+    errcheck:
+      check-type-assertions: true
+  exclusions:
+    paths:
+      - testdata
+
+formatters:
+  enable:
     - gofmt
     - goimports
-    - misspell
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-
-issues:
-  exclude-dirs:
-    - testdata

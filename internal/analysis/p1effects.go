@@ -16,7 +16,7 @@ import (
 //     a non-stdout/stderr writer parameter
 //   - ChannelSend: send statements (ch <- v)
 //   - ChannelClose: calls to close(ch)
-//   - HttpResponseWrite: calls to http.ResponseWriter methods
+//   - HTTPResponseWrite: calls to http.ResponseWriter methods
 //   - SliceMutation: direct index assignment on slice parameters
 //   - MapMutation: map index assignment on map parameters
 func AnalyzeP1Effects(
@@ -186,8 +186,8 @@ func AnalyzeP1Effects(
 							seen[key] = true
 							loc := fset.Position(node.Pos()).String()
 							effects = append(effects, taxonomy.SideEffect{
-								ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.HttpResponseWrite), name+"."+method),
-								Type:        taxonomy.HttpResponseWrite,
+								ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.HTTPResponseWrite), name+"."+method),
+								Type:        taxonomy.HTTPResponseWrite,
 								Tier:        taxonomy.TierP1,
 								Location:    loc,
 								Description: fmt.Sprintf("calls %s.%s()", name, method),

@@ -22,7 +22,7 @@ var tierMap = map[SideEffectType]Tier{
 	MapMutation:            TierP1,
 	GlobalMutation:         TierP1,
 	WriterOutput:           TierP1,
-	HttpResponseWrite:      TierP1,
+	HTTPResponseWrite:      TierP1,
 	ChannelSend:            TierP1,
 	ChannelClose:           TierP1,
 	DeferredReturnMutation: TierP1,

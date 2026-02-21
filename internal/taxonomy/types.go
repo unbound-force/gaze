@@ -27,7 +27,7 @@ const (
 	MapMutation            SideEffectType = "MapMutation"
 	GlobalMutation         SideEffectType = "GlobalMutation"
 	WriterOutput           SideEffectType = "WriterOutput"
-	HttpResponseWrite      SideEffectType = "HttpResponseWrite"
+	HTTPResponseWrite      SideEffectType = "HTTPResponseWrite"
 	ChannelSend            SideEffectType = "ChannelSend"
 	ChannelClose           SideEffectType = "ChannelClose"
 	DeferredReturnMutation SideEffectType = "DeferredReturnMutation"
@@ -73,6 +73,7 @@ const (
 // Tier represents the priority tier for a side effect type.
 type Tier string
 
+// Priority tier constants for side effect classification.
 const (
 	TierP0 Tier = "P0"
 	TierP1 Tier = "P1"

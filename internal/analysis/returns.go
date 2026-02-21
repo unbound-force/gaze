@@ -196,7 +196,7 @@ func typeExprString(expr ast.Expr) string {
 }
 
 // funcSignature returns a readable signature string for a FuncDecl.
-func funcSignature(fset *token.FileSet, fd *ast.FuncDecl) string {
+func funcSignature(_ *token.FileSet, fd *ast.FuncDecl) string {
 	var b strings.Builder
 	b.WriteString("func ")
 	if fd.Recv != nil && len(fd.Recv.List) > 0 {

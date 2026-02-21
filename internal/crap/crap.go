@@ -52,6 +52,7 @@ type Score struct {
 // relative to their respective thresholds.
 type Quadrant string
 
+// Quadrant classification constants.
 const (
 	Q1Safe                    Quadrant = "Q1_Safe"
 	Q2ComplexButTested        Quadrant = "Q2_ComplexButTested"

@@ -729,7 +729,7 @@ func TestP1_WriterOutput_ReadOnly(t *testing.T) {
 	}
 }
 
-func TestP1_HttpResponseWrite(t *testing.T) {
+func TestP1_HTTPResponseWrite(t *testing.T) {
 	pkg := loadTestPackage(t, "p1effects")
 	fd := analysis.FindFuncDecl(pkg, "HandleHTTP")
 	if fd == nil {
@@ -737,8 +737,8 @@ func TestP1_HttpResponseWrite(t *testing.T) {
 	}
 	result := analysis.AnalyzeFunction(pkg, fd)
 
-	if !hasEffect(result.SideEffects, taxonomy.HttpResponseWrite) {
-		t.Error("expected HttpResponseWrite for HandleHTTP")
+	if !hasEffect(result.SideEffects, taxonomy.HTTPResponseWrite) {
+		t.Error("expected HTTPResponseWrite for HandleHTTP")
 	}
 }
 
