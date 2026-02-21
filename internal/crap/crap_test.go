@@ -392,27 +392,27 @@ func TestBuildCoverMap_Basic(t *testing.T) {
 	}
 	m := buildCoverMap(coverages)
 
-	if pct, ok := m[coverKey{file: "foo.go", line: 10}]; !ok || pct != 85.0 {
+	if pct, ok := m.exact[coverKey{file: "foo.go", line: 10}]; !ok || pct != 85.0 {
 		t.Errorf("expected 85.0 for foo.go:10, got %v (ok=%v)", pct, ok)
 	}
-	if pct, ok := m[coverKey{file: "bar.go", line: 20}]; !ok || pct != 50.0 {
+	if pct, ok := m.exact[coverKey{file: "bar.go", line: 20}]; !ok || pct != 50.0 {
 		t.Errorf("expected 50.0 for bar.go:20, got %v (ok=%v)", pct, ok)
 	}
 }
 
 func TestBuildCoverMap_Empty(t *testing.T) {
 	m := buildCoverMap(nil)
-	if len(m) != 0 {
-		t.Errorf("expected empty map, got %d entries", len(m))
+	if len(m.exact) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(m.exact))
 	}
 }
 
 // --- lookupCoverage tests ---
 
 func TestLookupCoverage_ExactMatch(t *testing.T) {
-	m := map[coverKey]float64{
-		{file: "/abs/path/foo.go", line: 10}: 75.0,
-	}
+	m := buildCoverMap([]FuncCoverage{
+		{File: "/abs/path/foo.go", StartLine: 10, Percentage: 75.0},
+	})
 	stat := gocyclo.Stat{
 		Pos: token.Position{Filename: "/abs/path/foo.go", Line: 10},
 	}
@@ -423,9 +423,9 @@ func TestLookupCoverage_ExactMatch(t *testing.T) {
 }
 
 func TestLookupCoverage_BasenameFallback(t *testing.T) {
-	m := map[coverKey]float64{
-		{file: "/other/path/foo.go", line: 10}: 60.0,
-	}
+	m := buildCoverMap([]FuncCoverage{
+		{File: "/other/path/foo.go", StartLine: 10, Percentage: 60.0},
+	})
 	stat := gocyclo.Stat{
 		Pos: token.Position{Filename: "/different/path/foo.go", Line: 10},
 	}
@@ -436,9 +436,9 @@ func TestLookupCoverage_BasenameFallback(t *testing.T) {
 }
 
 func TestLookupCoverage_NoMatch(t *testing.T) {
-	m := map[coverKey]float64{
-		{file: "foo.go", line: 10}: 50.0,
-	}
+	m := buildCoverMap([]FuncCoverage{
+		{File: "foo.go", StartLine: 10, Percentage: 50.0},
+	})
 	stat := gocyclo.Stat{
 		Pos: token.Position{Filename: "bar.go", Line: 20},
 	}

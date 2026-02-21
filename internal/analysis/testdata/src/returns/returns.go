@@ -1,3 +1,4 @@
+// Package returns is a test fixture for return value analysis.
 package returns
 
 import (

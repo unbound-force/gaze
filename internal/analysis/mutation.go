@@ -6,26 +6,18 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 
-	"golang.org/x/tools/go/packages"
+	"github.com/jflowers/gaze/internal/taxonomy"
 )
 
-// AnalyzeMutations detects pointer receiver and pointer argument
-// mutations using SSA analysis. It walks SSA instructions to find
-// Store operations through FieldAddr (receiver mutations) and
-// through pointer parameters.
-func AnalyzeMutations(
-	fset *token.FileSet,
-	pkg *packages.Package,
-	fd *ast.FuncDecl,
-	fnObj *types.Func,
-	pkgPath string,
-	funcName string,
-) []taxonomy.SideEffect {
-	// Build SSA for the package.
+// BuildSSA constructs the SSA representation for a loaded package.
+// The result is reusable across multiple function analyses within
+// the same package, avoiding the cost of rebuilding SSA per function.
+// Returns nil if SSA construction fails.
+func BuildSSA(pkg *packages.Package) *ssa.Package {
 	prog, ssaPkgs := ssautil.AllPackages(
 		[]*packages.Package{pkg},
 		ssa.InstantiateGenerics,
@@ -35,8 +27,25 @@ func AnalyzeMutations(
 	if len(ssaPkgs) == 0 || ssaPkgs[0] == nil {
 		return nil
 	}
+	return ssaPkgs[0]
+}
 
-	ssaPkg := ssaPkgs[0]
+// AnalyzeMutations detects pointer receiver and pointer argument
+// mutations using SSA analysis. It walks SSA instructions to find
+// Store operations through FieldAddr (receiver mutations) and
+// through pointer parameters. The ssaPkg parameter should be
+// obtained from BuildSSA to avoid redundant SSA construction.
+func AnalyzeMutations(
+	fset *token.FileSet,
+	ssaPkg *ssa.Package,
+	fd *ast.FuncDecl,
+	fnObj *types.Func,
+	pkgPath string,
+	funcName string,
+) []taxonomy.SideEffect {
+	if ssaPkg == nil {
+		return nil
+	}
 
 	// Find the SSA function matching our target.
 	ssaFn := findSSAFunction(ssaPkg, fnObj, fd)

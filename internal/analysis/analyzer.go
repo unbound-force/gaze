@@ -10,9 +10,11 @@ import (
 	"runtime"
 	"time"
 
+	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/ssa"
+
 	"github.com/jflowers/gaze/internal/loader"
 	"github.com/jflowers/gaze/internal/taxonomy"
-	"golang.org/x/tools/go/packages"
 )
 
 // Options configures the analysis behavior.
@@ -24,6 +26,10 @@ type Options struct {
 	// FunctionFilter limits analysis to a specific function name.
 	// Empty string means analyze all functions.
 	FunctionFilter string
+
+	// Version is the Gaze version string to embed in metadata.
+	// If empty, defaults to "dev".
+	Version string
 }
 
 // Analyze performs side effect analysis on all functions in the
@@ -32,6 +38,11 @@ func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, er
 	start := time.Now()
 
 	fset := pkg.Fset
+
+	// Build SSA once for the entire package to avoid redundant
+	// reconstruction per function.
+	ssaPkg := BuildSSA(pkg)
+
 	var results []taxonomy.AnalysisResult
 
 	for _, file := range pkg.Syntax {
@@ -49,7 +60,7 @@ func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, er
 				continue
 			}
 
-			result := analyzeFunction(fset, pkg, file, fd)
+			result := analyzeFunction(fset, pkg, ssaPkg, fd)
 			results = append(results, result)
 		}
 
@@ -65,7 +76,7 @@ func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, er
 						Location: fset.Position(file.Pos()).String(),
 					},
 					SideEffects: sentinels,
-					Metadata:    buildMetadata(start),
+					Metadata:    buildMetadata(start, opts.Version),
 				})
 			}
 		}
@@ -73,7 +84,7 @@ func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, er
 
 	// Update metadata timing for all results.
 	for i := range results {
-		results[i].Metadata = buildMetadata(start)
+		results[i].Metadata = buildMetadata(start, opts.Version)
 	}
 
 	return results, nil
@@ -87,22 +98,11 @@ func AnalyzeFunction(
 	start := time.Now()
 	fset := pkg.Fset
 
-	// Find the file containing this function.
-	var file *ast.File
-	for _, f := range pkg.Syntax {
-		for _, d := range f.Decls {
-			if d == fd {
-				file = f
-				break
-			}
-		}
-		if file != nil {
-			break
-		}
-	}
+	// Build SSA for single-function analysis.
+	ssaPkg := BuildSSA(pkg)
 
-	result := analyzeFunction(fset, pkg, file, fd)
-	result.Metadata = buildMetadata(start)
+	result := analyzeFunction(fset, pkg, ssaPkg, fd)
+	result.Metadata = buildMetadata(start, "")
 	return result
 }
 
@@ -110,7 +110,7 @@ func AnalyzeFunction(
 func analyzeFunction(
 	fset *token.FileSet,
 	pkg *packages.Package,
-	_ *ast.File,
+	ssaPkg *ssa.Package,
 	fd *ast.FuncDecl,
 ) taxonomy.AnalysisResult {
 	funcName := fd.Name.Name
@@ -134,7 +134,7 @@ func analyzeFunction(
 	obj := pkg.TypesInfo.Defs[fd.Name]
 	if obj != nil {
 		if fnObj, ok := obj.(*types.Func); ok {
-			mutationEffects := AnalyzeMutations(fset, pkg, fd, fnObj, pkgPath, funcName)
+			mutationEffects := AnalyzeMutations(fset, ssaPkg, fd, fnObj, pkgPath, funcName)
 			effects = append(effects, mutationEffects...)
 		}
 	}
@@ -154,9 +154,12 @@ func analyzeFunction(
 }
 
 // buildMetadata creates analysis metadata with current timing.
-func buildMetadata(start time.Time) taxonomy.Metadata {
+func buildMetadata(start time.Time, version string) taxonomy.Metadata {
+	if version == "" {
+		version = "dev"
+	}
 	return taxonomy.Metadata{
-		GazeVersion: "0.1.0",
+		GazeVersion: version,
 		GoVersion:   runtime.Version(),
 		Duration:    time.Since(start),
 		Warnings:    nil,

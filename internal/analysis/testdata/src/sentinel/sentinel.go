@@ -1,3 +1,4 @@
+// Package sentinel is a test fixture for sentinel error detection.
 package sentinel
 
 import (

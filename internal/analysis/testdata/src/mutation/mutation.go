@@ -1,3 +1,4 @@
+// Package mutation is a test fixture for mutation analysis.
 package mutation
 
 // Counter demonstrates pointer receiver mutation.

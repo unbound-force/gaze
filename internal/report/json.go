@@ -16,12 +16,17 @@ type JSONReport struct {
 }
 
 // WriteJSON writes analysis results as formatted JSON to the writer.
-func WriteJSON(w io.Writer, results []taxonomy.AnalysisResult) error {
+// The version string is embedded in the JSON output; if empty,
+// it defaults to "dev".
+func WriteJSON(w io.Writer, results []taxonomy.AnalysisResult, version string) error {
 	if results == nil {
 		results = []taxonomy.AnalysisResult{}
 	}
+	if version == "" {
+		version = "dev"
+	}
 	report := JSONReport{
-		Version: "0.1.0",
+		Version: version,
 		Results: results,
 	}
 

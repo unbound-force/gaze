@@ -1,3 +1,4 @@
+// Package p1effects is a test fixture for P1-tier side effect detection.
 package p1effects
 
 import (

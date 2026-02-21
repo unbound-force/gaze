@@ -4,9 +4,7 @@ package loader
 
 import (
 	"fmt"
-	"go/ast"
 	"go/token"
-	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -30,18 +28,6 @@ type Result struct {
 
 	// Fset is the shared file set for position information.
 	Fset *token.FileSet
-}
-
-// FuncInfo holds a function declaration with its type information.
-type FuncInfo struct {
-	// Decl is the AST function declaration.
-	Decl *ast.FuncDecl
-
-	// Obj is the types.Func object for this function.
-	Obj *types.Func
-
-	// Pkg is the package this function belongs to.
-	Pkg *packages.Package
 }
 
 // Load loads a Go package at the given import path or file pattern.
@@ -78,73 +64,4 @@ func Load(pattern string) (*Result, error) {
 		Pkg:  pkg,
 		Fset: pkg.Fset,
 	}, nil
-}
-
-// FindFunction looks up a function or method by name within the
-// loaded package. Returns nil if not found.
-func (r *Result) FindFunction(name string) *FuncInfo {
-	for _, file := range r.Pkg.Syntax {
-		for _, decl := range file.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || fd.Name == nil {
-				continue
-			}
-			if fd.Name.Name == name {
-				obj := r.Pkg.TypesInfo.Defs[fd.Name]
-				if obj == nil {
-					continue
-				}
-				fn, ok := obj.(*types.Func)
-				if !ok {
-					continue
-				}
-				return &FuncInfo{
-					Decl: fd,
-					Obj:  fn,
-					Pkg:  r.Pkg,
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// AllFunctions returns all function declarations in the package.
-// If exportedOnly is true, only exported functions are returned.
-func (r *Result) AllFunctions(exportedOnly bool) []*FuncInfo {
-	var funcs []*FuncInfo
-	for _, file := range r.Pkg.Syntax {
-		for _, decl := range file.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || fd.Name == nil {
-				continue
-			}
-			if exportedOnly && !fd.Name.IsExported() {
-				continue
-			}
-			obj := r.Pkg.TypesInfo.Defs[fd.Name]
-			if obj == nil {
-				continue
-			}
-			fn, ok := obj.(*types.Func)
-			if !ok {
-				continue
-			}
-			funcs = append(funcs, &FuncInfo{
-				Decl: fd,
-				Obj:  fn,
-				Pkg:  r.Pkg,
-			})
-		}
-	}
-	return funcs
-}
-
-// FormatPos returns a "file:line:col" string for the given position.
-func (r *Result) FormatPos(pos token.Pos) string {
-	if !pos.IsValid() {
-		return "<unknown>"
-	}
-	p := r.Fset.Position(pos)
-	return fmt.Sprintf("%s:%d:%d", p.Filename, p.Line, p.Column)
 }

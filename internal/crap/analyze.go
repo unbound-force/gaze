@@ -64,6 +64,7 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 		if err != nil {
 			return nil, fmt.Errorf("generating coverage: %w", err)
 		}
+		defer os.Remove(coverProfile)
 	}
 
 	// Step 2: Compute cyclomatic complexity for all functions.
@@ -139,16 +140,26 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 }
 
 // generateCoverProfile runs go test to produce a coverage profile.
+// The profile is written to a temporary file to avoid clobbering
+// any existing cover.out in the user's working directory.
 func generateCoverProfile(moduleDir string, patterns []string) (string, error) {
-	profilePath := filepath.Join(moduleDir, "cover.out")
+	tmpFile, err := os.CreateTemp("", "gaze-cover-*.out")
+	if err != nil {
+		return "", fmt.Errorf("creating temp cover profile: %w", err)
+	}
+	profilePath := tmpFile.Name()
+	tmpFile.Close()
 
-	args := []string{"test", "-coverprofile=" + profilePath}
+	// Use "--" to separate go test flags from package patterns,
+	// preventing flag injection via user-supplied patterns.
+	args := []string{"test", "-coverprofile=" + profilePath, "--"}
 	args = append(args, patterns...)
 
 	cmd := exec.Command("go", args...)
 	cmd.Dir = moduleDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		os.Remove(profilePath)
 		return "", fmt.Errorf("go test failed: %s\n%s", err, string(output))
 	}
 
@@ -174,38 +185,45 @@ func resolvePatterns(patterns []string, moduleDir string) ([]string, error) {
 	return paths, nil
 }
 
-// coverKey creates a lookup key from file basename and line number.
+// coverKey creates a lookup key from file path and line number.
 type coverKey struct {
 	file string
 	line int
 }
 
-// buildCoverMap creates a lookup map from (file, startLine) to
-// coverage percentage.
-func buildCoverMap(coverages []FuncCoverage) map[coverKey]float64 {
-	m := make(map[coverKey]float64, len(coverages))
+// coverMaps holds both exact-path and basename-based coverage
+// lookup maps for O(1) access in both cases.
+type coverMaps struct {
+	exact    map[coverKey]float64
+	basename map[coverKey]float64
+}
+
+// buildCoverMap creates lookup maps from (file, startLine) to
+// coverage percentage. A secondary basename-keyed index enables
+// fast fallback matching when paths differ.
+func buildCoverMap(coverages []FuncCoverage) coverMaps {
+	exact := make(map[coverKey]float64, len(coverages))
+	base := make(map[coverKey]float64, len(coverages))
 	for _, fc := range coverages {
-		key := coverKey{file: fc.File, line: fc.StartLine}
-		m[key] = fc.Percentage
+		exact[coverKey{file: fc.File, line: fc.StartLine}] = fc.Percentage
+		base[coverKey{file: filepath.Base(fc.File), line: fc.StartLine}] = fc.Percentage
 	}
-	return m
+	return coverMaps{exact: exact, basename: base}
 }
 
 // lookupCoverage finds the coverage for a gocyclo Stat by matching
 // on file path and line number.
-func lookupCoverage(stat gocyclo.Stat, coverMap map[coverKey]float64) float64 {
+func lookupCoverage(stat gocyclo.Stat, maps coverMaps) float64 {
 	// Try exact match on absolute path + line.
 	key := coverKey{file: stat.Pos.Filename, line: stat.Pos.Line}
-	if pct, ok := coverMap[key]; ok {
+	if pct, ok := maps.exact[key]; ok {
 		return pct
 	}
 
 	// Try matching by filename basename + line (handles path differences).
-	base := filepath.Base(stat.Pos.Filename)
-	for k, pct := range coverMap {
-		if filepath.Base(k.file) == base && k.line == stat.Pos.Line {
-			return pct
-		}
+	baseKey := coverKey{file: filepath.Base(stat.Pos.Filename), line: stat.Pos.Line}
+	if pct, ok := maps.basename[baseKey]; ok {
+		return pct
 	}
 
 	// No coverage data — function was never executed.

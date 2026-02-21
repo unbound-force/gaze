@@ -14,25 +14,25 @@ import (
 // FuncCoverage holds the coverage percentage for a single function.
 type FuncCoverage struct {
 	// File is the absolute filesystem path.
-	File string
+	File string `json:"file"`
 
 	// FuncName is the function name (e.g., "Save" or "(*Store).Save").
-	FuncName string
+	FuncName string `json:"func_name"`
 
 	// StartLine is the function declaration start line.
-	StartLine int
+	StartLine int `json:"start_line"`
 
 	// EndLine is the function body end line.
-	EndLine int
+	EndLine int `json:"end_line"`
 
 	// CoveredStmts is the number of statements covered by tests.
-	CoveredStmts int64
+	CoveredStmts int64 `json:"covered_stmts"`
 
 	// TotalStmts is the total number of statements in the function.
-	TotalStmts int64
+	TotalStmts int64 `json:"total_stmts"`
 
 	// Percentage is the coverage percentage (0-100).
-	Percentage float64
+	Percentage float64 `json:"percentage"`
 }
 
 // ParseCoverProfile reads a Go coverage profile and computes

@@ -139,7 +139,6 @@ type Metadata struct {
 	GazeVersion string        `json:"gaze_version"`
 	GoVersion   string        `json:"go_version"`
 	Duration    time.Duration `json:"-"`
-	DurationMS  int64         `json:"duration_ms"`
 	Warnings    []string      `json:"warnings"`
 }
 

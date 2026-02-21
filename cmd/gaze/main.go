@@ -1,3 +1,5 @@
+// Package main implements the gaze CLI, a static analysis tool for
+// Go that detects observable side effects and computes CRAP scores.
 package main
 
 import (
@@ -54,16 +56,14 @@ type analyzeParams struct {
 
 // runAnalyze is the extracted, testable body of the analyze command.
 func runAnalyze(p analyzeParams) error {
-	if p.format != "text" && p.format != "json" && p.format != "html" {
-		return fmt.Errorf("invalid format %q: must be 'text', 'json', or 'html'", p.format)
-	}
-	if p.format == "html" {
-		return fmt.Errorf("HTML report format is not yet implemented")
+	if p.format != "text" && p.format != "json" {
+		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
 	}
 
 	opts := analysis.Options{
 		IncludeUnexported: p.includeUnexported,
 		FunctionFilter:    p.function,
+		Version:           version,
 	}
 
 	logger.Info("analyzing package", "pkg", p.pkgPath)
@@ -88,7 +88,7 @@ func runAnalyze(p analyzeParams) error {
 
 	switch p.format {
 	case "json":
-		return report.WriteJSON(p.stdout, results)
+		return report.WriteJSON(p.stdout, results, version)
 	default:
 		return report.WriteText(p.stdout, results)
 	}
@@ -124,7 +124,7 @@ observable side effects each function produces.`,
 	cmd.Flags().StringVarP(&function, "function", "f", "",
 		"analyze a specific function (default: all exported)")
 	cmd.Flags().StringVar(&format, "format", "text",
-		"output format: text, json, or html")
+		"output format: text or json")
 	cmd.Flags().BoolVar(&includeUnexported, "include-unexported", false,
 		"include unexported functions")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false,
@@ -162,11 +162,8 @@ validating output or generating client types.`,
 
 // runCrap is the extracted, testable body of the crap command.
 func runCrap(p crapParams) error {
-	if p.format != "text" && p.format != "json" && p.format != "html" {
-		return fmt.Errorf("invalid format %q: must be 'text', 'json', or 'html'", p.format)
-	}
-	if p.format == "html" {
-		return fmt.Errorf("HTML report format is not yet implemented")
+	if p.format != "text" && p.format != "json" {
+		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
 	}
 
 	logger.Info("computing CRAP scores", "patterns", p.patterns)
@@ -263,17 +260,16 @@ automatically.`,
 			if err != nil {
 				return fmt.Errorf("getting working directory: %w", err)
 			}
+			opts := crap.DefaultOptions()
+			opts.CoverProfile = coverProfile
+			opts.CRAPThreshold = crapThreshold
+			opts.GazeCRAPThreshold = gazeCrapThreshold
+			opts.MaxCRAPload = maxCrapload
+			opts.MaxGazeCRAPload = maxGazeCrapload
 			return runCrap(crapParams{
-				patterns: args,
-				format:   format,
-				opts: crap.Options{
-					CoverProfile:      coverProfile,
-					CRAPThreshold:     crapThreshold,
-					GazeCRAPThreshold: gazeCrapThreshold,
-					MaxCRAPload:       maxCrapload,
-					MaxGazeCRAPload:   maxGazeCrapload,
-					IgnoreGenerated:   true,
-				},
+				patterns:        args,
+				format:          format,
+				opts:            opts,
 				maxCrapload:     maxCrapload,
 				maxGazeCrapload: maxGazeCrapload,
 				moduleDir:       moduleDir,
@@ -284,7 +280,7 @@ automatically.`,
 	}
 
 	cmd.Flags().StringVar(&format, "format", "text",
-		"output format: text, json, or html")
+		"output format: text or json")
 	cmd.Flags().StringVar(&coverProfile, "coverprofile", "",
 		"path to coverage profile (default: generate via go test)")
 	cmd.Flags().Float64Var(&crapThreshold, "crap-threshold", 15,

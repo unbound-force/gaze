@@ -49,7 +49,7 @@ func sampleResults() []taxonomy.AnalysisResult {
 				},
 			},
 			Metadata: taxonomy.Metadata{
-				GazeVersion: "0.1.0",
+				GazeVersion: "test",
 				GoVersion:   "go1.24.0",
 			},
 		},
@@ -58,7 +58,7 @@ func sampleResults() []taxonomy.AnalysisResult {
 
 func TestWriteJSON_ValidJSON(t *testing.T) {
 	var buf bytes.Buffer
-	err := WriteJSON(&buf, sampleResults())
+	err := WriteJSON(&buf, sampleResults(), "0.1.0")
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestWriteJSON_ValidJSON(t *testing.T) {
 
 func TestWriteJSON_HasVersion(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, sampleResults()); err != nil {
+	if err := WriteJSON(&buf, sampleResults(), "0.1.0"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,7 +88,7 @@ func TestWriteJSON_HasVersion(t *testing.T) {
 
 func TestWriteJSON_HasResults(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, sampleResults()); err != nil {
+	if err := WriteJSON(&buf, sampleResults(), "0.1.0"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +108,7 @@ func TestWriteJSON_HasResults(t *testing.T) {
 
 func TestWriteJSON_ContainsAllFields(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, sampleResults()); err != nil {
+	if err := WriteJSON(&buf, sampleResults(), "0.1.0"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -225,7 +225,7 @@ func TestWriteJSON_ValidAgainstSchema(t *testing.T) {
 
 	// Generate JSON output from sample data.
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, sampleResults()); err != nil {
+	if err := WriteJSON(&buf, sampleResults(), "0.1.0"); err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
 
@@ -282,7 +282,7 @@ func TestWriteJSON_EmptyResults_ValidAgainstSchema(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, nil); err != nil {
+	if err := WriteJSON(&buf, nil, "0.1.0"); err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
 
