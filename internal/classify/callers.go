@@ -50,23 +50,43 @@ func AnalyzeCallerSignal(
 	}
 }
 
+// funcKey returns a stable string identity for a types.Object
+// that is safe to compare across separate packages.Load calls.
+// Pointer identity cannot be used because the target package and
+// module packages may be loaded in different type-checker universes.
+func funcKey(obj types.Object) string {
+	if obj == nil || obj.Pkg() == nil {
+		return ""
+	}
+	return obj.Pkg().Path() + "." + obj.Name()
+}
+
 // countCallers counts the number of distinct packages that
 // reference the given function object via TypesInfo.Uses.
+// It uses string-based identity (package path + name) rather than
+// pointer identity so that it works correctly when the target
+// package and the module packages are loaded in separate
+// packages.Load calls.
 func countCallers(funcObj types.Object, pkgs []*packages.Package) int {
+	key := funcKey(funcObj)
+	if key == "" {
+		return 0
+	}
+
+	targetPkgPath := funcObj.Pkg().Path()
 	count := 0
-	funcPkg := funcObj.Pkg()
 
 	for _, pkg := range pkgs {
 		if pkg.TypesInfo == nil {
 			continue
 		}
 		// Skip the package that defines the function.
-		if pkg.Types == funcPkg {
+		if pkg.PkgPath == targetPkgPath {
 			continue
 		}
 
 		for _, obj := range pkg.TypesInfo.Uses {
-			if obj == funcObj {
+			if funcKey(obj) == key {
 				count++
 				break // Count each package only once.
 			}

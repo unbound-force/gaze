@@ -1,6 +1,3 @@
-// Package classify implements the contractual classification engine
-// for Gaze, determining whether each side effect is contractual,
-// incidental, or ambiguous using weighted confidence scoring.
 package classify
 
 import (

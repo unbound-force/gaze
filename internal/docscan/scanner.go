@@ -4,10 +4,13 @@
 package docscan
 
 import (
+	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jflowers/gaze/internal/config"
 )
@@ -57,6 +60,10 @@ type ScanOptions struct {
 // Markdown (.md) files, applies exclude/include filters from opts,
 // and returns a prioritized list of DocumentFile values.
 //
+// If opts.Config.Classification.DocScan.Timeout is non-zero, the
+// walk is bounded by that deadline. A context.DeadlineExceeded error
+// is returned when the timeout is hit.
+//
 // Proximity priority:
 //   - PrioritySamePackage: file is in the same directory as PackageDir
 //   - PriorityModuleRoot:  file is directly in repoRoot
@@ -66,11 +73,25 @@ func Scan(repoRoot string, opts ScanOptions) ([]DocumentFile, error) {
 		opts.Config = config.DefaultConfig()
 	}
 
+	// Derive a context with timeout if configured.
+	ctx := context.Background()
+	timeout := opts.Config.Classification.DocScan.Timeout
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
 	var docs []DocumentFile
 
-	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		// Check for context cancellation on every entry.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("doc scan timed out after %s: %w", timeout, ctxErr)
+		}
+
+		if walkErr != nil {
+			return walkErr
 		}
 
 		// Compute the path relative to repoRoot for filtering.
@@ -123,6 +144,15 @@ func Scan(repoRoot string, opts ScanOptions) ([]DocumentFile, error) {
 	sortDocuments(docs)
 
 	return docs, nil
+}
+
+// scanTimeout returns the effective scan timeout, accounting for
+// zero meaning "no timeout". Exported for testing.
+func scanTimeout(cfg *config.GazeConfig) time.Duration {
+	if cfg == nil {
+		return config.DefaultConfig().Classification.DocScan.Timeout
+	}
+	return cfg.Classification.DocScan.Timeout
 }
 
 // classifyPriority determines the Priority of a document based on

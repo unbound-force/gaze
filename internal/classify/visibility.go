@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/types"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jflowers/gaze/internal/taxonomy"
 )
@@ -102,9 +103,11 @@ func isExportedType(expr ast.Expr) bool {
 }
 
 // isExported checks if a name starts with an uppercase letter.
+// Uses utf8.DecodeRuneInString for Unicode correctness.
 func isExported(name string) bool {
 	if name == "" {
 		return false
 	}
-	return unicode.IsUpper(rune(name[0]))
+	r, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsUpper(r)
 }

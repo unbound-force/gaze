@@ -95,7 +95,8 @@ func ComputeScore(signals []taxonomy.Signal, cfg *config.GazeConfig) taxonomy.Cl
 	}
 
 	// Filter out empty signals from the result.
-	var filtered []taxonomy.Signal
+	// Always return a non-nil slice so JSON marshals as [] not null.
+	filtered := make([]taxonomy.Signal, 0, len(signals))
 	for _, s := range signals {
 		if s.Source != "" {
 			filtered = append(filtered, s)

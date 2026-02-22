@@ -70,7 +70,9 @@ type analyzeParams struct {
 
 // loadConfig loads the GazeConfig from the given path (or searches
 // the current directory if path is empty), then applies any CLI
-// threshold overrides.
+// threshold overrides. A threshold value of -1 means "not set"
+// (use config/default). Any other value (including 0) overrides the
+// loaded config.
 func loadConfig(path string, contractualThresh, incidentalThresh int) (*config.GazeConfig, error) {
 	if path == "" {
 		cwd, err := os.Getwd()
@@ -83,10 +85,10 @@ func loadConfig(path string, contractualThresh, incidentalThresh int) (*config.G
 	if err != nil {
 		return nil, err
 	}
-	if contractualThresh > 0 {
+	if contractualThresh >= 0 {
 		cfg.Classification.Thresholds.Contractual = contractualThresh
 	}
-	if incidentalThresh > 0 {
+	if incidentalThresh >= 0 {
 		cfg.Classification.Thresholds.Incidental = incidentalThresh
 	}
 	return cfg, nil
@@ -258,10 +260,10 @@ Use /classify-docs in OpenCode for document-enhanced classification.`,
 		"print full signal breakdown (implies --classify)")
 	cmd.Flags().StringVar(&configPath, "config", "",
 		"path to .gaze.yaml config file (default: search CWD)")
-	cmd.Flags().IntVar(&contractualThresh, "contractual-threshold", 0,
-		"override contractual confidence threshold (default: 80)")
-	cmd.Flags().IntVar(&incidentalThresh, "incidental-threshold", 0,
-		"override incidental confidence threshold (default: 50)")
+	cmd.Flags().IntVar(&contractualThresh, "contractual-threshold", -1,
+		"override contractual confidence threshold (default: from config or 80)")
+	cmd.Flags().IntVar(&incidentalThresh, "incidental-threshold", -1,
+		"override incidental confidence threshold (default: from config or 50)")
 
 	return cmd
 }

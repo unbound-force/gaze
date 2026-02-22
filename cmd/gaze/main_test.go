@@ -553,6 +553,81 @@ func TestRunAnalyze_VerboseImpliesClassify(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// loadConfig threshold override tests (REQUIRED 6 / RECOMMENDED 10)
+// ---------------------------------------------------------------------------
+
+// TestLoadConfig_ContractualThresholdOverride verifies that a positive
+// contractual threshold value is applied to the config.
+func TestLoadConfig_ContractualThresholdOverride(t *testing.T) {
+	cfg, err := loadConfig("", 90, -1)
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.Classification.Thresholds.Contractual != 90 {
+		t.Errorf("contractual threshold = %d, want 90",
+			cfg.Classification.Thresholds.Contractual)
+	}
+	// Incidental should remain at the default (50) since we passed -1.
+	if cfg.Classification.Thresholds.Incidental != 50 {
+		t.Errorf("incidental threshold = %d, want 50 (default)",
+			cfg.Classification.Thresholds.Incidental)
+	}
+}
+
+// TestLoadConfig_IncidentalThresholdOverride verifies that a positive
+// incidental threshold value is applied to the config.
+func TestLoadConfig_IncidentalThresholdOverride(t *testing.T) {
+	cfg, err := loadConfig("", -1, 30)
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	// Contractual should remain at the default (80) since we passed -1.
+	if cfg.Classification.Thresholds.Contractual != 80 {
+		t.Errorf("contractual threshold = %d, want 80 (default)",
+			cfg.Classification.Thresholds.Contractual)
+	}
+	if cfg.Classification.Thresholds.Incidental != 30 {
+		t.Errorf("incidental threshold = %d, want 30",
+			cfg.Classification.Thresholds.Incidental)
+	}
+}
+
+// TestLoadConfig_BothThresholdsOverride verifies that both thresholds
+// can be overridden simultaneously.
+func TestLoadConfig_BothThresholdsOverride(t *testing.T) {
+	cfg, err := loadConfig("", 95, 35)
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.Classification.Thresholds.Contractual != 95 {
+		t.Errorf("contractual threshold = %d, want 95",
+			cfg.Classification.Thresholds.Contractual)
+	}
+	if cfg.Classification.Thresholds.Incidental != 35 {
+		t.Errorf("incidental threshold = %d, want 35",
+			cfg.Classification.Thresholds.Incidental)
+	}
+}
+
+// TestLoadConfig_NoOverride verifies that -1 sentinel leaves
+// thresholds at their config/default values.
+func TestLoadConfig_NoOverride(t *testing.T) {
+	cfg, err := loadConfig("", -1, -1)
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	// Should be the defaults from DefaultConfig().
+	if cfg.Classification.Thresholds.Contractual != 80 {
+		t.Errorf("contractual threshold = %d, want 80 (default)",
+			cfg.Classification.Thresholds.Contractual)
+	}
+	if cfg.Classification.Thresholds.Incidental != 50 {
+		t.Errorf("incidental threshold = %d, want 50 (default)",
+			cfg.Classification.Thresholds.Incidental)
+	}
+}
+
 func TestRunCrap_InvalidFormat(t *testing.T) {
 	err := runCrap(crapParams{
 		patterns: []string{"./..."},

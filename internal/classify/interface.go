@@ -18,18 +18,20 @@ const maxInterfaceWeight = 30
 // side effect matches the interface's method signature, it is
 // strong contractual evidence. Returns a zero signal for
 // non-method functions.
+//
+// ifaces is a pre-computed slice from collectInterfaces; callers
+// should compute this once per Classify invocation to avoid O(n²)
+// interface collection across side effects.
 func AnalyzeInterfaceSignal(
 	funcName string,
 	receiverType types.Type,
 	effectType taxonomy.SideEffectType,
-	modulePkgs []*packages.Package,
+	ifaces []namedInterface,
 ) taxonomy.Signal {
 	if receiverType == nil {
 		return taxonomy.Signal{}
 	}
 
-	// Collect all interfaces defined in the module.
-	ifaces := collectInterfaces(modulePkgs)
 	if len(ifaces) == 0 {
 		return taxonomy.Signal{}
 	}
