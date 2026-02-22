@@ -8,6 +8,17 @@ the test target is responsible for in the design of the application
 it is part of, with confidence scoring informed by project
 documentation"
 
+## Clarifications
+
+### Session 2026-02-21
+
+- Q: What is the LLM integration model for document-enhanced classification (US2)? → A: Gaze is exclusive to OpenCode. Document-enhanced classification is implemented as an OpenCode agent/command, delegating AI inference to OpenCode's infrastructure. Gaze never calls an LLM directly. This is inherently model-agnostic.
+- Q: What is the scope of caller dependency analysis for mechanical classification? → A: Same-module callers only. Gaze loads sibling packages within the Go module to find callers, without whole-program analysis.
+- Q: Should `.gaze.yaml` be a general Gaze configuration file or only for document scanning? → A: General Gaze config file covering thresholds, document excludes, and future settings. CLI flags override file-based settings.
+- Q: What does "exported in signature" mean as a classification signal? → A: Side effect is observable through the exported API surface. Graduated scoring where return type, parameter type, and receiver type visibility each contribute to the +20 max.
+- Q: Can US1 (mechanical classification) ship as a standalone deliverable before US2? → A: No, all four user stories (US1-US4) are planned and implemented together as a single delivery for Spec 002.
+- Q: How should the OpenCode agent integration work end-to-end? → A: The agent does the scoring. The OpenCode command runs `gaze analyze --classify`, feeds the mechanical JSON + scanned docs to the doc-classifier agent, and the agent produces final enhanced classifications with merged scores. No additional `gaze` subcommand needed for merging.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Mechanical Classification (Priority: P1)
@@ -41,7 +52,7 @@ contract) and verifying classifications and scores.
 3. **Given** a function that writes to a logger but no caller
    depends on the log output, **When** Gaze classifies, **Then**
    the log write is classified as `incidental` with
-   confidence >= 60.
+   confidence < 50 (below the incidental threshold per FR-003).
 4. **Given** a function with a side effect that has contradicting
    signals (e.g., exported but no callers use it), **When** Gaze
    classifies, **Then** it is classified as `ambiguous` with
@@ -57,8 +68,10 @@ contract) and verifying classifications and scores.
 
 Gaze scans the project repository for documentation files (README,
 architecture docs, design docs, .specify files, all .md files) and
-uses an AI agent to extract design-intent signals that refine the
-confidence scores from US1.
+uses an OpenCode agent/command to extract design-intent signals that
+refine the confidence scores from US1. Gaze delegates all AI
+inference to OpenCode's infrastructure and never calls an LLM
+directly, making this inherently model-agnostic.
 
 **Why this priority**: Documents carry the richest design-intent
 signal but require an LLM to interpret. This is the primary
@@ -161,17 +174,21 @@ to the reported confidence score.
   score MUST reflect the conflict (lower overall confidence). The
   classification MUST default to `ambiguous` if the contradiction
   is strong.
-- What happens when the AI agent is unavailable (no API key, rate
-  limited, network error)? Gaze MUST fall back to mechanical-only
-  classification and report a warning.
+- What happens when document-enhanced classification is unavailable
+  (OpenCode not running, user skips the command, agent error)?
+  Gaze MUST fall back to mechanical-only classification and report
+  a warning.
 - How does Gaze handle very large documentation sets (hundreds of
   .md files)? Gaze MUST prioritize documents by proximity to the
   target function: same package > same module > project root.
   Document scanning MUST complete within a configurable timeout.
 - What happens when a function has no detectable signals at all
-  (no interfaces, no callers, no docs)? All side effects MUST
-  be classified as `ambiguous` with confidence ~50 and a note
-  explaining insufficient signal.
+  (no interfaces, no callers, no docs)? The base confidence
+  score is 50 (neutral). Signals adjust from this base: positive
+  signals push toward contractual, negative/incidental signals
+  push toward incidental. With zero signals, all side effects
+  MUST be classified as `ambiguous` with confidence exactly 50
+  and a note explaining insufficient signal.
 
 ## Requirements *(mandatory)*
 
@@ -183,11 +200,17 @@ to the reported confidence score.
   from 0-100.
 - **FR-003**: The default classification thresholds MUST be:
   >= 80 = contractual, 50-79 = ambiguous, < 50 = incidental.
-  Thresholds MUST be configurable.
+  Thresholds MUST be configurable via `.gaze.yaml` and
+  overridable via CLI flags.
 - **FR-004**: Mechanical signal sources MUST include:
   - Interface satisfaction (+30 max)
-  - Exported in signature (+20 max)
-  - Caller dependency analysis (+15 max)
+  - Exported API surface visibility (+20 max) — graduated: the
+    side effect is observable through exported return types,
+    exported parameter types, or exported receiver types; each
+    visibility dimension contributes independently
+  - Caller dependency analysis (+15 max) — scoped to same-module
+    callers only (sibling packages within the Go module); does NOT
+    require whole-program or cross-module analysis
   - Naming convention match (+10 max)
   - Godoc comment declares behavior (+15 max)
 - **FR-005**: Document signal sources MUST include:
@@ -203,14 +226,18 @@ to the reported confidence score.
 - **FR-007**: Contradicting signals MUST apply a penalty
   (up to -20).
 - **FR-008**: Gaze MUST support a `.gaze.yaml` configuration file
-  for document exclude/include patterns.
+  as the general Gaze configuration file. It MUST support document
+  exclude/include patterns, classification thresholds, and future
+  settings. CLI flags MUST override file-based settings.
 - **FR-009**: The default exclude list MUST include at minimum:
   `vendor/**`, `node_modules/**`, `.git/**`, `testdata/**`,
   `CHANGELOG.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
   `LICENSE`, `LICENSE.md`.
 - **FR-010**: Gaze MUST function without an LLM by using
-  mechanical signals only. AI-enhanced classification MUST be
-  opt-in or automatic-with-fallback.
+  mechanical signals only. Document-enhanced classification is
+  invoked via an OpenCode agent/command and MUST be opt-in or
+  automatic-with-fallback. Gaze MUST NOT embed any LLM SDK or
+  call any LLM provider directly.
 - **FR-011**: Mechanical-only classification MUST be fully
   deterministic — identical inputs produce identical outputs.
 - **FR-012**: Document scanning MUST follow a priority order:
@@ -230,23 +257,22 @@ to the reported confidence score.
 ### Key Entities
 
 - **Classification**: The contractual/incidental/ambiguous label
-  for a single side effect. Attributes: label (enum), confidence
-  (0-100), signals ([]Signal), reasoning (string, AI-generated
-  or template-based).
-- **ConfidenceScore**: Numeric 0-100 value. Composed of weighted
-  signals. Attributes: total (int), breakdown
-  ([]SignalContribution).
+  for a single side effect. Attached as an optional field on the
+  existing `SideEffect` struct (pointer, omitted when nil).
+  Attributes: label (ClassificationLabel enum), confidence
+  (int, 0-100), signals ([]Signal), reasoning (string).
 - **Signal**: A single piece of evidence contributing to the score.
-  Attributes: source (enum: interface, caller, naming, godoc,
+  Attributes: source (string: interface, caller, naming, godoc,
   readme, architecture_doc, specify_file, api_doc, other_md,
   ai_pattern, ai_layer, ai_corroboration, contradiction),
-  weight (int, can be negative), source_file (string, path),
-  excerpt (string, relevant text), reasoning (string).
-- **ExcludeConfig**: Document scanning exclusion rules. Attributes:
-  exclude_patterns ([]glob), include_patterns ([]glob, optional
-  override), timeout (duration).
-- **ClassifiedAnalysisResult**: Extends AnalysisResult from Spec 001
-  with classifications per side effect.
+  weight (int, can be negative), source_file (string, omitempty),
+  excerpt (string, omitempty), reasoning (string, omitempty).
+  Detail fields are omitted from JSON when empty (non-verbose).
+- **GazeConfig**: General configuration loaded from `.gaze.yaml`.
+  Attributes: classification_thresholds (contractual, ambiguous,
+  incidental boundaries), exclude_patterns ([]glob), include_patterns
+  ([]glob, optional override), doc_scan_timeout (duration). CLI
+  flags override all fields.
 
 ## Success Criteria *(mandatory)*
 

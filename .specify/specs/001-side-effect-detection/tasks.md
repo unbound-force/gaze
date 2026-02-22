@@ -13,14 +13,14 @@
 
 **Purpose**: Project initialization and Go module structure
 
-- [ ] T001 Initialize Go module `github.com/jflowers/gaze` with
+- [x] T001 Initialize Go module `github.com/jflowers/gaze` with
   `go.mod` (Go 1.24), add `golang.org/x/tools` and
   `github.com/spf13/cobra` dependencies
-- [ ] T002 [P] Create directory structure:
+- [x] T002 [P] Create directory structure:
   `cmd/gaze/`, `internal/analysis/`, `internal/taxonomy/`,
   `internal/loader/`, `internal/report/`,
   `internal/analysis/testdata/src/`
-- [ ] T003 [P] Create `cmd/gaze/main.go` with cobra root command
+- [x] T003 [P] Create `cmd/gaze/main.go` with cobra root command
   and `analyze` subcommand skeleton
 
 ---
@@ -30,33 +30,33 @@
 **Purpose**: Core types and package loading that all analyzers
 depend on
 
-- [ ] T004 [US1] Define `SideEffectType` enum in
+- [x] T004 [US1] Define `SideEffectType` enum in
   `internal/taxonomy/types.go` — all P0 types: `ReturnValue`,
   `ErrorReturn`, `SentinelError`, `ReceiverMutation`,
   `PointerArgMutation`
-- [ ] T005 [P] [US1] Define `SideEffect` struct in
+- [x] T005 [P] [US1] Define `SideEffect` struct in
   `internal/taxonomy/types.go` — fields: ID, Type, Tier,
   Location, Description, Target
-- [ ] T006 [P] [US1] Define `FunctionTarget` struct in
+- [x] T006 [P] [US1] Define `FunctionTarget` struct in
   `internal/taxonomy/types.go` — fields: Package, Function,
   Receiver, Signature, Location
-- [ ] T007 [P] [US1] Define `AnalysisResult` struct in
+- [x] T007 [P] [US1] Define `AnalysisResult` struct in
   `internal/taxonomy/types.go` — fields: Target, SideEffects,
   Metadata (GazeVersion, GoVersion, Duration, Warnings)
-- [ ] T008 [US1] Define priority tier mapping in
+- [x] T008 [US1] Define priority tier mapping in
   `internal/taxonomy/priority.go` — function that returns
   tier (P0-P4) for each SideEffectType
-- [ ] T009 [US1] Implement stable ID generation in
+- [x] T009 [US1] Implement stable ID generation in
   `internal/taxonomy/types.go` —
   `sha256(pkg+func+type+location)` truncated to 8 hex,
   prefixed `se-`
-- [ ] T010 [US1] Write unit tests for taxonomy types and ID
+- [x] T010 [US1] Write unit tests for taxonomy types and ID
   generation in `internal/taxonomy/types_test.go`
-- [ ] T011 [US1] Implement package loader in
+- [x] T011 [US1] Implement package loader in
   `internal/loader/loader.go` — wraps `go/packages.Load()`
   with correct LoadMode flags, error handling for build
   failures, function lookup by name
-- [ ] T012 [US1] Write tests for loader in
+- [x] T012 [US1] Write tests for loader in
   `internal/loader/loader_test.go` — test loading a valid
   package, handling build errors, function filtering
 
@@ -77,57 +77,57 @@ side effects, verify 100% detection with zero false positives.
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T013 [P] [US1] Create test fixtures for return analysis in
+- [x] T013 [P] [US1] Create test fixtures for return analysis in
   `internal/analysis/testdata/src/returns/` — functions with:
   single return, multiple returns, `(T, error)`, named returns,
   named returns modified in defer, pure functions (no returns),
   void functions
-- [ ] T014 [P] [US1] Create test fixtures for sentinel analysis in
+- [x] T014 [P] [US1] Create test fixtures for sentinel analysis in
   `internal/analysis/testdata/src/sentinel/` — package-level
   `Err*` vars with `errors.New()`, `fmt.Errorf("...%w...")`,
   functions that return/wrap these sentinels, functions with no
   sentinel usage
-- [ ] T015 [P] [US1] Create test fixtures for mutation analysis in
+- [x] T015 [P] [US1] Create test fixtures for mutation analysis in
   `internal/analysis/testdata/src/mutation/` — pointer receiver
   methods that mutate fields, value receiver methods (should NOT
   detect mutation), pointer params that are written through,
   non-pointer params, deep field mutations
   (`s.config.nested.timeout`)
-- [ ] T016 [P] [US1] Write return analysis tests in
+- [x] T016 [P] [US1] Write return analysis tests in
   `internal/analysis/analysis_test.go` using `go/packages` +
   direct function calls
-- [ ] T017 [P] [US1] Write sentinel analysis tests in
+- [x] T017 [P] [US1] Write sentinel analysis tests in
   `internal/analysis/analysis_test.go` using `go/packages` +
   direct function calls
-- [ ] T018 [P] [US1] Write mutation analysis tests in
+- [x] T018 [P] [US1] Write mutation analysis tests in
   `internal/analysis/analysis_test.go` using `go/packages` +
   direct function calls
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implement ReturnAnalyzer in
+- [x] T019 [US1] Implement ReturnAnalyzer in
   `internal/analysis/returns.go` — walk `*ast.FuncDecl`,
   inspect `.Type.Results`, classify each return position as
   `ReturnValue` or `ErrorReturn`, detect named returns,
   detect deferred named return modification via AST walk of
   `*ast.DeferStmt` bodies
-- [ ] T020 [US1] Implement SentinelAnalyzer in
+- [x] T020 [US1] Implement SentinelAnalyzer in
   `internal/analysis/sentinel.go` — scan package-level `var`
   decls for `Err*` with `errors.New`/`fmt.Errorf` + `%w`,
   walk function bodies to find returns/wraps of sentinels
-- [ ] T021 [US1] Implement MutationAnalyzer in
+- [x] T021 [US1] Implement MutationAnalyzer in
   `internal/analysis/mutation.go` — build SSA via
   `buildssa.Analyzer`, walk `*ssa.Store` instructions,
   classify stores through receiver `FieldAddr` as
   `ReceiverMutation`, stores through pointer params as
   `PointerArgMutation`, resolve field names via
   `types.Struct.Field(idx)`
-- [ ] T022 [US1] Implement GazeAnalyzer aggregator in
+- [x] T022 [US1] Implement GazeAnalyzer aggregator in
   `internal/analysis/analyzer.go` — requires
   ReturnAnalyzer + SentinelAnalyzer + MutationAnalyzer,
   merges `[]SideEffect` results per function, assigns stable
   IDs, returns `[]AnalysisResult`
-- [ ] T023 [US1] Verify all US1 tests pass — run full test suite,
+- [x] T023 [US1] Verify all US1 tests pass — run full test suite,
   confirm 100% P0 detection on fixtures with zero false positives
 
 **Checkpoint**: Single-function analysis works end-to-end.
@@ -146,14 +146,14 @@ functions, verify each is reported correctly.
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Implement package-level scanning in
+- [x] T024 [US2] Implement package-level scanning in
   `internal/analysis/analyzer.go` — iterate all functions in
   the loaded package, filter exported by default, support
   `--include-unexported` flag via options struct
-- [ ] T025 [US2] Write tests for package-level scanning —
+- [x] T025 [US2] Write tests for package-level scanning —
   test with multi-function package fixture, verify exported
   filtering and `--include-unexported` behavior
-- [ ] T026 [US2] Handle methods on types — ensure methods with
+- [x] T026 [US2] Handle methods on types — ensure methods with
   pointer receivers on exported types are included in
   package-level results
 
@@ -170,19 +170,19 @@ functions analyzed in a single invocation.
 
 ### Implementation for User Story 3
 
-- [ ] T027 [P] [US3] Implement JSON formatter in
+- [x] T027 [P] [US3] Implement JSON formatter in
   `internal/report/json.go` — serialize `AnalysisResult` to
   JSON matching the schema in plan.md, include metadata
-- [ ] T028 [P] [US3] Define JSON Schema in
+- [x] T028 [P] [US3] Define JSON Schema in
   `internal/report/schema.go` — embed as Go constant,
   expose via `gaze schema` subcommand for tooling
-- [ ] T029 [P] [US3] Implement text formatter in
+- [x] T029 [P] [US3] Implement text formatter in
   `internal/report/text.go` — tabular output, 80-column
   friendly, summary line with effect counts per tier
-- [ ] T030 [P] [US3] Write tests for JSON formatter in
+- [x] T030 [P] [US3] Write tests for JSON formatter in
   `internal/report/json_test.go` — validate output is valid
   JSON, parseable, matches schema, contains all fields
-- [ ] T031 [P] [US3] Write tests for text formatter in
+- [x] T031 [P] [US3] Write tests for text formatter in
   `internal/report/text_test.go` — validate output readability,
   column alignment, no truncation for typical results
 
@@ -194,17 +194,17 @@ functions analyzed in a single invocation.
 
 **Purpose**: Wire analyzers + formatters into the cobra CLI.
 
-- [ ] T032 [US1] Implement `analyze` command in
+- [x] T032 [US1] Implement `analyze` command in
   `cmd/gaze/main.go` — accept package path positional arg,
   `--function` flag, `--format` flag (`json`|`text`, default
   `text`), `--include-unexported` flag
-- [ ] T033 [US1] Wire loader → analyzer → formatter pipeline —
+- [x] T033 [US1] Wire loader → analyzer → formatter pipeline —
   load package, run GazeAnalyzer, format results, write to
   stdout
-- [ ] T034 [US1] Handle errors — build failures, function not
+- [x] T034 [US1] Handle errors — build failures, function not
   found, invalid flags — with clear error messages to stderr
   and non-zero exit codes
-- [ ] T035 [US1] Add `--version` flag — print Gaze version
+- [x] T035 [US1] Add `--version` flag — print Gaze version
 
 **Checkpoint**: `gaze analyze ./pkg --function Foo` works
 end-to-end from the command line.
@@ -215,17 +215,17 @@ end-to-end from the command line.
 
 **Purpose**: Final quality checks and benchmark validation.
 
-- [ ] T036 [P] Run full test suite, fix any failures
-- [ ] T037 [P] Create benchmark test fixture with 50+ functions
+- [x] T036 [P] Run full test suite, fix any failures
+- [x] T037 [P] Create benchmark test fixture with 50+ functions
   covering all P0 side effect types — validate SC-001 (100%
   detection, zero false positives)
-- [ ] T038 [P] Performance benchmark — validate SC-004
+- [x] T038 [P] Performance benchmark — validate SC-004
   (< 500ms single function) and SC-005 (< 5s for 50 functions)
-- [ ] T039 [P] Validate JSON output against schema — SC-006
-- [ ] T040 [P] Validate text output fits 80 columns — SC-007
-- [ ] T041 Run `go vet`, `golangci-lint` (if available), fix
+- [x] T039 [P] Validate JSON output against schema — SC-006
+- [x] T040 [P] Validate text output fits 80 columns — SC-007
+- [x] T041 Run `go vet`, `golangci-lint` (if available), fix
   any issues
-- [ ] T042 Verify edge cases: non-existent function, build
+- [x] T042 Verify edge cases: non-existent function, build
   errors, CGo (UnsafeMutation flag), generics
 
 ---
