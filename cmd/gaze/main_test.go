@@ -628,6 +628,28 @@ func TestLoadConfig_NoOverride(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_ZeroThresholdRejected verifies that a threshold of 0
+// is rejected with an error (prevents degenerate all-contractual state).
+func TestLoadConfig_ZeroThresholdRejected(t *testing.T) {
+	_, err := loadConfig("", 0, -1)
+	if err == nil {
+		t.Fatal("expected error for contractual-threshold=0, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid") && !strings.Contains(err.Error(), "[1, 99]") {
+		t.Errorf("unexpected error message: %s", err)
+	}
+}
+
+// TestLoadConfig_InvertedThresholdsRejected verifies that contractual <= incidental
+// is rejected with an error.
+func TestLoadConfig_InvertedThresholdsRejected(t *testing.T) {
+	// contractual=40 < incidental=60 — invalid.
+	_, err := loadConfig("", 40, 60)
+	if err == nil {
+		t.Fatal("expected error for contractual=40 < incidental=60, got nil")
+	}
+}
+
 func TestRunCrap_InvalidFormat(t *testing.T) {
 	err := runCrap(crapParams{
 		patterns: []string{"./..."},

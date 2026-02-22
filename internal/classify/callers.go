@@ -54,9 +54,30 @@ func AnalyzeCallerSignal(
 // that is safe to compare across separate packages.Load calls.
 // Pointer identity cannot be used because the target package and
 // module packages may be loaded in different type-checker universes.
+//
+// For methods, the receiver type name is included to avoid collisions
+// when two types in the same package share a method name (e.g.,
+// FileStore.Write and MemStore.Write are distinct keys).
 func funcKey(obj types.Object) string {
 	if obj == nil || obj.Pkg() == nil {
 		return ""
+	}
+	fn, ok := obj.(*types.Func)
+	if ok {
+		sig, sigOk := fn.Type().(*types.Signature)
+		if sigOk && sig.Recv() != nil {
+			// Include the receiver's named type to disambiguate
+			// methods with the same name on different types.
+			recv := sig.Recv().Type()
+			// Unwrap pointer to get the named type.
+			if ptr, ptrOk := recv.(*types.Pointer); ptrOk {
+				recv = ptr.Elem()
+			}
+			if named, namedOk := recv.(*types.Named); namedOk {
+				return obj.Pkg().Path() + "." +
+					named.Obj().Name() + "." + obj.Name()
+			}
+		}
 	}
 	return obj.Pkg().Path() + "." + obj.Name()
 }

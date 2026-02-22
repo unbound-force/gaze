@@ -1,7 +1,7 @@
 ---
 description: Structural and architectural reviewer ensuring Gaze code aligns with project conventions and long-term maintainability.
 mode: subagent
-model: google-vertex-ai/claude-4-6-sonnet
+model: opencode/claude-sonnet-4-6
 temperature: 0.1
 tools:
   write: false

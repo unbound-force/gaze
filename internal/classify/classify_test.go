@@ -419,15 +419,15 @@ func TestSC001_MechanicalContractualAccuracy(t *testing.T) {
 				continue
 			}
 			total++
-			// A true positive is contractual or ambiguous with
-			// confidence >= 60 (per SC-001 definition). A score
-			// of exactly 60 indicates at least one contractual
-			// signal (e.g., Err* sentinel naming), which is
-			// enough evidence to count as a weak true positive.
+			// A true positive is Contractual or Ambiguous with
+			// confidence > 60 (per SC-001 definition). All
+			// contractual side effects in the contracts fixture are
+			// expected to reach at least Contractual or high-
+			// confidence Ambiguous via mechanical signals.
 			label := se.Classification.Label
 			conf := se.Classification.Confidence
 			if label == taxonomy.Contractual ||
-				(label == taxonomy.Ambiguous && conf >= 60) {
+				(label == taxonomy.Ambiguous && conf > 60) {
 				truePositives++
 			}
 		}

@@ -6,8 +6,11 @@ description: >
   them with the existing mechanical signals using the base-50 scoring model,
   and outputs enhanced classification JSON in the same schema.
 tools:
-  - Read
-  - WebFetch
+  read: true
+  webfetch: true
+  write: false
+  edit: false
+  bash: false
 ---
 
 # Doc-Classifier Agent

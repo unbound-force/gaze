@@ -1,7 +1,7 @@
 ---
 description: Intent drift detector ensuring Gaze changes solve the actual business need without disrupting adjacent modules.
 mode: subagent
-model: google-vertex-ai/claude-4-6-sonnet
+model: opencode/claude-sonnet-4-6
 temperature: 0.1
 tools:
   write: false

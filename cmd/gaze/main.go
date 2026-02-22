@@ -71,8 +71,12 @@ type analyzeParams struct {
 // loadConfig loads the GazeConfig from the given path (or searches
 // the current directory if path is empty), then applies any CLI
 // threshold overrides. A threshold value of -1 means "not set"
-// (use config/default). Any other value (including 0) overrides the
-// loaded config.
+// (use config/default). Any other value overrides the loaded config.
+//
+// Valid threshold values are in [1, 99]. The contractual threshold
+// must be strictly greater than the incidental threshold to prevent
+// degenerate classifications (e.g., contractual=0 would classify
+// every side effect as contractual regardless of signal strength).
 func loadConfig(path string, contractualThresh, incidentalThresh int) (*config.GazeConfig, error) {
 	if path == "" {
 		cwd, err := os.Getwd()
@@ -86,10 +90,30 @@ func loadConfig(path string, contractualThresh, incidentalThresh int) (*config.G
 		return nil, err
 	}
 	if contractualThresh >= 0 {
+		if contractualThresh < 1 || contractualThresh > 99 {
+			return nil, fmt.Errorf(
+				"--contractual-threshold=%d is invalid: must be in [1, 99]",
+				contractualThresh,
+			)
+		}
 		cfg.Classification.Thresholds.Contractual = contractualThresh
 	}
 	if incidentalThresh >= 0 {
+		if incidentalThresh < 1 || incidentalThresh > 99 {
+			return nil, fmt.Errorf(
+				"--incidental-threshold=%d is invalid: must be in [1, 99]",
+				incidentalThresh,
+			)
+		}
 		cfg.Classification.Thresholds.Incidental = incidentalThresh
+	}
+	// Validate the final thresholds are coherent.
+	if cfg.Classification.Thresholds.Contractual <= cfg.Classification.Thresholds.Incidental {
+		return nil, fmt.Errorf(
+			"contractual threshold (%d) must be greater than incidental threshold (%d)",
+			cfg.Classification.Thresholds.Contractual,
+			cfg.Classification.Thresholds.Incidental,
+		)
 	}
 	return cfg, nil
 }
@@ -129,7 +153,18 @@ func runAnalyze(p analyzeParams) error {
 
 	// Run mechanical classification if requested.
 	if p.classify {
-		cfg, cfgErr := loadConfig(p.configPath, p.contractualThresh, p.incidentalThresh)
+		// Normalize zero to -1 (not set). The flag default is -1 but
+		// struct literals in tests may leave these fields at their Go
+		// zero value (0). Both mean "use config/default".
+		contractualThresh := p.contractualThresh
+		if contractualThresh == 0 {
+			contractualThresh = -1
+		}
+		incidentalThresh := p.incidentalThresh
+		if incidentalThresh == 0 {
+			incidentalThresh = -1
+		}
+		cfg, cfgErr := loadConfig(p.configPath, contractualThresh, incidentalThresh)
 		if cfgErr != nil {
 			return fmt.Errorf("loading config: %w", cfgErr)
 		}
@@ -440,7 +475,7 @@ type docscanParams struct {
 
 // runDocscan is the extracted, testable body of the docscan command.
 func runDocscan(p docscanParams) error {
-	cfg, err := loadConfig(p.configPath, 0, 0)
+	cfg, err := loadConfig(p.configPath, -1, -1)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}

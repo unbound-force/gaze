@@ -122,7 +122,7 @@ func classifySideEffect(
 	var signals []taxonomy.Signal
 
 	// 1. Interface satisfaction.
-	if s := AnalyzeInterfaceSignal(funcName, receiverType, effectType, ifaces); s.Source != "" {
+	if s := analyzeInterfaceSignal(funcName, receiverType, effectType, ifaces); s.Source != "" {
 		signals = append(signals, s)
 	}
 
@@ -206,7 +206,7 @@ func buildFuncObjMap(pkg *packages.Package) map[string]types.Object {
 			method := named.Method(i)
 			qualifiedKey := name + "." + method.Name()
 			m[qualifiedKey] = method
-			// Unqualified fallback — may be overwritten.
+			// Unqualified fallback — first method with this name wins.
 			if _, exists := m[method.Name()]; !exists {
 				m[method.Name()] = method
 			}

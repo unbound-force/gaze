@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/jflowers/gaze/internal/config"
 )
@@ -144,15 +143,6 @@ func Scan(repoRoot string, opts ScanOptions) ([]DocumentFile, error) {
 	sortDocuments(docs)
 
 	return docs, nil
-}
-
-// scanTimeout returns the effective scan timeout, accounting for
-// zero meaning "no timeout". Exported for testing.
-func scanTimeout(cfg *config.GazeConfig) time.Duration {
-	if cfg == nil {
-		return config.DefaultConfig().Classification.DocScan.Timeout
-	}
-	return cfg.Classification.DocScan.Timeout
 }
 
 // classifyPriority determines the Priority of a document based on

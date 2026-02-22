@@ -13,7 +13,7 @@ import (
 // satisfaction signals.
 const maxInterfaceWeight = 30
 
-// AnalyzeInterfaceSignal checks if the function's receiver type
+// analyzeInterfaceSignal checks if the function's receiver type
 // satisfies any interface defined in the module. When a method's
 // side effect matches the interface's method signature, it is
 // strong contractual evidence. Returns a zero signal for
@@ -22,7 +22,11 @@ const maxInterfaceWeight = 30
 // ifaces is a pre-computed slice from collectInterfaces; callers
 // should compute this once per Classify invocation to avoid O(n²)
 // interface collection across side effects.
-func AnalyzeInterfaceSignal(
+//
+// This function is intentionally unexported because its ifaces
+// parameter uses the unexported namedInterface type. All callers
+// go through Classify() which pre-computes the interface list.
+func analyzeInterfaceSignal(
 	funcName string,
 	receiverType types.Type,
 	effectType taxonomy.SideEffectType,

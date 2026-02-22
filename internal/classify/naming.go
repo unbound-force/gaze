@@ -38,6 +38,13 @@ var incidentalPrefixes = []string{
 // maxNamingWeight is the maximum weight for naming convention signals.
 const maxNamingWeight = 10
 
+// sentinelNamingWeight is the weight for Err* sentinel variable naming.
+// Sentinel errors are unambiguously contractual by convention — they are
+// exported, named with the Err prefix, and exist solely to be matched by
+// callers. The weight is set so that a sentinel with no other signals
+// (base 50 + 30 = 80) reaches the default contractual threshold.
+const sentinelNamingWeight = 30
+
 // AnalyzeNamingSignal checks the function name against Go community
 // naming conventions and returns a signal indicating whether the
 // side effect is likely contractual or incidental based on the name.
@@ -78,10 +85,13 @@ func AnalyzeNamingSignal(funcName string, effectType taxonomy.SideEffectType) ta
 	}
 
 	// Check sentinel error naming.
+	// Err* sentinels are unambiguously contractual — exported by convention
+	// and exist solely to be matched by callers. Use a stronger weight so
+	// sentinels with no other signals reach the contractual threshold.
 	if strings.HasPrefix(funcName, "Err") && effectType == taxonomy.SentinelError {
 		return taxonomy.Signal{
 			Source:    "naming",
-			Weight:    maxNamingWeight,
+			Weight:    sentinelNamingWeight,
 			Reasoning: "Err* sentinel variable name implies contractual error",
 		}
 	}

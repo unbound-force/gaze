@@ -1,7 +1,7 @@
 ---
 description: Skeptical auditor that finds where Gaze code will break under stress or violate behavioral constraints.
 mode: subagent
-model: google-vertex-ai/claude-4-6-sonnet
+model: opencode/claude-sonnet-4-6
 temperature: 0.1
 tools:
   write: false
