@@ -3,6 +3,7 @@ package crap
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,17 +28,13 @@ type Options struct {
 	// Used only when contract coverage is available.
 	GazeCRAPThreshold float64
 
-	// MaxCRAPload causes a non-zero exit if CRAPload exceeds this.
-	// Zero means no limit (report-only).
-	MaxCRAPload int
-
-	// MaxGazeCRAPload causes a non-zero exit if GazeCRAPload exceeds
-	// this. Zero means no limit.
-	MaxGazeCRAPload int
-
 	// IgnoreGenerated excludes functions in files with
 	// "// Code generated" headers. Default: true.
 	IgnoreGenerated bool
+
+	// Stderr receives warnings about files that could not be parsed
+	// during coverage analysis. If nil, warnings are suppressed.
+	Stderr io.Writer
 }
 
 // DefaultOptions returns options with sensible defaults.
@@ -83,11 +80,10 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 		return nil, fmt.Errorf("resolving patterns: %w", err)
 	}
 
-	ignorePattern := regexp.MustCompile(`_test\.go$`)
-	complexityStats := gocyclo.Analyze(absPaths, ignorePattern)
+	complexityStats := gocyclo.Analyze(absPaths, testFileRegexp)
 
 	// Step 3: Parse coverage profile for per-function coverage.
-	funcCoverages, err := ParseCoverProfile(coverProfile, moduleDir)
+	funcCoverages, err := ParseCoverProfile(coverProfile, moduleDir, opts.Stderr)
 	if err != nil {
 		return nil, fmt.Errorf("parsing coverage profile: %w", err)
 	}
@@ -243,6 +239,9 @@ func lookupCoverage(stat gocyclo.Stat, maps coverMaps) float64 {
 	return 0
 }
 
+// testFileRegexp matches Go test files by suffix.
+var testFileRegexp = regexp.MustCompile(`_test\.go$`)
+
 // generatedRegexp matches the Go convention for generated file headers:
 // "^// Code generated .* DO NOT EDIT\.$"
 var generatedRegexp = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
@@ -281,8 +280,10 @@ func buildSummary(scores []Score, opts Options) Summary {
 	}
 
 	var totalComp, totalCov, totalCRAP float64
+	var totalGazeCRAP, totalContractCov float64
 	crapload := 0
 	gazeCRAPload := 0
+	gazeCRAPCount := 0
 	quadrantCounts := make(map[Quadrant]int)
 	hasGazeCRAP := false
 
@@ -295,8 +296,15 @@ func buildSummary(scores []Score, opts Options) Summary {
 		}
 		if s.GazeCRAP != nil {
 			hasGazeCRAP = true
+			gazeCRAPCount++
+			totalGazeCRAP += *s.GazeCRAP
 			if *s.GazeCRAP >= opts.GazeCRAPThreshold {
 				gazeCRAPload++
+			}
+			// ContractCoverage is always set alongside GazeCRAP
+			// (GazeCRAP is computed from ContractCoverage).
+			if s.ContractCoverage != nil {
+				totalContractCov += *s.ContractCoverage
 			}
 		}
 		if s.Quadrant != nil {
@@ -331,6 +339,28 @@ func buildSummary(scores []Score, opts Options) Summary {
 		summary.GazeCRAPload = &gazeCRAPload
 		summary.GazeCRAPThreshold = &opts.GazeCRAPThreshold
 		summary.QuadrantCounts = quadrantCounts
+
+		avgGazeCRAP := totalGazeCRAP / float64(gazeCRAPCount)
+		summary.AvgGazeCRAP = &avgGazeCRAP
+
+		avgContractCov := totalContractCov / float64(gazeCRAPCount)
+		summary.AvgContractCoverage = &avgContractCov
+
+		// Worst offenders by GazeCRAP: filter to non-nil only,
+		// sort descending, take top 5.
+		var gazeScores []Score
+		for _, s := range scores {
+			if s.GazeCRAP != nil {
+				gazeScores = append(gazeScores, s)
+			}
+		}
+		sort.Slice(gazeScores, func(i, j int) bool {
+			return *gazeScores[i].GazeCRAP > *gazeScores[j].GazeCRAP
+		})
+		if len(gazeScores) > 5 {
+			gazeScores = gazeScores[:5]
+		}
+		summary.WorstGazeCRAP = gazeScores
 	}
 
 	return summary

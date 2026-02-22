@@ -97,7 +97,10 @@ scores for all functions in a package pattern
 - [x] T014 [US1] Define `Options` struct and `DefaultOptions()` in
   `internal/crap/analyze.go` — fields: CoverProfile (string), CRAPThreshold
   (float64, default 15), GazeCRAPThreshold (float64, default 15),
-  MaxCRAPload (int), MaxGazeCRAPload (int), IgnoreGenerated (bool, default true)
+  IgnoreGenerated (bool, default true). Note: `MaxCRAPload` and
+  `MaxGazeCRAPload` were removed from `Options` — CI threshold
+  enforcement is a CLI concern handled by `checkCIThresholds()` in
+  `cmd/gaze/main.go`, not a library concern
 - [x] T015 [US1] Implement `generateCoverProfile()` in
   `internal/crap/analyze.go` — runs `go test -coverprofile=<tempfile>`
   for the given patterns in `moduleDir`; writes to `os.CreateTemp` to avoid
@@ -184,7 +187,9 @@ package pattern.
 - [x] T029 [P] [US1] Write `Formula` tests in
   `internal/crap/crap_test.go` — 7 cases: 0% coverage, 100% coverage,
   50% coverage, comp=1+0%, comp=1+100%, high complexity, 75% coverage;
-  verify to ±0.01 (SC-001)
+  verify to ±0.01; plus 21-case `TestFormula_BenchmarkSuite` table-driven
+  test covering boundary, full-coverage, 25%, 90%, and mixed coverage
+  levels for a total of 28 hand-computed pairs (SC-001)
 - [x] T030 [P] [US3] Write `ClassifyQuadrant` tests in
   `internal/crap/crap_test.go` — 6 cases: all four quadrants, at-threshold
   boundary (CRAP == threshold is "at or above"), independent thresholds
@@ -263,9 +268,10 @@ to reflect their US2 ownership.
   `GazeCRAP(m) = comp^2 * (1 - contractCov)^3 + comp` per function,
   populate `Score.GazeCRAP`, `Score.ContractCoverage`, and
   `Score.Quadrant` via `ClassifyQuadrant()`
-- [ ] T051 [US2] Emit FR-015 stderr warning in `Analyze()` in
-  `internal/crap/analyze.go` — when contract coverage is not supplied,
-  write `"warning: GazeCRAP unavailable — contract coverage requires Spec 003"` (or equivalent) to stderr so users understand the omission
+- [x] T051 [US2] Emit FR-015 stderr warning in `runCrap()` in
+  `cmd/gaze/main.go` — when `GazeCRAPload == nil`, write
+  `"note: GazeCRAP unavailable — contract coverage not yet implemented (Spec 003)"`
+  to stderr so users understand the omission
 - [ ] T052 [US2] Write GazeCRAP formula accuracy tests in
   `internal/crap/crap_test.go` — validate SC-002 with hand-computed
   (complexity, contractCoverage) pairs after T050 is implemented
@@ -273,6 +279,12 @@ to reflect their US2 ownership.
   `WriteText()` renders Quadrant Breakdown section correctly once
   `QuadrantCounts` is non-empty (logic exists; no regression test for
   populated case)
+- [x] T053a [US2] Populate `AvgGazeCRAP`, `AvgContractCoverage`, and
+  `WorstGazeCRAP` in `buildSummary()` — fields declared in `Summary`
+  as nullable/omitempty stubs alongside `GazeCRAPload`; population
+  logic is implemented and tested (`TestBuildSummary_WithGazeCRAP`);
+  activates only when `hasGazeCRAP` is true (requires T050 to produce
+  non-nil `GazeCRAP` values)
 - [ ] T054 [US4] Implement `gaze self-check` command in
   `cmd/gaze/main.go` — cobra command that runs the full CRAP + GazeCRAP
   pipeline on `github.com/jflowers/gaze/...`, reports: total CRAPload,
@@ -297,8 +309,8 @@ to reflect their US2 ownership.
 - **Phase 5b (CLI)**: Depends on Phases 4 + 5
 - **Phase 5c (Tests)**: Depends on Phases 2–5b
 - **Phase 6 (Stub wire)**: Merged into Phase 2–4 implementation in practice
-- **Phase 7 (Deferred)**: T050 depends on Spec 003 completion; T051 can be
-  done independently; T054–T055 depend on T050
+- **Phase 7 (Deferred)**: T050 depends on Spec 003 completion; T051 is
+  COMPLETE; T053a activates when T050 is done; T054–T055 depend on T050
 
 ### Parallel Opportunities
 
@@ -306,7 +318,7 @@ to reflect their US2 ownership.
 - T009–T013 coverage parsing can run in parallel with Phase 4
 - T021–T023 formatters can run in parallel with Phases 3–4
 - T029–T044 tests can all run in parallel
-- T051 (FR-015 warning) can be done independently of T050 (GazeCRAP)
+- T051 (FR-015 warning) is COMPLETE — done independently of T050
 
 ---
 

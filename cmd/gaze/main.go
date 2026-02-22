@@ -357,6 +357,14 @@ func runCrap(p crapParams) error {
 
 	logger.Info("analysis complete", "functions", len(rpt.Scores))
 
+	// FR-015: Warn when GazeCRAP is unavailable (contract coverage
+	// requires Spec 003). This helps users understand the omission
+	// rather than silently excluding GazeCRAP from output.
+	if rpt.Summary.GazeCRAPload == nil {
+		fmt.Fprintln(p.stderr,
+			"note: GazeCRAP unavailable — contract coverage not yet implemented (Spec 003)")
+	}
+
 	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
 		return err
 	}
@@ -447,8 +455,7 @@ automatically.`,
 			opts.CoverProfile = coverProfile
 			opts.CRAPThreshold = crapThreshold
 			opts.GazeCRAPThreshold = gazeCrapThreshold
-			opts.MaxCRAPload = maxCrapload
-			opts.MaxGazeCRAPload = maxGazeCrapload
+			opts.Stderr = os.Stderr
 			return runCrap(crapParams{
 				patterns:        args,
 				format:          format,

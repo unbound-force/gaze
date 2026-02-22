@@ -54,8 +54,8 @@ internal/crap/
   coverage.go   — ParseCoverProfile(), findFunctions(), funcCoverage(),
                   resolveFilePath(), readModulePath()
   report.go     — WriteJSON(), WriteText() with lipgloss styling
-  crap_test.go  — 47 unit tests covering all exported and key unexported
-                  functions
+  crap_test.go  — 48+ unit tests covering all exported and key unexported
+                  functions (includes 21-case formula benchmark suite)
   bench_test.go — 5 benchmarks (Formula, ClassifyQuadrant, buildSummary,
                   buildCoverMap, isGeneratedFile)
 
@@ -194,13 +194,14 @@ subprocess execution. This mirrors the pattern established in Specs 001-002.
 |----|-------------|--------|
 | FR-004 | GazeCRAP formula with contract coverage | Fields declared (`*float64`, `*Quadrant`); formula not yet invoked; activation gated on Spec 003 |
 | FR-005 (partial) | GazeCRAPload | `buildSummary()` populates only when `GazeCRAP != nil` |
+| — | Summary aggregate fields | `AvgGazeCRAP *float64`, `AvgContractCoverage *float64`, `WorstGazeCRAP []Score` declared in `Summary` struct as nullable/omitempty stubs; population logic in `buildSummary()` activates when `hasGazeCRAP` is true |
 
-### Not yet implemented (US4 + FR-015 warning)
+### Not yet implemented (US4)
 
 | FR | Requirement | Status |
 |----|-------------|--------|
 | FR-010 | `gaze self-check` command | Not implemented; no `self-check` cobra command registered |
-| FR-015 | Stderr warning when GazeCRAP unavailable | Fields are correctly nil/omitted; runtime `fmt.Fprintln(stderr, ...)` warning not emitted |
+| FR-015 | Stderr warning when GazeCRAP unavailable | COMPLETE — `runCrap()` in `cmd/gaze/main.go` emits "note: GazeCRAP unavailable" to stderr when `GazeCRAPload == nil` |
 
 ---
 
@@ -208,7 +209,7 @@ subprocess execution. This mirrors the pattern established in Specs 001-002.
 
 | SC | Criterion | Status |
 |----|-----------|--------|
-| SC-001 | CRAP formula accuracy ±0.01 for 20+ functions | PASS — 7 unit tests cover representative (comp, cov) pairs; formula is exact math, no rounding |
+| SC-001 | CRAP formula accuracy ±0.01 for 20+ functions | PASS — 7 individual tests + 21-case table-driven `TestFormula_BenchmarkSuite` = 28 total hand-computed (comp, cov) pairs |
 | SC-002 | GazeCRAP uses contract coverage correctly | NOT TESTABLE — pending Spec 003 |
 | SC-003 | CRAPload count matches threshold | PASS — `TestBuildSummary_CRAPload` |
 | SC-004 | Quadrant classification for all 4 quadrants | PASS — 6 quadrant unit tests |
@@ -221,9 +222,9 @@ subprocess execution. This mirrors the pattern established in Specs 001-002.
 
 ## Test Coverage Summary
 
-**`internal/crap/crap_test.go`** — 47 tests, package `crap`
+**`internal/crap/crap_test.go`** — 48+ tests, package `crap`
 
-- `Formula`: 7 tests (0%, 100%, 50%, comp=1 both, high comp, 75%)
+- `Formula`: 7 individual tests + 21-case table-driven `TestFormula_BenchmarkSuite` (SC-001: 28 total hand-computed pairs)
 - `ClassifyQuadrant`: 6 tests (Q1–Q4, at-threshold boundary, independent thresholds)
 - `buildSummary`: 3 tests (CRAPload counting, worst-5 ordering, empty input)
 - `WriteJSON`: 1 test (valid JSON output)

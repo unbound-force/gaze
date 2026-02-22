@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/token"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"go/token"
 
 	"github.com/fzipp/gocyclo"
 	"golang.org/x/tools/cover"
@@ -76,6 +75,58 @@ func TestFormula_75PercentCoverage(t *testing.T) {
 	want := 11.5625
 	if math.Abs(got-want) > 0.01 {
 		t.Errorf("Formula(10, 75) = %f, want %f", got, want)
+	}
+}
+
+// TestFormula_BenchmarkSuite validates SC-001: CRAP scores match
+// hand-computed values for a benchmark suite of 20+ functions with
+// known complexity and coverage (tolerance: +/- 0.01).
+func TestFormula_BenchmarkSuite(t *testing.T) {
+	cases := []struct {
+		name       string
+		complexity int
+		coverage   float64
+		want       float64
+	}{
+		// Boundary: minimum complexity, zero coverage
+		{"comp2_cov0", 2, 0, 6.0},      // 4*1 + 2 = 6
+		{"comp3_cov0", 3, 0, 12.0},     // 9*1 + 3 = 12
+		{"comp4_cov0", 4, 0, 20.0},     // 16*1 + 4 = 20
+		{"comp15_cov0", 15, 0, 240.0},  // 225*1 + 15 = 240
+		{"comp20_cov0", 20, 0, 420.0},  // 400*1 + 20 = 420
+		{"comp50_cov0", 50, 0, 2550.0}, // 2500*1 + 50 = 2550
+
+		// Full coverage: CRAP = comp (uncov^3 = 0)
+		{"comp2_cov100", 2, 100, 2.0},
+		{"comp10_cov100", 10, 100, 10.0},
+		{"comp20_cov100", 20, 100, 20.0},
+		{"comp50_cov100", 50, 100, 50.0},
+
+		// 25% coverage: uncov = 0.75, uncov^3 = 0.421875
+		{"comp4_cov25", 4, 25, 10.75},     // 16*0.421875 + 4 = 10.75
+		{"comp8_cov25", 8, 25, 35.0},      // 64*0.421875 + 8 = 35.0
+		{"comp10_cov25", 10, 25, 52.1875}, // 100*0.421875 + 10 = 52.1875
+
+		// 90% coverage: uncov = 0.10, uncov^3 = 0.001
+		{"comp5_cov90", 5, 90, 5.025},   // 25*0.001 + 5 = 5.025
+		{"comp10_cov90", 10, 90, 10.1},  // 100*0.001 + 10 = 10.1
+		{"comp20_cov90", 20, 90, 20.4},  // 400*0.001 + 20 = 20.4
+		{"comp50_cov90", 50, 90, 52.5},  // 2500*0.001 + 50 = 52.5
+		{"comp100_cov90", 100, 90, 110}, // 10000*0.001 + 100 = 110
+
+		// Mixed coverage levels
+		{"comp3_cov30", 3, 30, 6.087},  // 9*(0.7)^3 + 3 = 9*0.343 + 3 = 6.087
+		{"comp6_cov10", 6, 10, 32.244}, // 36*(0.9)^3 + 6 = 36*0.729 + 6 = 32.244
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Formula(tc.complexity, tc.coverage)
+			if math.Abs(got-tc.want) > 0.01 {
+				t.Errorf("Formula(%d, %.1f) = %.4f, want %.4f",
+					tc.complexity, tc.coverage, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -163,6 +214,103 @@ func TestBuildSummary_WorstOffenders(t *testing.T) {
 	if summary.WorstCRAP[0].CRAP != 90 {
 		t.Errorf("expected worst CRAP 90, got %f",
 			summary.WorstCRAP[0].CRAP)
+	}
+}
+
+func TestBuildSummary_WithGazeCRAP(t *testing.T) {
+	gazeCRAP1 := 25.0
+	gazeCRAP2 := 10.0
+	gazeCRAP3 := 35.0
+	contractCov1 := 60.0
+	contractCov2 := 90.0
+	contractCov3 := 30.0
+	q1 := Q1Safe
+	q2 := Q2ComplexButTested
+	q3 := Q4Dangerous
+
+	scores := []Score{
+		{
+			Function:         "A",
+			CRAP:             20,
+			Complexity:       5,
+			GazeCRAP:         &gazeCRAP1,
+			ContractCoverage: &contractCov1,
+			Quadrant:         &q1,
+		},
+		{
+			Function:         "B",
+			CRAP:             8,
+			Complexity:       3,
+			GazeCRAP:         &gazeCRAP2,
+			ContractCoverage: &contractCov2,
+			Quadrant:         &q2,
+		},
+		{
+			Function:         "C",
+			CRAP:             30,
+			Complexity:       10,
+			GazeCRAP:         &gazeCRAP3,
+			ContractCoverage: &contractCov3,
+			Quadrant:         &q3,
+		},
+	}
+
+	opts := DefaultOptions()
+	summary := buildSummary(scores, opts)
+
+	// GazeCRAPload: functions with GazeCRAP >= 15 → A (25) and C (35) = 2.
+	if summary.GazeCRAPload == nil {
+		t.Fatal("expected GazeCRAPload to be non-nil")
+	}
+	if *summary.GazeCRAPload != 2 {
+		t.Errorf("expected GazeCRAPload 2, got %d", *summary.GazeCRAPload)
+	}
+
+	// AvgGazeCRAP: (25 + 10 + 35) / 3 = 23.333...
+	if summary.AvgGazeCRAP == nil {
+		t.Fatal("expected AvgGazeCRAP to be non-nil")
+	}
+	wantAvgGaze := (25.0 + 10.0 + 35.0) / 3.0
+	if math.Abs(*summary.AvgGazeCRAP-wantAvgGaze) > 0.01 {
+		t.Errorf("expected AvgGazeCRAP %.4f, got %.4f", wantAvgGaze, *summary.AvgGazeCRAP)
+	}
+
+	// AvgContractCoverage: (60 + 90 + 30) / 3 = 60.
+	if summary.AvgContractCoverage == nil {
+		t.Fatal("expected AvgContractCoverage to be non-nil")
+	}
+	wantAvgCov := (60.0 + 90.0 + 30.0) / 3.0
+	if math.Abs(*summary.AvgContractCoverage-wantAvgCov) > 0.01 {
+		t.Errorf("expected AvgContractCoverage %.4f, got %.4f",
+			wantAvgCov, *summary.AvgContractCoverage)
+	}
+
+	// WorstGazeCRAP: sorted descending → C (35), A (25), B (10).
+	if len(summary.WorstGazeCRAP) != 3 {
+		t.Fatalf("expected 3 WorstGazeCRAP entries, got %d", len(summary.WorstGazeCRAP))
+	}
+	if summary.WorstGazeCRAP[0].Function != "C" {
+		t.Errorf("expected WorstGazeCRAP[0] to be C, got %s",
+			summary.WorstGazeCRAP[0].Function)
+	}
+	if summary.WorstGazeCRAP[1].Function != "A" {
+		t.Errorf("expected WorstGazeCRAP[1] to be A, got %s",
+			summary.WorstGazeCRAP[1].Function)
+	}
+
+	// All WorstGazeCRAP entries must have non-nil GazeCRAP.
+	for i, ws := range summary.WorstGazeCRAP {
+		if ws.GazeCRAP == nil {
+			t.Errorf("WorstGazeCRAP[%d] has nil GazeCRAP", i)
+		}
+	}
+
+	// QuadrantCounts.
+	if summary.QuadrantCounts[Q1Safe] != 1 {
+		t.Errorf("expected Q1Safe count 1, got %d", summary.QuadrantCounts[Q1Safe])
+	}
+	if summary.QuadrantCounts[Q4Dangerous] != 1 {
+		t.Errorf("expected Q4Dangerous count 1, got %d", summary.QuadrantCounts[Q4Dangerous])
 	}
 }
 

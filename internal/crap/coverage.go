@@ -1,9 +1,11 @@
 package crap
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +43,10 @@ type FuncCoverage struct {
 // The moduleDir is the root directory of the Go module, used to
 // resolve import paths to filesystem paths. If empty, the current
 // directory is used.
-func ParseCoverProfile(profilePath string, moduleDir string) ([]FuncCoverage, error) {
+//
+// Warnings about files that cannot be parsed are written to stderr.
+// If stderr is nil, warnings are suppressed.
+func ParseCoverProfile(profilePath string, moduleDir string, stderr io.Writer) ([]FuncCoverage, error) {
 	profiles, err := cover.ParseProfiles(profilePath)
 	if err != nil {
 		return nil, err
@@ -63,6 +68,9 @@ func ParseCoverProfile(profilePath string, moduleDir string) ([]FuncCoverage, er
 		// Find all functions in this source file.
 		funcs, err := findFunctions(filePath)
 		if err != nil {
+			if stderr != nil {
+				fmt.Fprintf(stderr, "warning: skipping %s: %v\n", filePath, err)
+			}
 			continue
 		}
 
@@ -149,6 +157,10 @@ func recvTypeString(expr ast.Expr) string {
 
 // funcCoverage computes the covered and total statement counts for a
 // function within a coverage profile.
+//
+// Assumes profile.Blocks are sorted by StartLine, which is guaranteed
+// by cover.ParseProfiles (mirrors go tool cover behavior). The early
+// break optimization depends on this ordering.
 func funcCoverage(fn funcExtent, profile *cover.Profile) (covered, total int64) {
 	for _, b := range profile.Blocks {
 		// Block entirely after the function — stop.

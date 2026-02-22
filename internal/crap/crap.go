@@ -62,16 +62,19 @@ const (
 
 // Summary holds aggregate statistics for a CRAP report.
 type Summary struct {
-	TotalFunctions    int              `json:"total_functions"`
-	AvgComplexity     float64          `json:"avg_complexity"`
-	AvgLineCoverage   float64          `json:"avg_line_coverage"`
-	AvgCRAP           float64          `json:"avg_crap"`
-	CRAPload          int              `json:"crapload"`
-	CRAPThreshold     float64          `json:"crap_threshold"`
-	GazeCRAPload      *int             `json:"gaze_crapload,omitempty"`
-	GazeCRAPThreshold *float64         `json:"gaze_crap_threshold,omitempty"`
-	QuadrantCounts    map[Quadrant]int `json:"quadrant_counts,omitempty"`
-	WorstCRAP         []Score          `json:"worst_crap"`
+	TotalFunctions      int              `json:"total_functions"`
+	AvgComplexity       float64          `json:"avg_complexity"`
+	AvgLineCoverage     float64          `json:"avg_line_coverage"`
+	AvgCRAP             float64          `json:"avg_crap"`
+	CRAPload            int              `json:"crapload"`
+	CRAPThreshold       float64          `json:"crap_threshold"`
+	GazeCRAPload        *int             `json:"gaze_crapload,omitempty"`
+	GazeCRAPThreshold   *float64         `json:"gaze_crap_threshold,omitempty"`
+	AvgGazeCRAP         *float64         `json:"avg_gaze_crap,omitempty"`
+	AvgContractCoverage *float64         `json:"avg_contract_coverage,omitempty"`
+	QuadrantCounts      map[Quadrant]int `json:"quadrant_counts,omitempty"`
+	WorstCRAP           []Score          `json:"worst_crap"`
+	WorstGazeCRAP       []Score          `json:"worst_gaze_crap,omitempty"`
 }
 
 // Report is the complete CRAP analysis output.
