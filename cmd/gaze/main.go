@@ -47,7 +47,7 @@ produced by their test targets.`,
 	root.AddCommand(newDocscanCmd())
 
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -361,7 +361,7 @@ func runCrap(p crapParams) error {
 	// requires Spec 003). This helps users understand the omission
 	// rather than silently excluding GazeCRAP from output.
 	if rpt.Summary.GazeCRAPload == nil {
-		fmt.Fprintln(p.stderr,
+		_, _ = fmt.Fprintln(p.stderr,
 			"note: GazeCRAP unavailable — contract coverage not yet implemented (Spec 003)")
 	}
 
@@ -408,7 +408,7 @@ func printCISummary(w io.Writer, rpt *crap.Report, maxCrapload, maxGazeCrapload 
 		parts = append(parts, fmt.Sprintf("GazeCRAPload: %d/%d (%s)",
 			*rpt.Summary.GazeCRAPload, maxGazeCrapload, status))
 	}
-	fmt.Fprintln(w, strings.Join(parts, " | "))
+	_, _ = fmt.Fprintln(w, strings.Join(parts, " | "))
 }
 
 // checkCIThresholds returns an error if any CI thresholds are exceeded.
