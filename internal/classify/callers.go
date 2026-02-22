@@ -77,6 +77,12 @@ func funcKey(obj types.Object) string {
 				return obj.Pkg().Path() + "." +
 					named.Obj().Name() + "." + obj.Name()
 			}
+			// If recv is a *types.TypeParam (generic type parameter),
+			// neither branch above matches. We fall through to the plain
+			// key (pkg.Name) — two generic methods with the same name on
+			// different type parameters in the same package would collide.
+			// This is a known limitation for generic code; non-generic
+			// Go (the primary Gaze target) is unaffected.
 		}
 	}
 	return obj.Pkg().Path() + "." + obj.Name()

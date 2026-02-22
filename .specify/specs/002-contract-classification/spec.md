@@ -211,7 +211,13 @@ to the reported confidence score.
   - Caller dependency analysis (+15 max) — scoped to same-module
     callers only (sibling packages within the Go module); does NOT
     require whole-program or cross-module analysis
-  - Naming convention match (+10 max)
+  - Naming convention match (+10 max for standard prefixes such as
+    Get*, Fetch*, Save*, Delete*, Handle*, etc.); **exception**: `Err*`
+    sentinel error variables receive +30 because they are unambiguously
+    contractual by Go convention (exported, matched by callers, no other
+    signals available for package-level `var` declarations). The +30
+    weight is chosen so that a bare sentinel with no other signals reaches
+    the default contractual threshold (50 + 30 = 80).
   - Godoc comment declares behavior (+15 max)
 - **FR-005**: Document signal sources MUST include:
   - README.md (+15 max)

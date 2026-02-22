@@ -124,7 +124,7 @@ ranges.
   type satisfies any interface in the module; when a method's
   side effect matches the interface's method signature, emit
   Signal{Source: "interface", Weight: up to +30}; exported
-  function: `AnalyzeInterfaceSignal()`
+  function: `analyzeInterfaceSignal()` (unexported; takes pre-computed `[]namedInterface` to avoid O(n²) collection)
 - [x] T019 [US1] Implement API surface visibility signal in
   `internal/classify/visibility.go` — check if the side
   effect is observable through exported return types, exported

@@ -109,10 +109,23 @@ func loadConfig(path string, contractualThresh, incidentalThresh int) (*config.G
 	}
 	// Validate the final thresholds are coherent.
 	if cfg.Classification.Thresholds.Contractual <= cfg.Classification.Thresholds.Incidental {
+		// Produce an actionable error that tells the user where the bad
+		// values came from: CLI flags, the config file, or both.
+		source := fmt.Sprintf("config file %s", path)
+		if contractualThresh >= 0 || incidentalThresh >= 0 {
+			source = "--contractual-threshold / --incidental-threshold flags"
+			if contractualThresh >= 0 && incidentalThresh < 0 {
+				source = "--contractual-threshold flag"
+			} else if incidentalThresh >= 0 && contractualThresh < 0 {
+				source = "--incidental-threshold flag"
+			}
+		}
 		return nil, fmt.Errorf(
-			"contractual threshold (%d) must be greater than incidental threshold (%d)",
+			"contractual threshold (%d) must be greater than incidental threshold (%d); "+
+				"check %s",
 			cfg.Classification.Thresholds.Contractual,
 			cfg.Classification.Thresholds.Incidental,
+			source,
 		)
 	}
 	return cfg, nil

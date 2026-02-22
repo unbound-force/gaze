@@ -43,6 +43,11 @@ const maxNamingWeight = 10
 // exported, named with the Err prefix, and exist solely to be matched by
 // callers. The weight is set so that a sentinel with no other signals
 // (base 50 + 30 = 80) reaches the default contractual threshold.
+//
+// Note: this intentionally exceeds maxNamingWeight (10). Sentinels are a
+// special sub-case: unlike regular functions, package-level var declarations
+// cannot receive interface, visibility, or godoc signals, so a stronger
+// naming weight is the only way to reach the contractual threshold.
 const sentinelNamingWeight = 30
 
 // AnalyzeNamingSignal checks the function name against Go community

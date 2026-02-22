@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -625,6 +626,32 @@ func TestLoadConfig_NoOverride(t *testing.T) {
 	if cfg.Classification.Thresholds.Incidental != 50 {
 		t.Errorf("incidental threshold = %d, want 50 (default)",
 			cfg.Classification.Thresholds.Incidental)
+	}
+}
+
+// TestLoadConfig_YAMLInvertedThresholdsRejected verifies that a .gaze.yaml
+// file with inverted thresholds (contractual <= incidental) is rejected
+// even when no CLI flags are provided. This distinguishes the YAML-source
+// error from the CLI-source error tested below.
+func TestLoadConfig_YAMLInvertedThresholdsRejected(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/.gaze.yaml"
+	content := []byte(`classification:
+  thresholds:
+    contractual: 50
+    incidental: 60
+`)
+	if err := os.WriteFile(cfgPath, content, 0o600); err != nil {
+		t.Fatalf("writing temp config: %v", err)
+	}
+
+	_, err := loadConfig(cfgPath, -1, -1)
+	if err == nil {
+		t.Fatal("expected error for inverted YAML thresholds, got nil")
+	}
+	// Error should reference the config file path, not CLI flags.
+	if !strings.Contains(err.Error(), "config file") {
+		t.Errorf("error should mention 'config file', got: %s", err)
 	}
 }
 
