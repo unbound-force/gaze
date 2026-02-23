@@ -771,9 +771,9 @@ func TestRunQuality_TargetFlag(t *testing.T) {
 func TestRunQuality_ThresholdPass(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// Use maxOverSpecification threshold only — set high enough
-	// to always pass. Contract coverage is 0% with current SSA
-	// matching limitations (TODO #6), so coverage thresholds
-	// would fail.
+	// to always pass. Contract coverage is non-zero but varies
+	// with mapping improvements (TODO #6), so coverage thresholds
+	// are not yet stable enough for CI enforcement.
 	err := runQuality(qualityParams{
 		pkgPath:              "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
 		format:               "text",

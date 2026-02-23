@@ -150,7 +150,7 @@ func Assess(
 
 			// Map assertions to side effects via SSA data flow.
 			mappings, unmapped, discardedIDs := MapAssertionsToEffects(
-				ssaFunc, target.SSAFunc, sites, result.SideEffects,
+				ssaFunc, target.SSAFunc, sites, result.SideEffects, testPkg,
 			)
 
 			// Compute metrics, including discarded return detection.

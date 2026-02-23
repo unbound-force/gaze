@@ -282,7 +282,7 @@ internal/
 
 - **Direct function body only.** Gaze analyzes the immediate function body. Transitive side effects (effects produced by called functions) are out of scope for v1.
 - **P3-P4 side effects not yet detected.** The taxonomy defines types for stdout/stderr writes, environment mutations, mutex operations, reflection, unsafe, and other P3-P4 effects, but detection logic is not yet implemented for these tiers.
-- **Contract coverage not yet available.** GazeCRAP currently uses line coverage as a fallback. Full contract-aware coverage requires the contractual classification engine (Spec 002) and test quality metrics (Spec 003), which are planned but not yet built.
+- **GazeCRAP not yet active.** The classification engine (Spec 002) and test quality pipeline (Spec 003) are implemented, but GazeCRAP currently uses line coverage as a fallback. Full contract-aware scoring requires wiring the quality pipeline into the CRAP command and resolving the AST-to-SSA assertion mapping accuracy gap (tracked as GitHub Issue #6).
 - **No CGo or unsafe analysis.** Functions using `cgo` or `unsafe.Pointer` are not analyzed for their specific side effects.
 - **Single package loading.** The `analyze` command processes one package at a time. Use shell loops or scripting for multi-package analysis.
 
