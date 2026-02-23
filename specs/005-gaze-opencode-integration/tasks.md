@@ -114,8 +114,8 @@
 
 ### Implementation for User Story 5
 
-- [ ] T033 [US5] Verify .opencode/command/gaze.md correctly passes $ARGUMENTS to gaze-reporter agent and documents the three usage modes (full, crap, quality) with default package ./...
-- [ ] T034 [US5] Verify .opencode/agents/gaze-reporter.md contains correct mode parsing logic: first argument `crap` or `quality` selects mode, otherwise full; remaining arguments are the package pattern
+- [x] T033 [US5] Verify .opencode/command/gaze.md correctly passes $ARGUMENTS to gaze-reporter agent and documents the three usage modes (full, crap, quality) with default package ./...
+- [x] T034 [US5] Verify .opencode/agents/gaze-reporter.md contains correct mode parsing logic: first argument `crap` or `quality` selects mode, otherwise full; remaining arguments are the package pattern
 
 **Checkpoint**: `/gaze` command routes correctly. Manual testing in OpenCode validates US5 acceptance scenarios.
 
@@ -129,10 +129,10 @@
 
 ### Implementation for User Story 6
 
-- [ ] T035 [US6] Verify gaze-reporter.md contains CRAP mode instructions: run `gaze crap --format=json`, interpret JSON output, produce summary per FR-012 (total functions, CRAPload count, top 5 worst CRAP scores with function/file/line, GazeCRAP quadrant distribution)
-- [ ] T036 [US6] Verify gaze-reporter.md contains binary resolution logic: (1) check $PATH via `which gaze`, (2) try `go build` if cmd/gaze/main.go exists, (3) fall back to `go install github.com/unbound-force/gaze/cmd/gaze@latest` per FR-010 and FR-029
-- [ ] T037 [US6] Verify gaze-reporter.md contains error handling: report gaze command failures clearly with remediation suggestions per FR-015
-- [ ] T038 [US6] Dogfood test: run `/gaze crap ./...` in OpenCode on the Gaze project and verify output matches SC-006
+- [x] T035 [US6] Verify gaze-reporter.md contains CRAP mode instructions: run `gaze crap --format=json`, interpret JSON output, produce summary per FR-012 (total functions, CRAPload count, top 5 worst CRAP scores with function/file/line, GazeCRAP quadrant distribution)
+- [x] T036 [US6] Verify gaze-reporter.md contains binary resolution logic: (1) check $PATH via `which gaze`, (2) try `go build` if cmd/gaze/main.go exists, (3) fall back to `go install github.com/unbound-force/gaze/cmd/gaze@latest` per FR-010 and FR-029
+- [x] T037 [US6] Verify gaze-reporter.md contains error handling: report gaze command failures clearly with remediation suggestions per FR-015
+- [x] T038 [US6] Dogfood test: run `/gaze crap ./...` in OpenCode on the Gaze project and verify output matches SC-006
 
 **Checkpoint**: CRAP-only reporting works. SC-006 and SC-009 verified.
 
@@ -148,8 +148,8 @@
 
 ### Implementation for User Story 7
 
-- [ ] T039 [US7] Verify gaze-reporter.md contains quality mode instructions: run `gaze quality --format=json`, interpret JSON output, produce summary per FR-013 (avg contract coverage, coverage gaps, over-specification count, worst tests)
-- [ ] T040 [US7] Verify gaze-reporter.md handles quality unavailable gracefully: report that quality analysis requires Specs 001-003 or that no test files were found per US7-AS2
+- [x] T039 [US7] Verify gaze-reporter.md contains quality mode instructions: run `gaze quality --format=json`, interpret JSON output, produce summary per FR-013 (avg contract coverage, coverage gaps, over-specification count, worst tests)
+- [x] T040 [US7] Verify gaze-reporter.md handles quality unavailable gracefully: report that quality analysis requires Specs 001-003 or that no test files were found per US7-AS2
 
 **Checkpoint**: Quality mode instructions in place. SC-007 verified when Specs 001-003 complete.
 
@@ -163,9 +163,9 @@
 
 ### Implementation for User Story 8
 
-- [ ] T041 [US8] Verify gaze-reporter.md contains full mode instructions: run crap, quality, analyze --classify, and docscan; delegate to doc-classifier agent; produce combined report per FR-014
-- [ ] T042 [US8] Verify gaze-reporter.md contains graceful degradation: if quality fails but crap succeeds, include crap section and note quality unavailable per US8-AS3
-- [ ] T043 [US8] Verify gaze-reporter.md contains Overall Health Assessment section: cross-reference high CRAP + low contract coverage to identify high-risk functions, produce prioritized recommendations per US8-AS4
+- [x] T041 [US8] Verify gaze-reporter.md contains full mode instructions: run crap, quality, analyze --classify, and docscan; delegate to doc-classifier agent; produce combined report per FR-014
+- [x] T042 [US8] Verify gaze-reporter.md contains graceful degradation: if quality fails but crap succeeds, include crap section and note quality unavailable per US8-AS3
+- [x] T043 [US8] Verify gaze-reporter.md contains Overall Health Assessment section: cross-reference high CRAP + low contract coverage to identify high-risk functions, produce prioritized recommendations per US8-AS4
 
 **Checkpoint**: Full report instructions in place. SC-008 verified when all underlying commands functional.
 
@@ -179,8 +179,8 @@
 
 ### Implementation for User Story 9
 
-- [ ] T044 [US9] Run `/gaze ./...` in OpenCode on the Gaze project as a dogfooding validation — verify all available sections produce output
-- [ ] T045 [US9] Verify TestEmbeddedAssetsMatchSource (T031) catches drift: temporarily modify an asset file, run `go test ./internal/scaffold/...`, confirm test fails, then revert
+- [x] T044 [US9] Run `/gaze ./...` in OpenCode on the Gaze project as a dogfooding validation — verify all available sections produce output
+- [x] T045 [US9] Verify TestEmbeddedAssetsMatchSource (T031) catches drift: temporarily modify an asset file, run `go test ./internal/scaffold/...`, confirm test fails, then revert
 
 **Checkpoint**: Dogfooding validated. SC-005 verified by drift detection test.
 
@@ -190,11 +190,11 @@
 
 **Purpose**: Documentation updates and final validation
 
-- [ ] T046 [P] Update README.md with `gaze init` usage, Homebrew install instructions (`brew install unbound-force/tap/gaze`), and `/gaze` command documentation
-- [ ] T047 [P] Update AGENTS.md with new internal/scaffold/ package description, `gaze init` command, and release pipeline documentation
-- [ ] T048 [P] Add .gitattributes entry to force LF for embedded assets: `internal/scaffold/assets/** text eol=lf` per research.md R-003
-- [ ] T049 Run full test suite: `go test -race -count=1 -short ./...` and verify all tests pass including new scaffold tests
-- [ ] T050 Run quickstart.md validation: verify documented commands work (`go build`, `go test`, `gaze init`, `goreleaser check`)
+- [x] T046 [P] Update README.md with `gaze init` usage, Homebrew install instructions (`brew install unbound-force/tap/gaze`), and `/gaze` command documentation
+- [x] T047 [P] Update AGENTS.md with new internal/scaffold/ package description, `gaze init` command, and release pipeline documentation
+- [x] T048 [P] Add .gitattributes entry to force LF for embedded assets: `internal/scaffold/assets/** text eol=lf` per research.md R-003
+- [x] T049 Run full test suite: `go test -race -count=1 -short ./...` and verify all tests pass including new scaffold tests
+- [x] T050 Run quickstart.md validation: verify documented commands work (`go build`, `go test`, `gaze init`, `goreleaser check`)
 
 ---
 

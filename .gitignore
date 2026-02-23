@@ -1,10 +1,13 @@
 # Build artifacts
 /gaze
 *.exe
+vendor/
 
 # Test artifacts
 cover.out
 *.test
+*.out
+*.prof*
 
 # MegaLinter reports
 megalinter-reports/

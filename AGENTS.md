@@ -150,9 +150,14 @@ cmd/gaze/              CLI layer (Cobra commands, Bubble Tea TUI)
 internal/
   analysis/            Core side effect detection engine (AST + SSA)
   taxonomy/            Domain types: SideEffect, AnalysisResult, Tier, etc.
+  classify/            Contractual classification engine
+  config/              Configuration file handling (.gaze.yaml)
   loader/              Go package loading (go/packages wrapper)
   report/              Output formatters (JSON, text, HTML stub)
   crap/                CRAP score computation and reporting
+  quality/             Test quality assessment (contract coverage)
+  docscan/             Documentation file scanner
+  scaffold/            OpenCode file scaffolding (embed.FS)
 ```
 
 All business logic lives under `internal/` and cannot be imported externally.
@@ -204,10 +209,11 @@ These principles (from the project constitution) guide all development:
 
 ## CI/CD
 
-Two GitHub Actions workflows on push/PR to `main`:
+Three GitHub Actions workflows:
 
-1. **Test** (`.github/workflows/test.yml`): Build + test with `-race -count=1`.
-2. **MegaLinter** (`.github/workflows/mega-linter.yml`): Runs golangci-lint, markdownlint, yamllint, and gitleaks. Auto-commits lint fixes to PR branches.
+1. **Test** (`.github/workflows/test.yml`): Build + test with `-race -count=1` on push/PR to `main`.
+2. **MegaLinter** (`.github/workflows/mega-linter.yml`): Runs golangci-lint, revive, markdownlint, yamllint, and gitleaks on push/PR to `main`. Auto-commits lint fixes to PR branches.
+3. **Release** (`.github/workflows/release.yml`): Triggered on `v*` tag push. Runs GoReleaser v2 to build cross-platform binaries (darwin/linux x amd64/arm64), create GitHub Releases, and update the Homebrew cask in `unbound-force/homebrew-tap`.
 
 ## Linting
 
@@ -218,8 +224,9 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
-- Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI), (005-gaze-opencode-integration)
-- Filesystem only (embedded assets via `embed.FS`) (005-gaze-opencode-integration)
+- Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI)
+- Filesystem only (embedded assets via `embed.FS`)
+- GoReleaser v2 (release pipeline, Homebrew cask publishing)
 
 ## Recent Changes
-- 005-gaze-opencode-integration: Added Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI),
+- 005-gaze-opencode-integration: Added `gaze init` subcommand (internal/scaffold), GoReleaser v2 release pipeline, Homebrew cask distribution, OpenCode agent (gaze-reporter) and command (/gaze) files
