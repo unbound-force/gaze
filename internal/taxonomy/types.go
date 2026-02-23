@@ -238,6 +238,7 @@ type AssertionType string
 const (
 	AssertionEquality   AssertionType = "equality"
 	AssertionErrorCheck AssertionType = "error_check"
+	AssertionNilCheck   AssertionType = "nil_check"
 	AssertionDiffCheck  AssertionType = "diff_check"
 	AssertionCustom     AssertionType = "custom"
 )
@@ -271,6 +272,11 @@ type ContractCoverage struct {
 
 	// Gaps lists contractual effects that are NOT asserted on.
 	Gaps []SideEffect `json:"gaps"`
+
+	// DiscardedReturns lists contractual return/error effects whose
+	// values were explicitly discarded (e.g., _ = target()),
+	// making them definitively unasserted.
+	DiscardedReturns []SideEffect `json:"discarded_returns"`
 }
 
 // OverSpecificationScore measures how many incidental side effects

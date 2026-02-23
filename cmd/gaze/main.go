@@ -48,6 +48,7 @@ produced by their test targets.`,
 	root.AddCommand(newQualityCmd())
 	root.AddCommand(newSchemaCmd())
 	root.AddCommand(newDocscanCmd())
+	root.AddCommand(newSelfCheckCmd())
 
 	if err := root.Execute(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -360,12 +361,12 @@ func runCrap(p crapParams) error {
 
 	logger.Info("analysis complete", "functions", len(rpt.Scores))
 
-	// FR-015: Warn when GazeCRAP is unavailable (contract coverage
-	// requires Spec 003). This helps users understand the omission
-	// rather than silently excluding GazeCRAP from output.
+	// FR-015: Warn when GazeCRAP is unavailable. GazeCRAP requires
+	// contract coverage data from `gaze quality`. If no
+	// ContractCoverageFunc was provided, GazeCRAP fields are nil.
 	if rpt.Summary.GazeCRAPload == nil {
 		_, _ = fmt.Fprintln(p.stderr,
-			"note: GazeCRAP unavailable — Spec 004 CRAP integration pending")
+			"note: GazeCRAP unavailable — run 'gaze quality' to compute contract coverage")
 	}
 
 	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
@@ -704,8 +705,10 @@ func loadTestPackage(pkgPath string) (*packages.Package, error) {
 		}
 	}
 
-	// Fallback: return the first package.
-	return pkgs[0], nil
+	// No package has test syntax — return an error rather than
+	// silently returning a non-test package that would produce
+	// empty quality results.
+	return nil, fmt.Errorf("no test package found for %q — does the package have *_test.go files?", pkgPath)
 }
 
 // checkQualityThresholds enforces CI threshold flags on quality
@@ -775,9 +778,10 @@ func checkQualityThresholds(
 		_, _ = fmt.Fprintln(p.stderr, strings.Join(parts, " | "))
 	}
 
-	// Return first failure.
+	// Return all failures so users see every violation at once,
+	// rather than fixing one at a time (Actionable Output principle).
 	if len(failures) > 0 {
-		return errors.New(failures[0])
+		return errors.New(strings.Join(failures, "\n"))
 	}
 
 	return nil
@@ -838,6 +842,113 @@ Requires the target package to have existing test files.`,
 		"fail if contract coverage is below this percentage (0 = no limit)")
 	cmd.Flags().IntVar(&maxOverSpecification, "max-over-specification", 0,
 		"fail if over-specification count exceeds this (0 = no limit)")
+
+	return cmd
+}
+
+// findModuleRoot walks up from the current working directory to find
+// the nearest directory containing a go.mod file (the module root).
+// This ensures self-check always analyzes the full module, even when
+// invoked from a subdirectory.
+func findModuleRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting working directory: %w", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no go.mod found in %q or any parent directory", dir)
+		}
+		dir = parent
+	}
+}
+
+// selfCheckParams holds the parsed flags for the self-check command.
+type selfCheckParams struct {
+	format          string
+	maxCrapload     int
+	maxGazeCrapload int
+	stdout          io.Writer
+	stderr          io.Writer
+}
+
+// runSelfCheck runs the CRAP pipeline on Gaze's own source code.
+// It reports CRAPload and worst offenders by CRAP score. GazeCRAP
+// is included when ContractCoverageFunc is set on the crap.Options
+// (currently not wired in the CLI — requires integration of the
+// quality pipeline, tracked as a follow-up). This serves as both
+// a dogfooding exercise and a code quality gate.
+func runSelfCheck(p selfCheckParams) error {
+	if p.format != "text" && p.format != "json" {
+		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	}
+
+	moduleDir, err := findModuleRoot()
+	if err != nil {
+		return fmt.Errorf("finding module root: %w", err)
+	}
+
+	patterns := []string{"./..."}
+
+	opts := crap.DefaultOptions()
+	opts.Stderr = p.stderr
+
+	logger.Info("self-check: computing CRAP scores for Gaze source")
+	rpt, err := crap.Analyze(patterns, moduleDir, opts)
+	if err != nil {
+		return fmt.Errorf("self-check analysis: %w", err)
+	}
+
+	logger.Info("self-check complete",
+		"functions", len(rpt.Scores),
+		"crapload", rpt.Summary.CRAPload)
+
+	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
+		return err
+	}
+
+	printCISummary(p.stderr, rpt, p.maxCrapload, p.maxGazeCrapload)
+
+	return checkCIThresholds(rpt, p.maxCrapload, p.maxGazeCrapload)
+}
+
+func newSelfCheckCmd() *cobra.Command {
+	var (
+		format          string
+		maxCrapload     int
+		maxGazeCrapload int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "self-check",
+		Short: "Run CRAP analysis on Gaze's own source code",
+		Long: `Analyze Gaze's own source code for CRAP scores, serving as
+both a dogfooding exercise and a code quality gate. Reports
+CRAPload and the worst offenders by CRAP score. GazeCRAP
+scores are included when contract coverage data is available
+(requires integration with the quality pipeline).`,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runSelfCheck(selfCheckParams{
+				format:          format,
+				maxCrapload:     maxCrapload,
+				maxGazeCrapload: maxGazeCrapload,
+				stdout:          os.Stdout,
+				stderr:          os.Stderr,
+			})
+		},
+	}
+
+	cmd.Flags().StringVar(&format, "format", "text",
+		"output format: text or json")
+	cmd.Flags().IntVar(&maxCrapload, "max-crapload", 0,
+		"fail if CRAPload exceeds this count (0 = no limit)")
+	cmd.Flags().IntVar(&maxGazeCrapload, "max-gaze-crapload", 0,
+		"fail if GazeCRAPload exceeds this count (0 = no limit)")
 
 	return cmd
 }

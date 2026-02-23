@@ -33,6 +33,10 @@ const (
 	// NoError call (e.g., require.NoError(t, err)).
 	AssertionKindTestifyNoError AssertionKind = "testify_noerror"
 
+	// AssertionKindTestifyNilCheck is a testify assert/require
+	// Nil or NotNil call (e.g., assert.Nil(t, obj)).
+	AssertionKindTestifyNilCheck AssertionKind = "testify_nil_check"
+
 	// AssertionKindGoCmpDiff is a go-cmp diff check
 	// (e.g., if diff := cmp.Diff(want, got); diff != "").
 	AssertionKindGoCmpDiff AssertionKind = "gocmp_diff"
@@ -308,7 +312,7 @@ func (d *assertionDetector) classifyTestifyCall(method string) AssertionKind {
 		return AssertionKindTestifyNoError
 
 	case "Nil", "NotNil":
-		return AssertionKindTestifyEqual
+		return AssertionKindTestifyNilCheck
 
 	case "Panics", "PanicsWithValue", "PanicsWithError", "NotPanics":
 		return AssertionKindTestifyEqual

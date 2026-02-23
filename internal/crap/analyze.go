@@ -36,6 +36,13 @@ type Options struct {
 	// Stderr receives warnings about files that could not be parsed
 	// during coverage analysis. If nil, warnings are suppressed.
 	Stderr io.Writer
+
+	// ContractCoverageFunc is an optional function that returns the
+	// contract coverage percentage (0-100) for a given function.
+	// When provided, GazeCRAP scores, contract coverage, and
+	// quadrant classifications are computed for each function.
+	// If nil, GazeCRAP fields remain unavailable (FR-015).
+	ContractCoverageFunc func(pkg, function string) (float64, bool)
 }
 
 // DefaultOptions returns options with sensible defaults.
@@ -129,10 +136,20 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 			CRAP:         crapScore,
 		}
 
-		// GazeCRAP, ContractCoverage, and Quadrant remain nil
-		// until contract coverage is available (Specs 002-003).
-		// Per FR-015: report as unavailable and exclude from
-		// GazeCRAPload counts.
+		// Compute GazeCRAP if contract coverage is available.
+		if opts.ContractCoverageFunc != nil {
+			ccPct, ok := opts.ContractCoverageFunc(stat.PkgName, stat.FuncName)
+			if ok {
+				gazeCRAP := Formula(stat.Complexity, ccPct)
+				quadrant := ClassifyQuadrant(
+					crapScore, gazeCRAP,
+					opts.CRAPThreshold, opts.GazeCRAPThreshold,
+				)
+				score.ContractCoverage = &ccPct
+				score.GazeCRAP = &gazeCRAP
+				score.Quadrant = &quadrant
+			}
+		}
 
 		scores = append(scores, score)
 	}
@@ -162,7 +179,12 @@ func generateCoverProfile(moduleDir string, patterns []string) (string, error) {
 	// (e.g., "./...") are syntactically distinct from flags.
 	// Note: do NOT use "--" separator here — go test doesn't
 	// support POSIX-style "--" and would ignore the patterns.
-	args := []string{"test", "-coverprofile=" + profilePath}
+	//
+	// The -short flag skips heavyweight tests (e.g., self-check)
+	// that would re-invoke go test, causing recursive subprocess
+	// chains. Coverage data from unit + integration tests is
+	// sufficient for CRAP score computation.
+	args := []string{"test", "-short", "-coverprofile=" + profilePath}
 	args = append(args, patterns...)
 
 	cmd := exec.Command("go", args...)

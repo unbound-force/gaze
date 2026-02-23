@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jflowers/gaze/internal/crap"
+	"github.com/jflowers/gaze/internal/taxonomy"
 )
 
 // ---------------------------------------------------------------------------
@@ -689,5 +690,279 @@ func TestRunCrap_InvalidFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `invalid format "xml"`) {
 		t.Errorf("unexpected error message: %s", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runQuality tests (T052)
+// ---------------------------------------------------------------------------
+
+func TestRunQuality_InvalidFormat(t *testing.T) {
+	err := runQuality(qualityParams{
+		pkgPath: "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		format:  "yaml",
+		stdout:  &bytes.Buffer{},
+		stderr:  &bytes.Buffer{},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid format")
+	}
+	if !strings.Contains(err.Error(), `invalid format "yaml"`) {
+		t.Errorf("unexpected error message: %s", err)
+	}
+}
+
+func TestRunQuality_TextFormat(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runQuality(qualityParams{
+		pkgPath: "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		format:  "text",
+		stdout:  &stdout,
+		stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if out == "" {
+		t.Error("expected non-empty text output")
+	}
+}
+
+func TestRunQuality_JSONFormat(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runQuality(qualityParams{
+		pkgPath: "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		format:  "json",
+		stdout:  &stdout,
+		stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify valid JSON.
+	var output map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if _, ok := output["quality_reports"]; !ok {
+		t.Error("expected 'quality_reports' key in JSON output")
+	}
+	if _, ok := output["quality_summary"]; !ok {
+		t.Error("expected 'quality_summary' key in JSON output")
+	}
+}
+
+func TestRunQuality_TargetFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runQuality(qualityParams{
+		pkgPath:    "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		format:     "text",
+		targetFunc: "Add",
+		stdout:     &stdout,
+		stderr:     &stderr,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunQuality_ThresholdPass(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	// Use maxOverSpecification threshold only — set high enough
+	// to always pass. Contract coverage is 0% with current SSA
+	// matching limitations (TODO #5), so coverage thresholds
+	// would fail.
+	err := runQuality(qualityParams{
+		pkgPath:              "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		format:               "text",
+		maxOverSpecification: 100, // very high — should pass
+		stdout:               &stdout,
+		stderr:               &stderr,
+	})
+	if err != nil {
+		t.Fatalf("expected threshold to pass, got: %v", err)
+	}
+}
+
+func TestRunQuality_ThresholdFail(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runQuality(qualityParams{
+		pkgPath:             "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		format:              "text",
+		minContractCoverage: 100, // strict — contract coverage is below 100%
+		stdout:              &stdout,
+		stderr:              &stderr,
+	})
+	// With minContractCoverage=100%, the threshold should fail
+	// because current SSA mapping produces <100% contract coverage.
+	// If all tests somehow achieve 100% in the future, this test
+	// should be updated to use a stricter fixture.
+	if err == nil {
+		t.Error("expected threshold failure with minContractCoverage=100%%")
+	}
+}
+
+func TestRunQuality_BadPackage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runQuality(qualityParams{
+		pkgPath: "github.com/nonexistent/package",
+		format:  "text",
+		stdout:  &stdout,
+		stderr:  &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected error for non-existent package")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// checkQualityThresholds tests (SC-005)
+// ---------------------------------------------------------------------------
+
+func TestSC005_CIThresholds(t *testing.T) {
+	// SC-005: CI threshold enforcement correctly exits non-zero
+	// when violated, across 10+ scenarios.
+
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction:      "TestA",
+			ContractCoverage:  taxonomy.ContractCoverage{Percentage: 80, CoveredCount: 4, TotalContractual: 5},
+			OverSpecification: taxonomy.OverSpecificationScore{Count: 1},
+		},
+		{
+			TestFunction:      "TestB",
+			ContractCoverage:  taxonomy.ContractCoverage{Percentage: 60, CoveredCount: 3, TotalContractual: 5},
+			OverSpecification: taxonomy.OverSpecificationScore{Count: 3},
+		},
+		{
+			TestFunction:      "TestC",
+			ContractCoverage:  taxonomy.ContractCoverage{Percentage: 100, CoveredCount: 5, TotalContractual: 5},
+			OverSpecification: taxonomy.OverSpecificationScore{Count: 0},
+		},
+	}
+	summary := &taxonomy.PackageSummary{
+		TotalTests:              3,
+		AverageContractCoverage: 80,
+		TotalOverSpecifications: 4,
+	}
+
+	tests := []struct {
+		name                 string
+		minContractCoverage  int
+		maxOverSpecification int
+		wantErr              bool
+		errContains          string
+	}{
+		{name: "no_thresholds", wantErr: false},
+		{name: "coverage_all_pass", minContractCoverage: 50, wantErr: false},
+		{name: "coverage_one_fail", minContractCoverage: 70, wantErr: true, errContains: "TestB"},
+		{name: "coverage_two_fail", minContractCoverage: 90, wantErr: true, errContains: "TestA"},
+		{name: "coverage_strict", minContractCoverage: 100, wantErr: true, errContains: "TestA"},
+		{name: "overspec_all_pass", maxOverSpecification: 5, wantErr: false},
+		{name: "overspec_one_fail", maxOverSpecification: 2, wantErr: true, errContains: "TestB"},
+		{name: "both_pass", minContractCoverage: 50, maxOverSpecification: 5, wantErr: false},
+		{name: "coverage_pass_overspec_fail", minContractCoverage: 50, maxOverSpecification: 2, wantErr: true, errContains: "over-specification"},
+		{name: "coverage_fail_overspec_pass", minContractCoverage: 90, maxOverSpecification: 5, wantErr: true, errContains: "contract coverage"},
+		{name: "both_fail", minContractCoverage: 90, maxOverSpecification: 2, wantErr: true},
+		{name: "zero_coverage_disabled", minContractCoverage: 0, maxOverSpecification: 2, wantErr: true, errContains: "over-specification"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			p := qualityParams{
+				minContractCoverage:  tt.minContractCoverage,
+				maxOverSpecification: tt.maxOverSpecification,
+				stderr:               &stderr,
+			}
+			err := checkQualityThresholds(p, reports, summary)
+
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+			if tt.wantErr && err != nil && tt.errContains != "" {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error containing %q, got: %v", tt.errContains, err)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runSelfCheck tests (T055)
+// ---------------------------------------------------------------------------
+
+func TestRunSelfCheck_InvalidFormat(t *testing.T) {
+	err := runSelfCheck(selfCheckParams{
+		format: "xml",
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid format")
+	}
+	if !strings.Contains(err.Error(), `invalid format "xml"`) {
+		t.Errorf("unexpected error message: %s", err)
+	}
+}
+
+func TestRunSelfCheck_TextFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping self-check in short mode")
+	}
+	var stdout, stderr bytes.Buffer
+	err := runSelfCheck(selfCheckParams{
+		format: "text",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("self-check text failed: %v", err)
+	}
+	if stdout.Len() == 0 {
+		t.Error("expected non-empty text output")
+	}
+}
+
+func TestRunSelfCheck_JSONFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping self-check in short mode")
+	}
+	var stdout, stderr bytes.Buffer
+	err := runSelfCheck(selfCheckParams{
+		format: "json",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("self-check json failed: %v", err)
+	}
+
+	// Verify valid JSON with expected structure.
+	var output map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if _, ok := output["scores"]; !ok {
+		t.Error("expected 'scores' key in JSON output")
+	}
+	if _, ok := output["summary"]; !ok {
+		t.Error("expected 'summary' key in JSON output")
+	}
+
+	// Verify it analyzed functions.
+	summary, ok := output["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'summary' to be an object")
+	}
+	totalFunctions, ok := summary["total_functions"].(float64)
+	if !ok || totalFunctions == 0 {
+		t.Errorf("expected non-zero total_functions, got %v", summary["total_functions"])
 	}
 }
