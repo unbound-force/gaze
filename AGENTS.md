@@ -41,7 +41,7 @@ All non-trivial feature work **must** go through the Speckit pipeline. The const
 
 The workflow is a strict, sequential pipeline. Each stage has a corresponding `/speckit.*` command:
 
-```
+```text
 constitution → specify → clarify → plan → tasks → analyze → checklist → implement
 ```
 
@@ -69,19 +69,19 @@ constitution → specify → clarify → plan → tasks → analyze → checklis
 
 ### Spec Organization
 
-Specs are numbered with 3-digit zero-padded prefixes and stored under `.specify/specs/`:
+Specs are numbered with 3-digit zero-padded prefixes and stored under `specs/`:
 
-```
+```text
 .specify/
   memory/
     constitution.md              # Governance document (highest authority)
-  specs/
-    001-side-effect-detection/   # spec.md, plan.md, tasks.md
-    002-contract-classification/ # spec.md
-    003-test-quality-metrics/    # spec.md
-    004-composite-metrics/       # spec.md
   templates/                     # Templates for all artifact types
   scripts/bash/                  # Automation scripts
+specs/
+  001-side-effect-detection/     # spec.md, plan.md, tasks.md
+  002-contract-classification/   # spec.md
+  003-test-quality-metrics/      # spec.md
+  004-composite-metrics/         # spec.md
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -90,9 +90,20 @@ Branch names follow the same numbering pattern (e.g., `001-side-effect-detection
 
 When a task from `tasks.md` is completed during implementation, its checkbox **must** be updated from `- [ ]` to `- [x]` immediately. Do not defer this — mark tasks complete as they are finished, not in a batch after all work is done. This keeps the task list an accurate, real-time view of progress and prevents drift between the codebase and the plan.
 
+### Documentation Validation Gate
+
+Before marking any task complete, you **must** validate whether the change requires documentation updates. Check and update as needed:
+
+- `README.md` — new/changed commands, flags, output formats, or architecture
+- `AGENTS.md` — new conventions, packages, patterns, or workflow changes
+- GoDoc comments — new or modified exported functions, types, and packages
+- Spec artifacts under `specs/` — if the change affects planned behavior
+
+A task is not complete until its documentation impact has been assessed and any necessary updates have been made. Skipping this step causes documentation drift, which compounds over time and erodes project accuracy.
+
 ### Spec Commit Gate
 
-All spec artifacts (`spec.md`, `plan.md`, `tasks.md`, and any other files under `.specify/specs/`) **must** be committed and pushed before implementation begins. This ensures the planning record is preserved in version control before code changes start, and provides a clean baseline to diff against if implementation drifts from the plan. Run `/speckit.implement` only after the spec commit is on the remote.
+All spec artifacts (`spec.md`, `plan.md`, `tasks.md`, and any other files under `specs/`) **must** be committed and pushed before implementation begins. This ensures the planning record is preserved in version control before code changes start, and provides a clean baseline to diff against if implementation drifts from the plan. Run `/speckit.implement` only after the spec commit is on the remote.
 
 ### Constitution Check
 
@@ -134,7 +145,7 @@ Use `testing.Short()` to guard tests that spawn external `go test` processes or 
 
 Single binary CLI with layered internal packages:
 
-```
+```text
 cmd/gaze/              CLI layer (Cobra commands, Bubble Tea TUI)
 internal/
   analysis/            Core side effect detection engine (AST + SSA)
@@ -196,7 +207,7 @@ These principles (from the project constitution) guide all development:
 Two GitHub Actions workflows on push/PR to `main`:
 
 1. **Test** (`.github/workflows/test.yml`): Build + test with `-race -count=1`.
-2. **MegaLinter** (`.github/workflows/mega-linter.yml`): Runs golangci-lint, revive, markdownlint, yamllint, and gitleaks. Auto-commits lint fixes to PR branches.
+2. **MegaLinter** (`.github/workflows/mega-linter.yml`): Runs golangci-lint, markdownlint, yamllint, and gitleaks. Auto-commits lint fixes to PR branches.
 
 ## Linting
 

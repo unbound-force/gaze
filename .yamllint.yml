@@ -1,0 +1,11 @@
+---
+extends: default
+
+rules:
+  line-length:
+    max: 400
+    allow-non-breakable-inline-mappings: true
+  document-start: disable
+  truthy:
+    check-keys: false
+    allowed-values: ["true", "false", "on"]

@@ -45,7 +45,7 @@ structured JSON and human-readable text.
 ### Documentation (this feature)
 
 ```text
-.specify/specs/001-side-effect-detection/
+specs/001-side-effect-detection/
 ├── spec.md              # Feature specification
 ├── plan.md              # This file
 └── tasks.md             # Task breakdown (next step)

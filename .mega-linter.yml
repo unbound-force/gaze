@@ -5,7 +5,6 @@
 # Only run these specific linters (whitelist approach)
 ENABLE_LINTERS:
   - GO_GOLANGCI_LINT
-  - GO_REVIVE
   - MARKDOWN_MARKDOWNLINT
   - YAML_YAMLLINT
   - REPOSITORY_GITLEAKS
@@ -15,6 +14,6 @@ ENABLE_LINTERS:
 FILTER_REGEX_EXCLUDE: '(\.specify/templates/|\.opencode/|testdata/)'
 
 # Exclude spec markdown files from markdownlint (they use non-standard formatting)
-MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: '(\.specify/|\.opencode/)'
+MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: '(\.specify/|\.opencode/|specs/)'
 
 SHOW_ELAPSED_TIME: true

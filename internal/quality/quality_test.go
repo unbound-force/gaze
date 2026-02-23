@@ -771,7 +771,7 @@ func TestMapAssertionsToEffects_NoEffects(t *testing.T) {
 	}
 	var effects []taxonomy.SideEffect
 
-	mapped, unmapped, _ := quality.MapAssertionsToEffects(nil, nil, sites, effects)
+	mapped, unmapped, _ := quality.MapAssertionsToEffects(nil, nil, sites, effects, nil)
 	if len(mapped) != 0 {
 		t.Errorf("expected 0 mapped, got %d", len(mapped))
 	}
@@ -786,7 +786,7 @@ func TestMapAssertionsToEffects_NoSites(t *testing.T) {
 	}
 	var sites []quality.AssertionSite
 
-	mapped, unmapped, _ := quality.MapAssertionsToEffects(nil, nil, sites, effects)
+	mapped, unmapped, _ := quality.MapAssertionsToEffects(nil, nil, sites, effects, nil)
 	if len(mapped) != 0 {
 		t.Errorf("expected 0 mapped, got %d", len(mapped))
 	}
@@ -1022,7 +1022,7 @@ func TestSC003_MappingAccuracy(t *testing.T) {
 				totalAssertions += len(sites)
 
 				mapped, _, _ := quality.MapAssertionsToEffects(
-					ssaFunc, target.SSAFunc, sites, result.SideEffects,
+					ssaFunc, target.SSAFunc, sites, result.SideEffects, pkg,
 				)
 				mappedAssertions += len(mapped)
 			}
@@ -1040,23 +1040,22 @@ func TestSC003_MappingAccuracy(t *testing.T) {
 	t.Logf("Mapping accuracy: %.1f%%", accuracy)
 
 	// The spec requires >= 90% accuracy for standard patterns.
-	// SSA value name tracing maps SSA register names (t0, t1) to
-	// assertion expressions. The AST-to-SSA name gap limits exact
-	// matching — this is a known architectural constraint.
+	// The AST-to-SSA bridge (TODO #6) maps return value assignments
+	// to assertion expressions via types.Object identity and AST
+	// assignment analysis.
 	//
-	// Current measured baseline: 0% (0/42 mapped). The mapping
-	// engine correctly identifies assertion sites and side effects
-	// but cannot bridge SSA register names to AST variable names.
+	// Current measured baseline: 73.8% (31/42 mapped). Remaining
+	// unmapped assertions are primarily in helper functions (where
+	// assertions reference helper parameters rather than the test's
+	// local variables) and testify field-access patterns.
 	//
-	// Ratchet protocol: once mapping accuracy exceeds 0%, update
-	// baselineFloor to the measured value. This prevents
-	// regressions. The floor is currently -1 (disabled) because
-	// accuracy cannot go below 0% — setting it to 0 would be
-	// dead code. When the AST-to-SSA bridge ships, set the floor
-	// to the actual measured percentage.
+	// Ratchet protocol: baselineFloor prevents regressions. Update
+	// it when accuracy improves. The 90% target requires additional
+	// work on helper function parameter tracing and testify argument
+	// resolution.
 	//
-	// TODO(#6): Bridge AST-to-SSA name gap to reach 90% accuracy.
-	const baselineFloor = -1.0 // disabled — update when accuracy > 0%
+	// TODO(#6): Improve mapping accuracy to reach 90% target.
+	const baselineFloor = 70.0 // ratchet: current baseline is ~73.8%
 	if accuracy < baselineFloor {
 		t.Errorf("SC-003: mapping accuracy %.1f%% regressed below baseline floor %.0f%% (%d/%d mapped)",
 			accuracy, baselineFloor, mappedAssertions, totalAssertions)
@@ -1064,7 +1063,7 @@ func TestSC003_MappingAccuracy(t *testing.T) {
 	if accuracy >= 90.0 {
 		t.Logf("SC-003 PASSED: mapping accuracy %.1f%% meets 90%% target", accuracy)
 	} else {
-		t.Logf("SC-003 NOT MET: mapping accuracy %.1f%% (%d/%d) — target >= 90%% (known gap: AST-to-SSA name bridging, TODO #6)",
+		t.Logf("SC-003 NOT MET: mapping accuracy %.1f%% (%d/%d) — target >= 90%% (remaining gap: helper param tracing + testify field access, TODO #6)",
 			accuracy, mappedAssertions, totalAssertions)
 	}
 }

@@ -2,16 +2,24 @@ package quality
 
 import (
 	"go/ast"
+	"go/token"
+	"go/types"
 
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/jflowers/gaze/internal/taxonomy"
 )
 
 // MapAssertionsToEffects maps detected assertion sites to side effects
-// using SSA data flow analysis. It traces return values and mutations
-// from the target call site through the test function to assertion
-// sites.
+// using SSA data flow analysis combined with AST assignment analysis.
+// It traces return values and mutations from the target call site
+// through the test function to assertion sites.
+//
+// The bridge between SSA and AST domains works by finding the AST
+// assignment statement that contains the target call, mapping each
+// LHS identifier to the corresponding return value side effect, and
+// then matching assertion expressions via types.Object identity.
 //
 // Assertions that cannot be linked to a specific side effect are
 // reported as unmapped per the spec (FR-003): they are excluded from
@@ -25,6 +33,7 @@ func MapAssertionsToEffects(
 	targetFunc *ssa.Function,
 	sites []AssertionSite,
 	effects []taxonomy.SideEffect,
+	testPkg *packages.Package,
 ) (mapped []taxonomy.AssertionMapping, unmapped []taxonomy.AssertionMapping, discardedIDs map[string]bool) {
 	discardedIDs = make(map[string]bool)
 
@@ -54,13 +63,14 @@ func MapAssertionsToEffects(
 	// produces no Extract referrers for return values.
 	discardedIDs = detectDiscardedReturns(targetCall, effects)
 
-	// Trace values from the target call to assertion sites.
-	// This builds a map from SSA value name to effect ID.
-	valueNameToEffectID := traceTargetValues(targetCall, effects, testFunc)
+	// Build a map from types.Object to effect ID by finding the
+	// AST assignment that receives the target call's return values
+	// and correlating LHS identifiers with side effects.
+	objToEffectID := traceTargetValues(targetCall, effects, testPkg)
 
 	// Match assertion expressions to traced values.
 	for _, site := range sites {
-		mapping := matchAssertionToEffect(site, valueNameToEffectID, effectMap)
+		mapping := matchAssertionToEffect(site, objToEffectID, effectMap, testPkg)
 		if mapping != nil {
 			mapped = append(mapped, *mapping)
 		} else {
@@ -130,8 +140,9 @@ func detectDiscardedReturns(
 }
 
 // FindTargetCall finds the SSA call instruction in the test function
-// that calls the target function. It handles both direct calls and
-// method calls.
+// that calls the target function. It searches both the top-level
+// function body and any closures (e.g., t.Run sub-tests) to handle
+// table-driven test patterns.
 func FindTargetCall(
 	testFunc *ssa.Function,
 	targetFunc *ssa.Function,
@@ -140,101 +151,179 @@ func FindTargetCall(
 		return nil
 	}
 
-	for _, block := range testFunc.Blocks {
+	return findTargetCallInFunc(testFunc, targetFunc, make(map[*ssa.Function]bool))
+}
+
+// findTargetCallInFunc recursively searches an SSA function and its
+// closures for a call to the target function.
+func findTargetCallInFunc(
+	fn *ssa.Function,
+	targetFunc *ssa.Function,
+	visited map[*ssa.Function]bool,
+) *ssa.Call {
+	if fn == nil || fn.Blocks == nil || visited[fn] {
+		return nil
+	}
+	visited[fn] = true
+
+	for _, block := range fn.Blocks {
 		for _, instr := range block.Instrs {
-			call, ok := instr.(*ssa.Call)
-			if !ok {
-				continue
+			// Check for direct calls to the target.
+			if call, ok := instr.(*ssa.Call); ok {
+				callee := call.Call.StaticCallee()
+				if callee != nil && (callee == targetFunc || sameFunction(callee, targetFunc)) {
+					return call
+				}
 			}
-			callee := call.Call.StaticCallee()
-			if callee == nil {
-				continue
-			}
-			if callee == targetFunc || sameFunction(callee, targetFunc) {
-				return call
+			// Follow MakeClosure instructions to search inside
+			// closures (handles t.Run sub-tests and anonymous functions).
+			if mc, ok := instr.(*ssa.MakeClosure); ok {
+				if closureFn, ok := mc.Fn.(*ssa.Function); ok {
+					if result := findTargetCallInFunc(closureFn, targetFunc, visited); result != nil {
+						return result
+					}
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// traceTargetValues traces return values and mutation effects from
-// the target call through the SSA graph. It returns a map from SSA
-// value name to the side effect ID it originates from.
+// traceTargetValues bridges the SSA and AST domains by finding the
+// AST assignment statement that receives the target call's return
+// values, then mapping each LHS identifier's types.Object to the
+// corresponding return value side effect.
+//
+// For mutations (receiver/pointer args), it maps the argument
+// variable's types.Object to the mutation effect.
+//
+// The returned map keys are types.Object instances that can be
+// matched against assertion operands using TypesInfo.Uses.
 func traceTargetValues(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
-	testFunc *ssa.Function,
-) map[string]string {
-	valueNameToEffectID := make(map[string]string)
+	testPkg *packages.Package,
+) map[types.Object]string {
+	objToEffectID := make(map[types.Object]string)
 
-	if targetCall == nil {
-		return valueNameToEffectID
+	if targetCall == nil || testPkg == nil || testPkg.TypesInfo == nil {
+		return objToEffectID
 	}
 
-	// Trace return values.
-	traceReturnValues(targetCall, effects, valueNameToEffectID)
+	// Trace return values by finding the AST assignment.
+	traceReturnValues(targetCall, effects, objToEffectID, testPkg)
 
-	// Trace mutations (receiver and pointer arg values read after
-	// the call).
-	traceMutations(targetCall, effects, valueNameToEffectID)
+	// Trace mutations (receiver and pointer arg values).
+	traceMutations(targetCall, effects, objToEffectID, testPkg)
 
-	return valueNameToEffectID
+	return objToEffectID
 }
 
-// traceReturnValues traces the return values from a target call
-// through Extract instructions and subsequent uses.
+// traceReturnValues finds the AST assignment statement that contains
+// the target function call and maps each LHS identifier to the
+// corresponding return value side effect.
+//
+// For `got, err := Divide(10, 2)`:
+//   - LHS[0] "got" -> ReturnValue effect
+//   - LHS[1] "err" -> ErrorReturn effect
+//
+// For `got := Add(2, 3)`:
+//   - LHS[0] "got" -> ReturnValue effect
 func traceReturnValues(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
-	valueNameToEffectID map[string]string,
+	objToEffectID map[types.Object]string,
+	testPkg *packages.Package,
 ) {
-	// Find return-type side effects.
 	returnEffects := filterEffectsByType(effects,
 		taxonomy.ReturnValue, taxonomy.ErrorReturn)
-
 	if len(returnEffects) == 0 {
 		return
 	}
 
-	// The call result is used either directly (single return) or
-	// via Extract instructions (multi-return).
-	callValue := ssa.Value(targetCall)
-
-	// For single-return functions, the call value itself maps to
-	// the first return effect.
-	if len(returnEffects) == 1 {
-		valueNameToEffectID[callValue.Name()] = returnEffects[0].ID
-	}
-
-	// Trace through Extract instructions for multi-return.
-	referrers := targetCall.Referrers()
-	if referrers == nil {
+	// Find the AST assignment that contains the target call.
+	callPos := targetCall.Pos()
+	if !callPos.IsValid() {
 		return
 	}
-	for _, ref := range *referrers {
-		extract, ok := ref.(*ssa.Extract)
-		if !ok {
-			continue
-		}
-		idx := extract.Index
-		if idx < len(returnEffects) {
-			valueNameToEffectID[extract.Name()] = returnEffects[idx].ID
 
-			// Follow further uses of the extracted value.
-			traceUses(extract, returnEffects[idx].ID, valueNameToEffectID, make(map[ssa.Value]bool))
-		}
+	assignLHS := findAssignLHS(testPkg, callPos)
+	if assignLHS == nil {
+		return
 	}
 
-	// Also trace direct uses of a single-return call.
-	if len(returnEffects) == 1 {
-		traceUses(callValue, returnEffects[0].ID, valueNameToEffectID, make(map[ssa.Value]bool))
+	// Map each non-blank LHS identifier to the corresponding
+	// return effect by position index.
+	for i, lhsExpr := range assignLHS {
+		if i >= len(returnEffects) {
+			break
+		}
+		ident, ok := lhsExpr.(*ast.Ident)
+		if !ok || ident.Name == "_" {
+			continue
+		}
+		// Look up the types.Object for this identifier.
+		obj := testPkg.TypesInfo.Defs[ident]
+		if obj == nil {
+			// For re-assignments (=), the LHS may be in Uses.
+			obj = testPkg.TypesInfo.Uses[ident]
+		}
+		if obj != nil {
+			objToEffectID[obj] = returnEffects[i].ID
+		}
 	}
 }
 
-// traceMutations traces mutation side effects by identifying values
-// passed as receiver or pointer arguments at the target call site,
-// then finding reads of those values after the call.
+// findAssignLHS walks the test package's AST to find the assignment
+// statement that contains a call at the given position, returning
+// the LHS expression list. This handles both := and = assignments.
+func findAssignLHS(
+	testPkg *packages.Package,
+	callPos token.Pos,
+) []ast.Expr {
+	if testPkg == nil {
+		return nil
+	}
+
+	for _, file := range testPkg.Syntax {
+		var lhs []ast.Expr
+		ast.Inspect(file, func(n ast.Node) bool {
+			if lhs != nil {
+				return false
+			}
+			assign, ok := n.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			// Check if any RHS expression contains the target call
+			// at the given position.
+			for _, rhs := range assign.Rhs {
+				if containsPos(rhs, callPos) {
+					lhs = assign.Lhs
+					return false
+				}
+			}
+			return true
+		})
+		if lhs != nil {
+			return lhs
+		}
+	}
+	return nil
+}
+
+// containsPos checks whether an AST expression's source range
+// contains the given position. This uses range checking rather
+// than exact position matching because SSA and AST may report
+// slightly different positions for the same call expression
+// (e.g., SSA points to the open paren, AST to the function name).
+func containsPos(expr ast.Expr, pos token.Pos) bool {
+	return pos >= expr.Pos() && pos < expr.End()
+}
+
+// traceMutations traces mutation side effects by identifying the
+// AST identifiers used as receiver or pointer arguments at the
+// target call site.
 //
 // For methods, the SSA calling convention places the receiver at
 // args[0] and explicit parameters starting at args[1]. This function
@@ -243,7 +332,8 @@ func traceReturnValues(
 func traceMutations(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
-	valueNameToEffectID map[string]string,
+	objToEffectID map[types.Object]string,
+	testPkg *packages.Package,
 ) {
 	mutationEffects := filterEffectsByType(effects,
 		taxonomy.ReceiverMutation, taxonomy.PointerArgMutation)
@@ -257,25 +347,21 @@ func traceMutations(
 		(len(args) > 0 && hasReceiverMutation(mutationEffects))
 
 	// Determine the offset for explicit parameters.
-	// For methods, args[0] is the receiver; explicit params start at 1.
-	// For functions, all args are explicit params starting at 0.
 	paramOffset := 0
 	if isMethod {
 		paramOffset = 1
 	}
 
-	ptrArgIdx := 0 // tracks position within pointer arg mutations
+	ptrArgIdx := 0
 	for _, effect := range mutationEffects {
 		var argValue ssa.Value
 
 		switch effect.Type {
 		case taxonomy.ReceiverMutation:
-			// Receiver is always args[0] for methods.
 			if len(args) > 0 {
 				argValue = args[0]
 			}
 		case taxonomy.PointerArgMutation:
-			// Pointer args start after the receiver (if method).
 			argIdx := paramOffset + ptrArgIdx
 			if argIdx < len(args) {
 				argValue = args[argIdx]
@@ -287,10 +373,48 @@ func traceMutations(
 			continue
 		}
 
-		valueNameToEffectID[argValue.Name()] = effect.ID
+		// Resolve the SSA argument value to its source-level
+		// types.Object. SSA parameters and free variables have
+		// positions; for allocs, follow to the defining ident.
+		resolveSSAValueToObj(argValue, effect.ID, objToEffectID, testPkg)
+	}
+}
 
-		// Trace uses of the argument value after the call.
-		traceUses(argValue, effect.ID, valueNameToEffectID, make(map[ssa.Value]bool))
+// resolveSSAValueToObj maps an SSA value to the types.Object of its
+// source-level variable by using the value's source position to find
+// the corresponding identifier in TypesInfo.
+func resolveSSAValueToObj(
+	v ssa.Value,
+	effectID string,
+	objToEffectID map[types.Object]string,
+	testPkg *packages.Package,
+) {
+	if v == nil || testPkg == nil || testPkg.TypesInfo == nil {
+		return
+	}
+
+	pos := v.Pos()
+	if !pos.IsValid() {
+		// For values without position (e.g., implicit allocs),
+		// try to find the underlying named value.
+		if unop, ok := v.(*ssa.UnOp); ok {
+			resolveSSAValueToObj(unop.X, effectID, objToEffectID, testPkg)
+		}
+		return
+	}
+
+	// Look up the identifier defined or used at this position.
+	for ident, obj := range testPkg.TypesInfo.Defs {
+		if obj != nil && ident.Pos() == pos {
+			objToEffectID[obj] = effectID
+			return
+		}
+	}
+	for ident, obj := range testPkg.TypesInfo.Uses {
+		if ident.Pos() == pos {
+			objToEffectID[obj] = effectID
+			return
+		}
 	}
 }
 
@@ -304,104 +428,72 @@ func hasReceiverMutation(effects []taxonomy.SideEffect) bool {
 	return false
 }
 
-// traceUses follows SSA value edges (phi, store, load, field addr)
-// to find all reachable uses of a value. It populates the
-// valueNameToEffectID map with each derived value's name.
-func traceUses(
-	v ssa.Value,
-	effectID string,
-	valueNameToEffectID map[string]string,
-	visited map[ssa.Value]bool,
-) {
-	if v == nil || visited[v] {
-		return
-	}
-	visited[v] = true
-
-	referrers := v.Referrers()
-	if referrers == nil {
-		return
-	}
-
-	for _, ref := range *referrers {
-		switch instr := ref.(type) {
-		case *ssa.FieldAddr:
-			valueNameToEffectID[instr.Name()] = effectID
-			traceUses(instr, effectID, valueNameToEffectID, visited)
-
-		case *ssa.IndexAddr:
-			valueNameToEffectID[instr.Name()] = effectID
-			traceUses(instr, effectID, valueNameToEffectID, visited)
-
-		case *ssa.UnOp:
-			valueNameToEffectID[instr.Name()] = effectID
-			traceUses(instr, effectID, valueNameToEffectID, visited)
-
-		case *ssa.Phi:
-			valueNameToEffectID[instr.Name()] = effectID
-			traceUses(instr, effectID, valueNameToEffectID, visited)
-
-		case *ssa.Store:
-			// The stored value may be read later.
-			valueNameToEffectID[instr.Addr.Name()] = effectID
-
-		case ssa.Value:
-			// Generic value — trace its uses.
-			valueNameToEffectID[instr.Name()] = effectID
-			traceUses(instr, effectID, valueNameToEffectID, visited)
-		}
-	}
-}
-
 // matchAssertionToEffect attempts to match an assertion site to a
-// traced side effect value using exact SSA value name matching.
+// traced side effect value using types.Object identity.
 //
-// It extracts variable names from the assertion expression and
-// checks for exact matches against traced SSA value names in the
-// valueNameToEffectID map.
+// It resolves identifiers in the assertion expression to their
+// types.Object via the package's TypesInfo.Uses map, then checks
+// for matches against the objToEffectID map built from AST tracing.
 func matchAssertionToEffect(
 	site AssertionSite,
-	valueNameToEffectID map[string]string,
+	objToEffectID map[types.Object]string,
 	effectMap map[string]*taxonomy.SideEffect,
+	testPkg *packages.Package,
 ) *taxonomy.AssertionMapping {
 	if site.Expr == nil {
 		return nil
 	}
 
-	// Extract variable names from the assertion expression.
-	varNames := extractVarNames(site.Expr)
+	var info *types.Info
+	if testPkg != nil {
+		info = testPkg.TypesInfo
+	}
+	if info == nil {
+		return nil
+	}
 
-	// Check if any variable name exactly matches a traced SSA value.
-	for _, name := range varNames {
-		if effectID, ok := valueNameToEffectID[name]; ok {
+	var matched *taxonomy.AssertionMapping
+	ast.Inspect(site.Expr, func(n ast.Node) bool {
+		if matched != nil {
+			return false
+		}
+		ident, ok := n.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		// Skip nil/true/false literals.
+		if ident.Name == "nil" || ident.Name == "true" || ident.Name == "false" {
+			return true
+		}
+
+		// Look up the types.Object this identifier refers to.
+		obj := info.Uses[ident]
+		if obj == nil {
+			// Also check Defs — some assertions use the
+			// defining occurrence (e.g., diff := cmp.Diff(...)).
+			obj = info.Defs[ident]
+		}
+		if obj == nil {
+			return true
+		}
+
+		if effectID, ok := objToEffectID[obj]; ok {
 			effect := effectMap[effectID]
 			if effect == nil {
-				continue
+				return true
 			}
-			return &taxonomy.AssertionMapping{
+			matched = &taxonomy.AssertionMapping{
 				AssertionLocation: site.Location,
 				AssertionType:     mapKindToType(site.Kind),
 				SideEffectID:      effectID,
 				Confidence:        75, // SSA-traced match
 			}
-		}
-	}
-
-	return nil
-}
-
-// extractVarNames extracts identifier names from an AST expression.
-func extractVarNames(expr ast.Expr) []string {
-	var names []string
-	ast.Inspect(expr, func(n ast.Node) bool {
-		if ident, ok := n.(*ast.Ident); ok {
-			if ident.Name != "nil" && ident.Name != "true" && ident.Name != "false" {
-				names = append(names, ident.Name)
-			}
+			return false
 		}
 		return true
 	})
-	return names
+
+	return matched
 }
 
 // filterEffectsByType returns effects matching any of the given types.
