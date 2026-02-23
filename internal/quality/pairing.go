@@ -189,6 +189,17 @@ func walkCalls(
 
 	for _, block := range fn.Blocks {
 		for _, instr := range block.Instrs {
+			// Handle MakeClosure instructions: walk into anonymous
+			// functions (closures) passed to t.Run or helpers. This
+			// is critical for table-driven tests where the target
+			// call is inside the t.Run closure.
+			if mc, ok := instr.(*ssa.MakeClosure); ok {
+				if closureFn, ok := mc.Fn.(*ssa.Function); ok {
+					walkCalls(closureFn, targetPkgPath, candidates, maxDepth, visited)
+				}
+				continue
+			}
+
 			call, ok := instr.(*ssa.Call)
 			if !ok {
 				continue

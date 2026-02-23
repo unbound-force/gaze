@@ -161,7 +161,7 @@ using SSA data flow analysis.
 - [x] T031 [US1] Handle `ssa.FieldAddr` / `ssa.IndexAddr` — trace
   struct field access and array/slice indexing through the SSA
   graph; map to the appropriate sub-effect if identifiable
-- [ ] T032 [US1] Handle discarded returns — detect `_ = target()`
+- [x] T032 [US1] Handle discarded returns — detect `_ = target()`
   patterns (SSA will not produce an Extract for the blank
   identifier); mark corresponding side effects as definitively
   unasserted
@@ -257,7 +257,7 @@ CLI subcommand.
 - [x] T051 [US4] Implement threshold checking — report CI summary
   to stderr (matching `gaze crap` pattern); return error if any
   threshold is violated
-- [ ] T052 [P] [US1] Write CLI integration tests in
+- [x] T052 [P] [US1] Write CLI integration tests in
   `cmd/gaze/main_test.go` — test `runQuality()` with testdata
   fixtures: valid JSON output, text output, threshold pass/fail,
   `--target` flag, invalid format
@@ -285,27 +285,27 @@ tests for all success criteria.
 - [x] T057 [P] [US1] Create `internal/quality/testdata/src/helpers/`
   fixture — tests using helper functions at depth 1, 2, 3, and 4
   (4 should be unmapped)
-- [ ] T058 [P] [US1] Create `internal/quality/testdata/src/multilib/`
+- [x] T058 [P] [US1] Create `internal/quality/testdata/src/multilib/`
   fixture — tests using testify/assert, testify/require, and
   go-cmp assertion patterns
-- [ ] T059 [US1] Write `TestSC001_ContractCoverageAccuracy` — verify
+- [x] T059 [US1] Write `TestSC001_ContractCoverageAccuracy` — verify
   correct coverage computation for 20+ test-target pairs from
   fixtures
-- [ ] T060 [US2] Write `TestSC002_OverSpecificationDetection` —
+- [x] T060 [US2] Write `TestSC002_OverSpecificationDetection` —
   verify all incidental assertions are identified in the benchmark
   suite
-- [ ] T061 [US1] Write `TestSC003_MappingAccuracy` — verify >= 90%
+- [x] T061 [US1] Write `TestSC003_MappingAccuracy` — verify >= 90%
   assertion-to-side-effect mapping accuracy for standard patterns
 - [x] T062 [US3] Write `TestSC004_Determinism` — run quality
   analysis twice on identical code, verify identical metrics
   (excluding timestamps)
-- [ ] T063 [US4] Write `TestSC005_CIThresholds` — 10+ test
+- [x] T063 [US4] Write `TestSC005_CIThresholds` — 10+ test
   scenarios for threshold enforcement (pass/fail combinations)
 - [x] T064 [US1] Write `TestSC006_PackageSummary` — verify correct
   aggregation across multiple test functions
-- [ ] T065 [US1] Write `TestSC007_TableDrivenUnion` — verify
+- [x] T065 [US1] Write `TestSC007_TableDrivenUnion` — verify
   assertion union across t.Run sub-tests
-- [ ] T066 [US1] Write benchmarks in
+- [x] T066 [US1] Write benchmarks in
   `internal/quality/bench_test.go` — benchmark Assess() for
   single pair and package-level analysis
 

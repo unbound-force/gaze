@@ -150,12 +150,13 @@ func Assess(
 			sites := DetectAssertions(tf.Decl, testPkg, opts.MaxHelperDepth)
 
 			// Map assertions to side effects via SSA data flow.
-			mappings, unmapped := MapAssertionsToEffects(
+			mappings, unmapped, discardedIDs := MapAssertionsToEffects(
 				ssaFunc, target.SSAFunc, sites, result.SideEffects,
 			)
 
-			// Compute metrics.
+			// Compute metrics, including discarded return detection.
 			coverage := ComputeContractCoverage(result.SideEffects, mappings)
+			coverage.DiscardedReturns = collectDiscardedReturns(result.SideEffects, discardedIDs)
 			overSpec := ComputeOverSpecification(result.SideEffects, mappings)
 			ambiguous := collectAmbiguous(result.SideEffects)
 			detectionConf := computeDetectionConfidence(sites)
@@ -226,6 +227,23 @@ func BuildPackageSummary(reports []taxonomy.QualityReport) *taxonomy.PackageSumm
 		WorstCoverageTests:           worst,
 		AssertionDetectionConfidence: int(float64(totalDetectionConf)/n + 0.5),
 	}
+}
+
+// collectDiscardedReturns filters side effects to those whose IDs
+// appear in the discarded set. These are return/error effects whose
+// values were explicitly discarded (e.g., _ = target()), making
+// them definitively unasserted.
+func collectDiscardedReturns(effects []taxonomy.SideEffect, discardedIDs map[string]bool) []taxonomy.SideEffect {
+	if len(discardedIDs) == 0 {
+		return nil
+	}
+	var result []taxonomy.SideEffect
+	for _, e := range effects {
+		if discardedIDs[e.ID] {
+			result = append(result, e)
+		}
+	}
+	return result
 }
 
 // collectAmbiguous returns side effects with ambiguous classification.

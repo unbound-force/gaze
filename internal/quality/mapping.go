@@ -19,17 +19,20 @@ import (
 // reported as unmapped per the spec (FR-003): they are excluded from
 // both Contract Coverage and Over-Specification metrics.
 //
-// It returns two slices: mapped assertions (linked to a side effect)
-// and unmapped assertions (could not be linked to any effect).
+// It returns three values: mapped assertions, unmapped assertions,
+// and a set of side effect IDs whose return values were explicitly
+// discarded (e.g., _ = target()), making them definitively unasserted.
 func MapAssertionsToEffects(
 	testFunc *ssa.Function,
 	targetFunc *ssa.Function,
 	sites []AssertionSite,
 	effects []taxonomy.SideEffect,
-) ([]taxonomy.AssertionMapping, []taxonomy.AssertionMapping) {
+) (mapped []taxonomy.AssertionMapping, unmapped []taxonomy.AssertionMapping, discardedIDs map[string]bool) {
+	discardedIDs = make(map[string]bool)
+
 	if len(sites) == 0 || len(effects) == 0 {
 		// If no assertions or no effects, everything is unmapped.
-		unmapped := make([]taxonomy.AssertionMapping, 0, len(sites))
+		unmapped = make([]taxonomy.AssertionMapping, 0, len(sites))
 		for _, s := range sites {
 			unmapped = append(unmapped, taxonomy.AssertionMapping{
 				AssertionLocation: s.Location,
@@ -37,7 +40,7 @@ func MapAssertionsToEffects(
 				Confidence:        0,
 			})
 		}
-		return nil, unmapped
+		return nil, unmapped, discardedIDs
 	}
 
 	// Find the call to the target function in the test SSA.
@@ -49,13 +52,15 @@ func MapAssertionsToEffects(
 		effectMap[effects[i].ID] = &effects[i]
 	}
 
+	// Detect discarded returns: _ = target() patterns where SSA
+	// produces no Extract referrers for return values.
+	discardedIDs = detectDiscardedReturns(targetCall, effects)
+
 	// Trace values from the target call to assertion sites.
 	// This builds a map from SSA value name to effect ID.
 	valueNameToEffectID := traceTargetValues(targetCall, effects, testFunc)
 
 	// Match assertion expressions to traced values.
-	var mapped, unmapped []taxonomy.AssertionMapping
-
 	for _, site := range sites {
 		mapping := matchAssertionToEffect(site, valueNameToEffectID, effectMap)
 		if mapping != nil {
@@ -71,7 +76,59 @@ func MapAssertionsToEffects(
 		}
 	}
 
-	return mapped, unmapped
+	return mapped, unmapped, discardedIDs
+}
+
+// detectDiscardedReturns identifies return/error side effects whose
+// values were explicitly discarded at the call site (e.g., _ = f()
+// or f() with ignored returns). In SSA, discarded returns produce
+// no Extract referrers for the corresponding tuple index.
+func detectDiscardedReturns(
+	targetCall *ssa.Call,
+	effects []taxonomy.SideEffect,
+) map[string]bool {
+	discarded := make(map[string]bool)
+
+	if targetCall == nil {
+		return discarded
+	}
+
+	returnEffects := filterEffectsByType(effects,
+		taxonomy.ReturnValue, taxonomy.ErrorReturn)
+	if len(returnEffects) == 0 {
+		return discarded
+	}
+
+	referrers := targetCall.Referrers()
+
+	// Single-return function: if no referrers at all, the return
+	// is discarded (e.g., bare f() call).
+	if len(returnEffects) == 1 {
+		if referrers == nil || len(*referrers) == 0 {
+			discarded[returnEffects[0].ID] = true
+		}
+		return discarded
+	}
+
+	// Multi-return function: check which tuple indices have
+	// Extract referrers. Indices without Extract are discarded
+	// (assigned to blank identifier).
+	extractedIndices := make(map[int]bool)
+	if referrers != nil {
+		for _, ref := range *referrers {
+			if extract, ok := ref.(*ssa.Extract); ok {
+				extractedIndices[extract.Index] = true
+			}
+		}
+	}
+
+	for idx, effect := range returnEffects {
+		if !extractedIndices[idx] {
+			discarded[effect.ID] = true
+		}
+	}
+
+	return discarded
 }
 
 // FindTargetCall finds the SSA call instruction in the test function
