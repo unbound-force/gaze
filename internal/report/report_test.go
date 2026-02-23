@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 

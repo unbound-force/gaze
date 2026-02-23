@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/jflowers/gaze/internal/config"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // Options configures the classification engine.

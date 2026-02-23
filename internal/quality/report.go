@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // qualityOutput is the top-level JSON structure for quality reports.

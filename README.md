@@ -7,13 +7,13 @@ Gaze statically analyzes Go functions to detect all observable side effects and 
 ## Installation
 
 ```bash
-go install github.com/jflowers/gaze/cmd/gaze@latest
+go install github.com/unbound-force/gaze/cmd/gaze@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/jflowers/gaze.git
+git clone https://github.com/unbound-force/gaze.git
 cd gaze
 go build -o gaze ./cmd/gaze
 ```

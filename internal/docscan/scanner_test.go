@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jflowers/gaze/internal/config"
-	"github.com/jflowers/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/docscan"
 )
 
 // repoFixture returns the absolute path to the test fixture repo.

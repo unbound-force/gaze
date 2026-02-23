@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jflowers/gaze/internal/crap"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ func TestRunAnalyze_InvalidFormat(t *testing.T) {
 func TestRunAnalyze_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath: "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:  "text",
 		stdout:  &stdout,
 		stderr:  &stderr,
@@ -53,7 +53,7 @@ func TestRunAnalyze_TextFormat(t *testing.T) {
 func TestRunAnalyze_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath: "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:  "json",
 		stdout:  &stdout,
 		stderr:  &stderr,
@@ -75,7 +75,7 @@ func TestRunAnalyze_JSONFormat(t *testing.T) {
 func TestRunAnalyze_FunctionFilter(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:   "text",
 		function: "SingleReturn",
 		stdout:   &stdout,
@@ -97,7 +97,7 @@ func TestRunAnalyze_FunctionFilter(t *testing.T) {
 func TestRunAnalyze_FunctionNotFound(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:   "text",
 		function: "NonExistentFunc",
 		stdout:   &stdout,
@@ -116,7 +116,7 @@ func TestRunAnalyze_IncludeUnexported(t *testing.T) {
 	// so this just verifies the flag passes through without error.
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:           "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath:           "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:            "text",
 		includeUnexported: true,
 		stdout:            &stdout,
@@ -130,7 +130,7 @@ func TestRunAnalyze_IncludeUnexported(t *testing.T) {
 func TestRunAnalyze_BadPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/jflowers/gaze/nonexistent/package",
+		pkgPath: "github.com/unbound-force/gaze/nonexistent/package",
 		format:  "text",
 		stdout:  &stdout,
 		stderr:  &stderr,
@@ -499,7 +499,7 @@ func TestRunDocscan_EmptyPkg(t *testing.T) {
 func TestRunAnalyze_ClassifyFlag_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:   "text",
 		classify: true,
 		stdout:   &stdout,
@@ -518,7 +518,7 @@ func TestRunAnalyze_ClassifyFlag_TextFormat(t *testing.T) {
 func TestRunAnalyze_ClassifyFlag_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:   "json",
 		classify: true,
 		stdout:   &stdout,
@@ -539,7 +539,7 @@ func TestRunAnalyze_VerboseImpliesClassify(t *testing.T) {
 	// --verbose without --classify should still produce classification output.
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/jflowers/gaze/internal/analysis/testdata/src/returns",
+		pkgPath: "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
 		format:  "text",
 		verbose: true,
 		stdout:  &stdout,
@@ -699,7 +699,7 @@ func TestRunCrap_InvalidFormat(t *testing.T) {
 
 func TestRunQuality_InvalidFormat(t *testing.T) {
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		pkgPath: "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
 		format:  "yaml",
 		stdout:  &bytes.Buffer{},
 		stderr:  &bytes.Buffer{},
@@ -715,7 +715,7 @@ func TestRunQuality_InvalidFormat(t *testing.T) {
 func TestRunQuality_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		pkgPath: "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
 		format:  "text",
 		stdout:  &stdout,
 		stderr:  &stderr,
@@ -732,7 +732,7 @@ func TestRunQuality_TextFormat(t *testing.T) {
 func TestRunQuality_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		pkgPath: "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
 		format:  "json",
 		stdout:  &stdout,
 		stderr:  &stderr,
@@ -757,7 +757,7 @@ func TestRunQuality_JSONFormat(t *testing.T) {
 func TestRunQuality_TargetFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath:    "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		pkgPath:    "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
 		format:     "text",
 		targetFunc: "Add",
 		stdout:     &stdout,
@@ -775,7 +775,7 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 	// with mapping improvements (TODO #6), so coverage thresholds
 	// are not yet stable enough for CI enforcement.
 	err := runQuality(qualityParams{
-		pkgPath:              "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		pkgPath:              "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
 		format:               "text",
 		maxOverSpecification: 100, // very high — should pass
 		stdout:               &stdout,
@@ -789,7 +789,7 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 func TestRunQuality_ThresholdFail(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath:             "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
+		pkgPath:             "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
 		format:              "text",
 		minContractCoverage: 100, // strict — contract coverage is below 100%
 		stdout:              &stdout,

@@ -7,7 +7,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // AnalyzeP1Effects detects P1-tier side effects in a function body

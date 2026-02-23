@@ -4,7 +4,7 @@ package classify
 import (
 	"strings"
 
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // contractualPrefixes maps function name prefixes to the side effect

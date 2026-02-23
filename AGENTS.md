@@ -5,7 +5,7 @@
 Gaze is a static analysis tool for Go that detects observable side effects in functions and computes CRAP (Change Risk Anti-Patterns) scores by combining cyclomatic complexity with test coverage. It helps developers find functions that are complex and under-tested — the riskiest code to change.
 
 - **Language**: Go 1.24+
-- **Module**: `github.com/jflowers/gaze`
+- **Module**: `github.com/unbound-force/gaze`
 - **License**: Apache 2.0
 
 ## Core Mission

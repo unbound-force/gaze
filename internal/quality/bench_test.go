@@ -5,8 +5,8 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/jflowers/gaze/internal/analysis"
-	"github.com/jflowers/gaze/internal/quality"
+	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/internal/quality"
 )
 
 // BenchmarkAssess_SinglePair benchmarks quality assessment for

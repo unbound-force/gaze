@@ -84,7 +84,7 @@ line/column extent. This matches `go tool cover -func` semantics (SC-008).
 **3. Two-stage coverage join (exact + basename fallback)**
 
 Coverage profiles use import-path-relative filenames
-(e.g., `github.com/jflowers/gaze/internal/crap/crap.go`) while gocyclo uses
+(e.g., `github.com/unbound-force/gaze/internal/crap/crap.go`) while gocyclo uses
 absolute filesystem paths. `buildCoverMap()` constructs two lookup maps:
 
 - `exact`: keyed by `(absolutePath, startLine)`

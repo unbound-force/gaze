@@ -4,8 +4,8 @@
 package callers
 
 import (
-	"github.com/jflowers/gaze/internal/classify/testdata/src/contracts"
-	"github.com/jflowers/gaze/internal/classify/testdata/src/incidental"
+	"github.com/unbound-force/gaze/internal/classify/testdata/src/contracts"
+	"github.com/unbound-force/gaze/internal/classify/testdata/src/incidental"
 )
 
 // UseGetData calls contracts.GetData and uses the return value.

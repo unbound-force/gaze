@@ -9,14 +9,14 @@ install and use Gaze's quality reporting capabilities within their
 OpenCode workflows via `gaze init`, a `/gaze` command, and a
 `gaze-reporter` agent. Distribute the binary via Homebrew
 (`unbound-force/tap/gaze`) with precompiled binaries for macOS and
-Linux. Migrate the Go module path from `github.com/jflowers/gaze`
+Linux. Migrate the Go module path from `github.com/unbound-force/gaze`
 to `github.com/unbound-force/gaze`."
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Module Path Migration (Priority: P0)
 
-Migrate the Go module path from `github.com/jflowers/gaze` to
+Migrate the Go module path from `github.com/unbound-force/gaze` to
 `github.com/unbound-force/gaze`. This is a one-time change that
 updates `go.mod`, all internal import paths, README documentation,
 and any hardcoded references throughout the codebase.
@@ -34,7 +34,7 @@ module compiles and all imports resolve correctly.
 
 **Acceptance Scenarios**:
 
-1. **Given** the current module path `github.com/jflowers/gaze`,
+1. **Given** the current module path `github.com/unbound-force/gaze`,
    **When** the migration is applied, **Then** `go.mod` declares
    `module github.com/unbound-force/gaze`.
 2. **Given** the migration is applied, **When** `go build ./...`
@@ -44,7 +44,7 @@ module compiles and all imports resolve correctly.
 4. **Given** the migration is applied, **When** the developer
    inspects any `.go` file, **Then** all import paths reference
    `github.com/unbound-force/gaze/...` instead of
-   `github.com/jflowers/gaze/...`.
+   `github.com/unbound-force/gaze/...`.
 5. **Given** the migration is applied, **When** the developer
    inspects `README.md`, **Then** install instructions reference
    `github.com/unbound-force/gaze`.
@@ -386,7 +386,7 @@ version marker).
   succeed on others? GoReleaser MUST fail the entire release —
   partial releases are not acceptable.
 - What happens when the module path migration is incomplete (some
-  files still reference `github.com/jflowers/gaze`)? `go build
+  files still reference `github.com/unbound-force/gaze`)? `go build
   ./...` MUST fail with import errors, catching the issue before
   it reaches CI.
 
@@ -451,7 +451,7 @@ version marker).
 - **FR-018**: `gaze init` MUST NOT require a `.gaze.yaml`
   configuration file — all gaze commands use sensible defaults.
 - **FR-019**: The Go module path MUST be migrated from
-  `github.com/jflowers/gaze` to `github.com/unbound-force/gaze`.
+  `github.com/unbound-force/gaze` to `github.com/unbound-force/gaze`.
   This includes `go.mod`, all `import` statements in `.go` files,
   and all documentation references.
 - **FR-020**: After the module path migration, `go build ./...`
@@ -482,7 +482,7 @@ version marker).
   be created as a prerequisite before the first release. This is
   a manual step, not automated by the release pipeline.
 - **FR-029**: The `gaze-reporter` agent MUST reference
-  `github.com/unbound-force/gaze` (not `github.com/jflowers/gaze`)
+  `github.com/unbound-force/gaze` (not `github.com/unbound-force/gaze`)
   in any `go install` fallback commands.
 
 ### Key Entities
@@ -526,7 +526,7 @@ version marker).
   requiring a `.gaze.yaml` file.
 - **SC-011**: After module path migration, `go build ./...` and
   `go test -short ./...` pass. No `.go` file contains an import
-  referencing `github.com/jflowers/gaze`.
+  referencing `github.com/unbound-force/gaze`.
 - **SC-012**: `goreleaser check` validates the `.goreleaser.yaml`
   configuration without errors.
 - **SC-013**: `goreleaser release --snapshot --clean` produces
@@ -581,7 +581,7 @@ The implementation proceeds in three phases:
 Phase 0: Module Path Migration
 ┌──────────────────────────────────────────┐
 │ go.mod + all imports                     │
-│ github.com/jflowers/gaze                 │
+│ github.com/unbound-force/gaze                 │
 │   → github.com/unbound-force/gaze        │
 └──────────────────┬───────────────────────┘
                    │ enables

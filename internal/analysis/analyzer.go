@@ -13,8 +13,8 @@ import (
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 
-	"github.com/jflowers/gaze/internal/loader"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/loader"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // Options configures the analysis behavior.

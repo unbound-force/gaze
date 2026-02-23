@@ -81,7 +81,7 @@ percentages
   extent; uses line+column boundary comparison for accuracy
 - [x] T013 [P] [US1] Implement `resolveFilePath()` and `readModulePath()`
   in `internal/crap/coverage.go` — maps coverage-profile import paths
-  (e.g., `github.com/jflowers/gaze/internal/crap/crap.go`) to absolute
+  (e.g., `github.com/unbound-force/gaze/internal/crap/crap.go`) to absolute
   filesystem paths by stripping the module prefix read from `go.mod`
 
 **Checkpoint**: Can parse any valid `go test -coverprofile` output and
@@ -290,7 +290,7 @@ to reflect their US2 ownership.
   non-nil `GazeCRAP` values)
 - [x] T054 [US4] Implement `gaze self-check` command in
   `cmd/gaze/main.go` — cobra command that runs the CRAP pipeline
-  on `github.com/jflowers/gaze/...`, reports: total CRAPload and
+  on `github.com/unbound-force/gaze/...`, reports: total CRAPload and
   worst-5 offenders by CRAP score. GazeCRAP integration (total
   GazeCRAPload, average contract coverage, worst-5 by GazeCRAP)
   deferred until the quality pipeline is wired into the CRAP

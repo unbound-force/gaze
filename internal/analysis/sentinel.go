@@ -6,7 +6,7 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // AnalyzeSentinels detects package-level sentinel error variables.

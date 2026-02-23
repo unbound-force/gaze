@@ -13,7 +13,7 @@
 
 **Purpose**: Project initialization and Go module structure
 
-- [x] T001 Initialize Go module `github.com/jflowers/gaze` with
+- [x] T001 Initialize Go module `github.com/unbound-force/gaze` with
   `go.mod` (Go 1.24), add `golang.org/x/tools` and
   `github.com/spf13/cobra` dependencies
 - [x] T002 [P] Create directory structure:

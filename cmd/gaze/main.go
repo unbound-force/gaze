@@ -12,15 +12,15 @@ import (
 	"strings"
 
 	charmlog "github.com/charmbracelet/log"
-	"github.com/jflowers/gaze/internal/analysis"
-	"github.com/jflowers/gaze/internal/classify"
-	"github.com/jflowers/gaze/internal/config"
-	"github.com/jflowers/gaze/internal/crap"
-	"github.com/jflowers/gaze/internal/docscan"
-	"github.com/jflowers/gaze/internal/loader"
-	"github.com/jflowers/gaze/internal/quality"
-	"github.com/jflowers/gaze/internal/report"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/internal/classify"
+	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/internal/loader"
+	"github.com/unbound-force/gaze/internal/quality"
+	"github.com/unbound-force/gaze/internal/report"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 	"github.com/spf13/cobra"
 	"golang.org/x/tools/go/packages"
 )
@@ -547,7 +547,7 @@ func buildContractCoverageFunc(
 }
 
 // extractShortPkgName returns the short package name from a full
-// import path. For "github.com/jflowers/gaze/internal/crap", it
+// import path. For "github.com/unbound-force/gaze/internal/crap", it
 // returns "crap".
 func extractShortPkgName(importPath string) string {
 	if idx := strings.LastIndex(importPath, "/"); idx >= 0 {

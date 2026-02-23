@@ -4,8 +4,8 @@ package classify
 import (
 	"fmt"
 
-	"github.com/jflowers/gaze/internal/config"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // baseConfidence is the neutral starting point for confidence
