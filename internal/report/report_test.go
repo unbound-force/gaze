@@ -437,3 +437,89 @@ func TestWriteJSON_EmptyResults_ValidAgainstSchema(t *testing.T) {
 		t.Errorf("empty JSON output does not conform to schema:\n%v", err)
 	}
 }
+
+// TestQualitySchema_Compiles verifies the QualitySchema constant is
+// valid JSON Schema that can be compiled without errors. This also
+// exercises the QualitySchema constant to prevent it from being
+// orphaned dead code (Zero-Waste Mandate).
+func TestQualitySchema_Compiles(t *testing.T) {
+	sch, err := jsonschema.UnmarshalJSON(strings.NewReader(QualitySchema))
+	if err != nil {
+		t.Fatalf("failed to parse QualitySchema JSON: %v", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("quality-schema.json", sch); err != nil {
+		t.Fatalf("failed to add quality schema resource: %v", err)
+	}
+	_, err = compiler.Compile("quality-schema.json")
+	if err != nil {
+		t.Fatalf("failed to compile QualitySchema: %v", err)
+	}
+}
+
+// TestQualitySchema_ValidatesSampleOutput validates sample quality
+// JSON output against the QualitySchema.
+func TestQualitySchema_ValidatesSampleOutput(t *testing.T) {
+	sch, err := jsonschema.UnmarshalJSON(strings.NewReader(QualitySchema))
+	if err != nil {
+		t.Fatalf("failed to parse QualitySchema JSON: %v", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("quality-schema.json", sch); err != nil {
+		t.Fatalf("failed to add quality schema resource: %v", err)
+	}
+	compiled, err := compiler.Compile("quality-schema.json")
+	if err != nil {
+		t.Fatalf("failed to compile QualitySchema: %v", err)
+	}
+
+	// Construct a sample quality report JSON.
+	sample := map[string]interface{}{
+		"quality_reports": []map[string]interface{}{
+			{
+				"test_function": "TestFoo",
+				"test_location": "foo_test.go:10",
+				"target_function": map[string]interface{}{
+					"package":   "pkg",
+					"function":  "Foo",
+					"signature": "func Foo() error",
+					"location":  "foo.go:5",
+				},
+				"contract_coverage": map[string]interface{}{
+					"percentage":        80.0,
+					"covered_count":     4,
+					"total_contractual": 5,
+				},
+				"over_specification": map[string]interface{}{
+					"count": 1,
+					"ratio": 0.2,
+				},
+				"assertion_detection_confidence": 95,
+				"metadata": map[string]interface{}{
+					"gaze_version": "0.1.0",
+					"go_version":   "go1.24",
+					"duration_ms":  100,
+				},
+			},
+		},
+		"quality_summary": map[string]interface{}{
+			"total_tests":                    1,
+			"average_contract_coverage":      80.0,
+			"total_over_specifications":      1,
+			"assertion_detection_confidence": 95,
+		},
+	}
+
+	sampleJSON, err := json.Marshal(sample)
+	if err != nil {
+		t.Fatalf("failed to marshal sample: %v", err)
+	}
+
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(sampleJSON))
+	if err != nil {
+		t.Fatalf("failed to parse sample JSON: %v", err)
+	}
+	if err := compiled.Validate(inst); err != nil {
+		t.Errorf("sample quality JSON does not conform to QualitySchema:\n%v", err)
+	}
+}

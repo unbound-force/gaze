@@ -173,12 +173,226 @@ const Schema = `{
           "type": "integer",
           "description": "Analysis duration in milliseconds"
         },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of when the analysis was run"
+        },
         "warnings": {
           "oneOf": [
             { "type": "array", "items": { "type": "string" } },
             { "type": "null" }
           ],
           "description": "Analysis warnings, if any"
+        }
+      }
+    }
+  }
+}`
+
+// QualitySchema is the JSON Schema (Draft 2020-12) for the Gaze
+// quality analysis JSON output. It documents the structure returned
+// by quality.WriteJSON.
+const QualitySchema = `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jflowers/gaze/quality-report.schema.json",
+  "title": "Gaze Quality Report",
+  "description": "Output schema for gaze quality --format=json",
+  "type": "object",
+  "required": ["quality_reports", "quality_summary"],
+  "properties": {
+    "quality_reports": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/QualityReport" }
+    },
+    "quality_summary": { "$ref": "#/$defs/PackageSummary" }
+  },
+  "$defs": {
+    "QualityReport": {
+      "type": "object",
+      "required": [
+        "test_function", "test_location", "target_function",
+        "contract_coverage", "over_specification",
+        "assertion_detection_confidence", "metadata"
+      ],
+      "properties": {
+        "test_function": {
+          "type": "string",
+          "description": "Name of the test function"
+        },
+        "test_location": {
+          "type": "string",
+          "description": "Source position (file:line)"
+        },
+        "target_function": { "$ref": "#/$defs/FunctionTarget" },
+        "contract_coverage": { "$ref": "#/$defs/ContractCoverage" },
+        "over_specification": { "$ref": "#/$defs/OverSpecificationScore" },
+        "ambiguous_effects": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/SideEffectRef" } },
+            { "type": "null" }
+          ],
+          "description": "Effects excluded from metrics due to ambiguous classification"
+        },
+        "unmapped_assertions": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/AssertionMapping" } },
+            { "type": "null" }
+          ],
+          "description": "Assertions that could not be linked to any side effect"
+        },
+        "assertion_detection_confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Fraction of test assertions successfully pattern-matched (0-100)"
+        },
+        "metadata": { "$ref": "#/$defs/Metadata" }
+      }
+    },
+    "FunctionTarget": {
+      "type": "object",
+      "required": ["package", "function", "signature", "location"],
+      "properties": {
+        "package": { "type": "string" },
+        "function": { "type": "string" },
+        "receiver": { "type": "string" },
+        "signature": { "type": "string" },
+        "location": { "type": "string" }
+      }
+    },
+    "ContractCoverage": {
+      "type": "object",
+      "required": ["percentage", "covered_count", "total_contractual"],
+      "properties": {
+        "percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Coverage ratio (0-100)"
+        },
+        "covered_count": {
+          "type": "integer",
+          "description": "Number of contractual effects asserted on"
+        },
+        "total_contractual": {
+          "type": "integer",
+          "description": "Total number of contractual effects"
+        },
+        "gaps": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/SideEffectRef" } },
+            { "type": "null" }
+          ],
+          "description": "Contractual effects NOT asserted on"
+        }
+      }
+    },
+    "OverSpecificationScore": {
+      "type": "object",
+      "required": ["count", "ratio"],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "description": "Number of incidental side effects asserted on"
+        },
+        "ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Incidental assertions / total assertions"
+        },
+        "incidental_assertions": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/AssertionMapping" } },
+            { "type": "null" }
+          ]
+        },
+        "suggestions": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "null" }
+          ],
+          "description": "Actionable advice per incidental assertion"
+        }
+      }
+    },
+    "AssertionMapping": {
+      "type": "object",
+      "required": ["assertion_location", "assertion_type", "confidence"],
+      "properties": {
+        "assertion_location": {
+          "type": "string",
+          "description": "Source position (file:line)"
+        },
+        "assertion_type": {
+          "type": "string",
+          "enum": ["equality", "error_check", "diff_check", "custom"],
+          "description": "Kind of assertion"
+        },
+        "side_effect_id": {
+          "type": "string",
+          "description": "Stable ID of the mapped side effect"
+        },
+        "confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Mapping confidence (0-100)"
+        }
+      }
+    },
+    "SideEffectRef": {
+      "type": "object",
+      "required": ["id", "type", "tier", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "tier": { "type": "string" },
+        "location": { "type": "string" },
+        "description": { "type": "string" },
+        "target": { "type": "string" }
+      }
+    },
+    "PackageSummary": {
+      "type": "object",
+      "required": [
+        "total_tests", "average_contract_coverage",
+        "total_over_specifications", "assertion_detection_confidence"
+      ],
+      "properties": {
+        "total_tests": { "type": "integer" },
+        "average_contract_coverage": {
+          "type": "number",
+          "description": "Mean coverage across tests (0-100)"
+        },
+        "total_over_specifications": { "type": "integer" },
+        "worst_coverage_tests": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/QualityReport" } },
+            { "type": "null" }
+          ],
+          "description": "Bottom 5 tests by coverage"
+        },
+        "assertion_detection_confidence": { "type": "integer" }
+      }
+    },
+    "Metadata": {
+      "type": "object",
+      "required": ["gaze_version", "go_version", "duration_ms"],
+      "properties": {
+        "gaze_version": { "type": "string" },
+        "go_version": { "type": "string" },
+        "duration_ms": { "type": "integer" },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "warnings": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "null" }
+          ]
         }
       }
     }

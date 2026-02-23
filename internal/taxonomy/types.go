@@ -195,19 +195,27 @@ func (ft FunctionTarget) QualifiedName() string {
 type Metadata struct {
 	GazeVersion string        `json:"gaze_version"`
 	GoVersion   string        `json:"go_version"`
+	Timestamp   time.Time     `json:"-"`
 	Duration    time.Duration `json:"-"`
 	Warnings    []string      `json:"warnings"`
 }
 
-// MarshalJSON customizes JSON encoding to use duration_ms.
+// MarshalJSON customizes JSON encoding to use duration_ms and
+// ISO 8601 timestamp.
 func (m Metadata) MarshalJSON() ([]byte, error) {
 	type Alias Metadata
+	ts := ""
+	if !m.Timestamp.IsZero() {
+		ts = m.Timestamp.UTC().Format(time.RFC3339)
+	}
 	return json.Marshal(&struct {
 		Alias
-		DurationMS int64 `json:"duration_ms"`
+		DurationMS int64  `json:"duration_ms"`
+		Timestamp  string `json:"timestamp,omitempty"`
 	}{
 		Alias:      Alias(m),
 		DurationMS: m.Duration.Milliseconds(),
+		Timestamp:  ts,
 	})
 }
 
@@ -221,6 +229,118 @@ type AnalysisResult struct {
 
 	// Metadata contains run information.
 	Metadata Metadata `json:"metadata"`
+}
+
+// AssertionType enumerates the kinds of test assertions Gaze can detect.
+type AssertionType string
+
+// Assertion type constants.
+const (
+	AssertionEquality   AssertionType = "equality"
+	AssertionErrorCheck AssertionType = "error_check"
+	AssertionDiffCheck  AssertionType = "diff_check"
+	AssertionCustom     AssertionType = "custom"
+)
+
+// AssertionMapping links a test assertion to the side effect it verifies.
+type AssertionMapping struct {
+	// AssertionLocation is the source position (file:line) of the assertion.
+	AssertionLocation string `json:"assertion_location"`
+
+	// AssertionType is the kind of assertion (equality, error_check, etc.).
+	AssertionType AssertionType `json:"assertion_type"`
+
+	// SideEffectID is the stable ID of the mapped side effect.
+	SideEffectID string `json:"side_effect_id"`
+
+	// Confidence is the mapping confidence (0-100).
+	Confidence int `json:"confidence"`
+}
+
+// ContractCoverage is the primary test quality metric: the ratio of
+// contractual side effects that the test asserts on.
+type ContractCoverage struct {
+	// Percentage is the coverage ratio (0-100).
+	Percentage float64 `json:"percentage"`
+
+	// CoveredCount is the number of contractual effects asserted on.
+	CoveredCount int `json:"covered_count"`
+
+	// TotalContractual is the total number of contractual effects.
+	TotalContractual int `json:"total_contractual"`
+
+	// Gaps lists contractual effects that are NOT asserted on.
+	Gaps []SideEffect `json:"gaps"`
+}
+
+// OverSpecificationScore measures how many incidental side effects
+// the test asserts on, indicating refactoring fragility.
+type OverSpecificationScore struct {
+	// Count is the number of incidental side effects asserted on.
+	Count int `json:"count"`
+
+	// Ratio is incidental assertions / total assertions (0.0-1.0).
+	Ratio float64 `json:"ratio"`
+
+	// IncidentalAssertions lists mappings to incidental effects.
+	IncidentalAssertions []AssertionMapping `json:"incidental_assertions"`
+
+	// Suggestions provides actionable advice per incidental assertion.
+	Suggestions []string `json:"suggestions"`
+}
+
+// QualityReport is the complete test quality output for one
+// test-target pair.
+type QualityReport struct {
+	// TestFunction is the name of the test function.
+	TestFunction string `json:"test_function"`
+
+	// TestLocation is the source position of the test function.
+	TestLocation string `json:"test_location"`
+
+	// TargetFunction identifies the function under test.
+	TargetFunction FunctionTarget `json:"target_function"`
+
+	// ContractCoverage is the primary coverage metric.
+	ContractCoverage ContractCoverage `json:"contract_coverage"`
+
+	// OverSpecification is the fragility metric.
+	OverSpecification OverSpecificationScore `json:"over_specification"`
+
+	// AmbiguousEffects lists side effects excluded from metrics
+	// due to ambiguous classification.
+	AmbiguousEffects []SideEffect `json:"ambiguous_effects"`
+
+	// UnmappedAssertions lists assertions that could not be linked
+	// to any detected side effect.
+	UnmappedAssertions []AssertionMapping `json:"unmapped_assertions"`
+
+	// AssertionDetectionConfidence indicates the fraction of test
+	// assertions that were successfully pattern-matched (0-100).
+	AssertionDetectionConfidence int `json:"assertion_detection_confidence"`
+
+	// Metadata contains run information.
+	Metadata Metadata `json:"metadata"`
+}
+
+// PackageSummary holds aggregate quality metrics for a package.
+type PackageSummary struct {
+	// TotalTests is the number of test functions analyzed.
+	TotalTests int `json:"total_tests"`
+
+	// AverageContractCoverage is the mean coverage across tests.
+	AverageContractCoverage float64 `json:"average_contract_coverage"`
+
+	// TotalOverSpecifications is the sum of incidental assertion
+	// counts across all tests.
+	TotalOverSpecifications int `json:"total_over_specifications"`
+
+	// WorstCoverageTests lists the bottom 5 tests by coverage.
+	WorstCoverageTests []QualityReport `json:"worst_coverage_tests"`
+
+	// AssertionDetectionConfidence is the aggregate detection
+	// confidence across all tests.
+	AssertionDetectionConfidence int `json:"assertion_detection_confidence"`
 }
 
 // GenerateID produces a stable, deterministic ID for a side effect
