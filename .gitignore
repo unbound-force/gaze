@@ -10,6 +10,13 @@ cover.out
 megalinter-reports/
 mega-linter.log
 
+# GoReleaser
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
 # IDE / editor
 .idea/
 .vscode/

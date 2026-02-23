@@ -30,8 +30,12 @@ var logger = charmlog.NewWithOptions(os.Stderr, charmlog.Options{
 	ReportTimestamp: false,
 })
 
-// Set by build flags.
-var version = "dev"
+// Set by build flags (-ldflags "-X main.version=... -X main.commit=... -X main.date=...").
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	root := &cobra.Command{
@@ -42,6 +46,10 @@ and measures whether unit tests assert on all contractual changes
 produced by their test targets.`,
 		Version: version,
 	}
+	// Override the default version template to include commit and build date.
+	root.SetVersionTemplate(
+		fmt.Sprintf("gaze version %s (commit %s, built %s)\n", version, commit, date),
+	)
 
 	root.AddCommand(newAnalyzeCmd())
 	root.AddCommand(newCrapCmd())

@@ -216,3 +216,10 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 - errcheck, govet, staticcheck, ineffassign, unused, misspell
 
 Formatters: gofmt, goimports.
+
+## Active Technologies
+- Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI), (005-gaze-opencode-integration)
+- Filesystem only (embedded assets via `embed.FS`) (005-gaze-opencode-integration)
+
+## Recent Changes
+- 005-gaze-opencode-integration: Added Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI),

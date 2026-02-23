@@ -12,6 +12,15 @@ OpenCode workflows via `gaze init`, a `/gaze` command, and a
 Linux. Migrate the Go module path from `github.com/unbound-force/gaze`
 to `github.com/unbound-force/gaze`."
 
+## Clarifications
+
+### Session 2026-02-23
+
+- Q: Should drift detection (FR-017) use a Go test, go generate, or direct embed from .opencode/? → A: Go test that compares `.opencode/` files to embedded assets at test time.
+- Q: Does the upstream `unbound-force/gaze` repo already exist, or must it be created as part of this work? → A: Upstream repo already exists with current code; migration only changes `go.mod` and imports.
+- Q: What should the first release version number be? → A: `v0.1.0` (pre-1.0, signals API may still change).
+- Q: Which GoReleaser major version should be used? → A: GoReleaser v2 (current stable, `goreleaser/goreleaser-action@v7`). Uses `homebrew_casks` (not deprecated `brews`).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Module Path Migration (Priority: P0)
@@ -73,9 +82,10 @@ configuration produces the expected archives without publishing.
 
 1. **Given** a GoReleaser configuration exists, **When**
    `goreleaser check` runs, **Then** the configuration is valid.
-2. **Given** a tag `v0.1.0` is pushed, **When** the release
-   workflow runs, **Then** GoReleaser builds binaries for
-   darwin/amd64, darwin/arm64, linux/amd64, and linux/arm64.
+2. **Given** the initial tag `v0.1.0` is pushed (the planned first
+   release), **When** the release workflow runs, **Then** GoReleaser
+   builds binaries for darwin/amd64, darwin/arm64, linux/amd64,
+   and linux/arm64.
 3. **Given** the release builds, **When** the binaries are
    produced, **Then** each binary reports the correct version
    via `gaze --version` (e.g., `gaze version v0.1.0`).
@@ -445,9 +455,10 @@ version marker).
   MUST still report the results from commands that succeeded.
 - **FR-016**: The reporter MUST have tools configuration:
   `read: true`, `bash: true`, all others false.
-- **FR-017**: A CI or build-time test MUST verify that the
-  embedded assets in `internal/scaffold/assets/` are identical
-  to the corresponding files in `.opencode/`, preventing drift.
+- **FR-017**: A Go test MUST verify that the embedded assets in
+  `internal/scaffold/assets/` are identical to the corresponding
+  files in `.opencode/`, preventing drift. This test runs as part
+  of `go test ./...` and requires no separate `go generate` step.
 - **FR-018**: `gaze init` MUST NOT require a `.gaze.yaml`
   configuration file — all gaze commands use sensible defaults.
 - **FR-019**: The Go module path MUST be migrated from
@@ -555,14 +566,19 @@ version marker).
 
 ### Infrastructure Prerequisites
 
+- **`unbound-force/gaze` repository**: Already exists on GitHub
+  with the current codebase. The module path migration (US1) only
+  changes `go.mod` and import statements to match this upstream.
 - **`unbound-force/homebrew-tap` repository**: Must be created
   manually on GitHub before the first release. GoReleaser pushes
   the formula to this repo.
 - **`HOMEBREW_TAP_GITHUB_TOKEN` secret**: Must be configured in
   the `unbound-force/gaze` repository settings with push access
   to `unbound-force/homebrew-tap`.
-- **GoReleaser**: Must be available in the GitHub Actions runner
-  (installed via `goreleaser/goreleaser-action`).
+- **GoReleaser v2**: Must be available in the GitHub Actions
+  runner (installed via `goreleaser/goreleaser-action@v7`).
+  Configuration uses the v2 schema with `homebrew_casks` (not
+  the deprecated `brews`).
 
 ### Implementation Phases
 
