@@ -80,7 +80,7 @@ gaze analyze --classify --config=.gaze.yaml --contractual-threshold=90 ./interna
 
 Example output:
 
-```
+```text
 === ParseConfig ===
     func ParseConfig(path string) (*Config, error)
     internal/config/config.go:15:1
@@ -128,7 +128,7 @@ gaze crap --format=json ./...
 
 **CRAP formula:**
 
-```
+```text
 CRAP(m) = complexity^2 * (1 - coverage/100)^3 + complexity
 ```
 
@@ -136,7 +136,7 @@ A function with complexity 5 and 0% coverage has CRAP = 30. The same function wi
 
 Example output:
 
-```
+```text
 CRAP    COMPLEXITY  COVERAGE  FUNCTION       FILE
 ----    ----------  --------  --------       ----
 30.0 *  5           0.0%      ParseConfig    internal/config/config.go:15
@@ -201,6 +201,7 @@ gaze schema
 Scan the repository for Markdown documentation files and output a prioritized list as JSON. Useful as input to the `/classify-docs` OpenCode command for document-enhanced classification.
 
 Files are prioritized by proximity to the target package:
+
 1. Same directory as the target package (highest relevance)
 2. Module root
 3. Other locations
@@ -258,7 +259,7 @@ JSON output conforms to documented schemas. Use `gaze schema` to print the analy
 
 ## Architecture
 
-```
+```text
 cmd/gaze/              CLI entry point (cobra)
 internal/
   analysis/            Side effect detection engine

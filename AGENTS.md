@@ -41,7 +41,7 @@ All non-trivial feature work **must** go through the Speckit pipeline. The const
 
 The workflow is a strict, sequential pipeline. Each stage has a corresponding `/speckit.*` command:
 
-```
+```text
 constitution → specify → clarify → plan → tasks → analyze → checklist → implement
 ```
 
@@ -71,7 +71,7 @@ constitution → specify → clarify → plan → tasks → analyze → checklis
 
 Specs are numbered with 3-digit zero-padded prefixes and stored under `specs/`:
 
-```
+```text
 .specify/
   memory/
     constitution.md              # Governance document (highest authority)
@@ -145,7 +145,7 @@ Use `testing.Short()` to guard tests that spawn external `go test` processes or 
 
 Single binary CLI with layered internal packages:
 
-```
+```text
 cmd/gaze/              CLI layer (Cobra commands, Bubble Tea TUI)
 internal/
   analysis/            Core side effect detection engine (AST + SSA)
