@@ -772,7 +772,8 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// Use maxOverSpecification threshold only — set high enough
 	// to always pass. Contract coverage is 0% with current SSA
-	// matching limitations, so coverage thresholds would fail.
+	// matching limitations (TODO #5), so coverage thresholds
+	// would fail.
 	err := runQuality(qualityParams{
 		pkgPath:              "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
 		format:               "text",
@@ -790,13 +791,17 @@ func TestRunQuality_ThresholdFail(t *testing.T) {
 	err := runQuality(qualityParams{
 		pkgPath:             "github.com/jflowers/gaze/internal/quality/testdata/src/welltested",
 		format:              "text",
-		minContractCoverage: 100, // strict — may fail
+		minContractCoverage: 100, // strict — contract coverage is below 100%
 		stdout:              &stdout,
 		stderr:              &stderr,
 	})
-	// This may or may not fail depending on coverage computation.
-	// The test verifies the threshold mechanism works without panic.
-	_ = err
+	// With minContractCoverage=100%, the threshold should fail
+	// because current SSA mapping produces <100% contract coverage.
+	// If all tests somehow achieve 100% in the future, this test
+	// should be updated to use a stricter fixture.
+	if err == nil {
+		t.Error("expected threshold failure with minContractCoverage=100%%")
+	}
 }
 
 func TestRunQuality_BadPackage(t *testing.T) {

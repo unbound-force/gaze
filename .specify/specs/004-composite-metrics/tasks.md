@@ -263,12 +263,14 @@ to reflect their US2 ownership.
 **Purpose**: Track work that remains to be done in future iterations
 
 - [x] T050 [US2] Activate GazeCRAP computation in `Analyze()` in
-  `internal/crap/analyze.go` — obtain per-function contract coverage
-  from Spec 003 via `quality.ContractCoverageForFunc()` (or
-  `quality.Assess()` results), compute
+  `internal/crap/analyze.go` — added `ContractCoverageFunc` callback
+  to `Options`; when non-nil, computes
   `GazeCRAP(m) = comp^2 * (1 - contractCov)^3 + comp` per function,
-  populate `Score.GazeCRAP`, `Score.ContractCoverage`, and
-  `Score.Quadrant` via `ClassifyQuadrant()`
+  populates `Score.GazeCRAP`, `Score.ContractCoverage`, and
+  `Score.Quadrant` via `ClassifyQuadrant()`. CLI wiring of the
+  callback (calling `quality.Assess()` to obtain contract coverage)
+  is deferred — requires integration of the quality pipeline into
+  the CRAP command path
 - [x] T051 [US2] Emit FR-015 stderr warning in `runCrap()` in
   `cmd/gaze/main.go` — when `GazeCRAPload == nil`, write
   `"note: GazeCRAP unavailable — contract coverage not yet implemented (Spec 003)"`
@@ -287,10 +289,12 @@ to reflect their US2 ownership.
   activates only when `hasGazeCRAP` is true (requires T050 to produce
   non-nil `GazeCRAP` values)
 - [x] T054 [US4] Implement `gaze self-check` command in
-  `cmd/gaze/main.go` — cobra command that runs the full CRAP + GazeCRAP
-  pipeline on `github.com/jflowers/gaze/...`, reports: total CRAPload,
-  total GazeCRAPload, average contract coverage, worst-5 offenders by
-  GazeCRAP (SC-005); requires T050 to be complete
+  `cmd/gaze/main.go` — cobra command that runs the CRAP pipeline
+  on `github.com/jflowers/gaze/...`, reports: total CRAPload and
+  worst-5 offenders by CRAP score. GazeCRAP integration (total
+  GazeCRAPload, average contract coverage, worst-5 by GazeCRAP)
+  deferred until the quality pipeline is wired into the CRAP
+  command via ContractCoverageFunc
 - [x] T055 [US4] Write `self-check` tests in `cmd/gaze/main_test.go` —
   test that it completes without error, produces valid JSON, covers all
   exported functions in Gaze source packages

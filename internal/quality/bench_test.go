@@ -82,7 +82,10 @@ func BenchmarkDetectAssertions(b *testing.B) {
 // shared test cache for efficiency.
 func loadBenchPkg(b *testing.B, name string) *packages.Package {
 	b.Helper()
-	pkg, err := cachedTestPackage(name)
+	if testFixtureCache == nil {
+		b.Fatal("testFixtureCache is nil — TestMain was not called")
+	}
+	pkg, err := testFixtureCache.get(name)
 	if err != nil {
 		b.Fatalf("failed to load test package %q: %v", name, err)
 	}

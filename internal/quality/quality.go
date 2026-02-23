@@ -89,11 +89,10 @@ func Assess(
 	}
 
 	// Step 2: Build SSA for the test package.
-	ssaProg, ssaPkg, err := BuildTestSSA(testPkg)
+	_, ssaPkg, err := BuildTestSSA(testPkg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("building test SSA: %w", err)
 	}
-	_ = ssaProg // reserved for future cross-package analysis
 
 	// Step 3: For each test function, infer the target, detect
 	// assertions, map them, and compute metrics.

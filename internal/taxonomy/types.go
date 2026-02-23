@@ -238,6 +238,7 @@ type AssertionType string
 const (
 	AssertionEquality   AssertionType = "equality"
 	AssertionErrorCheck AssertionType = "error_check"
+	AssertionNilCheck   AssertionType = "nil_check"
 	AssertionDiffCheck  AssertionType = "diff_check"
 	AssertionCustom     AssertionType = "custom"
 )

@@ -285,6 +285,13 @@ const QualitySchema = `{
             { "type": "null" }
           ],
           "description": "Contractual effects NOT asserted on"
+        },
+        "discarded_returns": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/SideEffectRef" } },
+            { "type": "null" }
+          ],
+          "description": "Contractual return/error effects explicitly discarded (e.g., _ = target())"
         }
       }
     },
@@ -327,7 +334,7 @@ const QualitySchema = `{
         },
         "assertion_type": {
           "type": "string",
-          "enum": ["equality", "error_check", "diff_check", "custom"],
+          "enum": ["equality", "error_check", "nil_check", "diff_check", "custom"],
           "description": "Kind of assertion"
         },
         "side_effect_id": {

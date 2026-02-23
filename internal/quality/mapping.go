@@ -152,7 +152,7 @@ func FindTargetCall(
 			if callee == nil {
 				continue
 			}
-			if callee == targetFunc || callee.Name() == targetFunc.Name() {
+			if callee == targetFunc || sameFunction(callee, targetFunc) {
 				return call
 			}
 		}
@@ -426,6 +426,22 @@ func filterEffectsByType(
 	return filtered
 }
 
+// sameFunction checks whether two SSA functions refer to the same
+// source function by comparing both name and package path. This
+// avoids false matches when different packages have functions with
+// the same name (e.g., mypackage.Parse vs strconv.Parse).
+func sameFunction(a, b *ssa.Function) bool {
+	if a.Name() != b.Name() {
+		return false
+	}
+	aPkg := a.Package()
+	bPkg := b.Package()
+	if aPkg == nil || bPkg == nil {
+		return false
+	}
+	return aPkg.Pkg.Path() == bPkg.Pkg.Path()
+}
+
 // mapKindToType converts an AssertionKind to an AssertionType for
 // the taxonomy mapping struct.
 func mapKindToType(kind AssertionKind) taxonomy.AssertionType {
@@ -438,6 +454,8 @@ func mapKindToType(kind AssertionKind) taxonomy.AssertionType {
 		return taxonomy.AssertionEquality
 	case AssertionKindTestifyNoError:
 		return taxonomy.AssertionErrorCheck
+	case AssertionKindTestifyNilCheck:
+		return taxonomy.AssertionNilCheck
 	case AssertionKindGoCmpDiff:
 		return taxonomy.AssertionDiffCheck
 	default:
