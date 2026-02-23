@@ -91,7 +91,7 @@ the correct direction.
    classifies side effects of a store function, **Then** the
    database write side effect gains confidence from the document
    signal, and the confidence score increases.
-2. **Given** a repository with a `.specify/specs/*/spec.md` that
+2. **Given** a repository with a `specs/*/spec.md` that
    states "FR-003: System MUST return validation errors for
    invalid input", **When** Gaze classifies a validation
    function's error return, **Then** the error return is

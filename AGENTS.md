@@ -69,19 +69,19 @@ constitution → specify → clarify → plan → tasks → analyze → checklis
 
 ### Spec Organization
 
-Specs are numbered with 3-digit zero-padded prefixes and stored under `.specify/specs/`:
+Specs are numbered with 3-digit zero-padded prefixes and stored under `specs/`:
 
 ```
 .specify/
   memory/
     constitution.md              # Governance document (highest authority)
-  specs/
-    001-side-effect-detection/   # spec.md, plan.md, tasks.md
-    002-contract-classification/ # spec.md
-    003-test-quality-metrics/    # spec.md
-    004-composite-metrics/       # spec.md
   templates/                     # Templates for all artifact types
   scripts/bash/                  # Automation scripts
+specs/
+  001-side-effect-detection/     # spec.md, plan.md, tasks.md
+  002-contract-classification/   # spec.md
+  003-test-quality-metrics/      # spec.md
+  004-composite-metrics/         # spec.md
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -92,7 +92,7 @@ When a task from `tasks.md` is completed during implementation, its checkbox **m
 
 ### Spec Commit Gate
 
-All spec artifacts (`spec.md`, `plan.md`, `tasks.md`, and any other files under `.specify/specs/`) **must** be committed and pushed before implementation begins. This ensures the planning record is preserved in version control before code changes start, and provides a clean baseline to diff against if implementation drifts from the plan. Run `/speckit.implement` only after the spec commit is on the remote.
+All spec artifacts (`spec.md`, `plan.md`, `tasks.md`, and any other files under `specs/`) **must** be committed and pushed before implementation begins. This ensures the planning record is preserved in version control before code changes start, and provides a clean baseline to diff against if implementation drifts from the plan. Run `/speckit.implement` only after the spec commit is on the remote.
 
 ### Constitution Check
 

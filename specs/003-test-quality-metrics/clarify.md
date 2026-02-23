@@ -1,6 +1,6 @@
 # Clarification: Test Quality Metrics & Reporting
 
-**Spec**: `.specify/specs/003-test-quality-metrics/spec.md`
+**Spec**: `specs/003-test-quality-metrics/spec.md`
 **Date**: 2026-02-22
 **Status**: Resolved
 

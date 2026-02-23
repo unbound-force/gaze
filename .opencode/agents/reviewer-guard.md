@@ -21,7 +21,7 @@ Before reviewing, read:
 
 1. `AGENTS.md` — Behavioral Constraints (especially Intent Drift Detection, Zero-Waste Mandate, Neighborhood Rule)
 2. `.specify/memory/constitution.md` — Core Principles (Accuracy, Minimal Assumptions, Actionable Output)
-3. The relevant `spec.md`, `plan.md`, and `tasks.md` under `.specify/specs/` for the current work
+3. The relevant `spec.md`, `plan.md`, and `tasks.md` under `specs/` for the current work
 
 ## Review Scope
 

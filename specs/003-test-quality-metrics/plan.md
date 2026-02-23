@@ -53,7 +53,7 @@ threshold enforcement.
 ### Documentation (this feature)
 
 ```text
-.specify/specs/003-test-quality-metrics/
+specs/003-test-quality-metrics/
 ├── spec.md              # Feature specification (complete)
 ├── clarify.md           # Resolved ambiguities and decisions
 ├── plan.md              # This file

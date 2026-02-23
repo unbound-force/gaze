@@ -1,7 +1,7 @@
 # Implementation Plan: Composite Quality Metrics
 
 **Feature Branch**: `004-composite-metrics`  
-**Spec**: `.specify/specs/004-composite-metrics/spec.md`  
+**Spec**: `specs/004-composite-metrics/spec.md`  
 **Status**: Retroactive — documents what was built prior to establishing the
 Speckit pipeline. Implementation of US1 (classic CRAP), US2 scaffolding, and
 US5 (CI enforcement) landed directly on `main` via commits `4b37981`,

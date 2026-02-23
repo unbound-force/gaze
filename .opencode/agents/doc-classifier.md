@@ -73,7 +73,7 @@ Extract signals from the documentation content and assign weights:
 |--------|-------------|---------|
 | `readme` | +5 to +15 | Module README explicitly names the function or its behavior |
 | `architecture_doc` | +5 to +20 | Architecture/design doc declares this function's contract |
-| `specify_file` | +5 to +25 | `.specify/specs/` files document this as a required behavior |
+| `specify_file` | +5 to +25 | `specs/` files document this as a required behavior |
 | `api_doc` | +5 to +20 | API reference doc lists this function's return values or mutations |
 | `other_md` | +2 to +10 | Other markdown files reference this function |
 
@@ -140,7 +140,7 @@ modify its classification. Return it unchanged with a note in the
 {
   "source": "specify_file",
   "weight": 20,
-  "source_file": ".specify/specs/001-side-effect-detection/spec.md",
+  "source_file": "specs/001-side-effect-detection/spec.md",
   "excerpt": "GetUser MUST return the user record as the primary contract",
   "reasoning": "Spec explicitly names GetUser's return as a required contract behavior"
 }

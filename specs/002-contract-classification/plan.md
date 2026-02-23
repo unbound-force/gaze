@@ -1,7 +1,7 @@
 # Implementation Plan: Contractual Classification & Confidence Scoring
 
-**Branch**: `002-contract-classification` | **Date**: 2026-02-21 | **Spec**: `.specify/specs/002-contract-classification/spec.md`
-**Input**: Feature specification from `.specify/specs/002-contract-classification/spec.md`
+**Branch**: `002-contract-classification` | **Date**: 2026-02-21 | **Spec**: `specs/002-contract-classification/spec.md`
+**Input**: Feature specification from `specs/002-contract-classification/spec.md`
 
 ## Summary
 
@@ -46,7 +46,7 @@ settings. All four user stories are delivered as a single unit.
 ### Documentation (this feature)
 
 ```text
-.specify/specs/002-contract-classification/
+specs/002-contract-classification/
 ├── spec.md              # Feature specification (complete)
 ├── plan.md              # This file
 └── tasks.md             # Task breakdown (next step)

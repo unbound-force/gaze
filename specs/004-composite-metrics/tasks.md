@@ -1,6 +1,6 @@
 # Tasks: Composite Quality Metrics (CRAP / GazeCRAP)
 
-**Input**: Design documents from `.specify/specs/004-composite-metrics/`  
+**Input**: Design documents from `specs/004-composite-metrics/`  
 **Prerequisites**: plan.md (required), spec.md (required)
 
 **Note**: This task list is **retroactive**. Implementation of Phases 1–5

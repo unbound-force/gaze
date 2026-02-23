@@ -1,6 +1,6 @@
 # Tasks: Contractual Classification & Confidence Scoring
 
-**Input**: Design documents from `.specify/specs/002-contract-classification/`
+**Input**: Design documents from `specs/002-contract-classification/`
 **Prerequisites**: plan.md (required), spec.md (required)
 
 ## Format: `[ID] [P?] [Story] Description`
