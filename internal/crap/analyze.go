@@ -179,7 +179,12 @@ func generateCoverProfile(moduleDir string, patterns []string) (string, error) {
 	// (e.g., "./...") are syntactically distinct from flags.
 	// Note: do NOT use "--" separator here — go test doesn't
 	// support POSIX-style "--" and would ignore the patterns.
-	args := []string{"test", "-coverprofile=" + profilePath}
+	//
+	// The -short flag skips heavyweight tests (e.g., self-check)
+	// that would re-invoke go test, causing recursive subprocess
+	// chains. Coverage data from unit + integration tests is
+	// sufficient for CRAP score computation.
+	args := []string{"test", "-short", "-coverprofile=" + profilePath}
 	args = append(args, patterns...)
 
 	cmd := exec.Command("go", args...)

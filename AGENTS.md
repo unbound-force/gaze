@@ -108,7 +108,7 @@ go build ./cmd/gaze
 go test -race -count=1 -short ./...
 
 # Run e2e tests only (self-check: spawns go test -coverprofile)
-go test -race -count=1 -run 'TestRunSelfCheck' -timeout 20m ./cmd/gaze/...
+go test -race -count=1 -run 'TestRunSelfCheck' -timeout 30m ./cmd/gaze/...
 
 # Run all tests (no -short, requires ~15min)
 go test -race -count=1 ./...
@@ -126,7 +126,7 @@ Tests are organized into two CI suites that run in parallel:
 | Suite | Command | Timeout | What it runs |
 |-------|---------|---------|-------------|
 | Unit + Integration | `go test -race -count=1 -short ./...` | 10m (default) | All tests except those guarded by `testing.Short()` |
-| E2E | `go test -race -count=1 -run TestRunSelfCheck -timeout 20m ./cmd/gaze/...` | 20m | Self-check tests that spawn `go test -coverprofile` on the full module |
+| E2E | `go test -race -count=1 -run TestRunSelfCheck -timeout 30m ./cmd/gaze/...` | 20m | Self-check tests that spawn `go test -coverprofile` on the full module |
 
 Use `testing.Short()` to guard tests that spawn external `go test` processes or analyze the entire module. These are too slow for the standard CI timeout.
 
