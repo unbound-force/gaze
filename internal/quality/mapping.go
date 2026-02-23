@@ -1,5 +1,3 @@
-// Package quality computes test quality metrics by mapping test
-// assertions to detected side effects.
 package quality
 
 import (
@@ -179,7 +177,7 @@ func traceTargetValues(
 
 	// Trace mutations (receiver and pointer arg values read after
 	// the call).
-	traceMutations(targetCall, effects, testFunc, valueNameToEffectID)
+	traceMutations(targetCall, effects, valueNameToEffectID)
 
 	return valueNameToEffectID
 }
@@ -245,7 +243,6 @@ func traceReturnValues(
 func traceMutations(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
-	_ *ssa.Function, // testFunc reserved for future use
 	valueNameToEffectID map[string]string,
 ) {
 	mutationEffects := filterEffectsByType(effects,

@@ -1,5 +1,3 @@
-// Package quality computes test quality metrics by mapping test
-// assertions to detected side effects.
 package quality
 
 import (

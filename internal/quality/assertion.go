@@ -1,11 +1,10 @@
-// Package quality computes test quality metrics by mapping test
-// assertions to detected side effects.
 package quality
 
 import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -76,20 +75,22 @@ func DetectAssertions(
 	maxDepth int,
 ) []AssertionSite {
 	d := &assertionDetector{
-		pkg:      pkg,
-		fset:     pkg.Fset,
-		maxDepth: maxDepth,
-		visited:  make(map[string]bool),
+		pkg:       pkg,
+		fset:      pkg.Fset,
+		maxDepth:  maxDepth,
+		visited:   make(map[string]bool),
+		funcDecls: buildFuncDeclIndex(pkg),
 	}
 	return d.detect(testDecl, 0)
 }
 
 // assertionDetector holds state for the assertion detection walk.
 type assertionDetector struct {
-	pkg      *packages.Package
-	fset     *token.FileSet
-	maxDepth int
-	visited  map[string]bool // prevents infinite recursion
+	pkg       *packages.Package
+	fset      *token.FileSet
+	maxDepth  int
+	visited   map[string]bool          // prevents infinite recursion
+	funcDecls map[string]*ast.FuncDecl // cached function declarations by name
 }
 
 // detect walks a function declaration for assertion patterns.
@@ -355,8 +356,8 @@ func (d *assertionDetector) detectGoCmpAssign(
 }
 
 // isTRunCall checks if a call expression is t.Run(name, func).
-// It verifies the receiver is a conventional testing parameter
-// name (t, tb, tt) to avoid matching unrelated .Run() calls.
+// It uses type information to verify the receiver implements
+// testing.TB (covers *testing.T, *testing.B, and *testing.F).
 func (d *assertionDetector) isTRunCall(call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -365,12 +366,38 @@ func (d *assertionDetector) isTRunCall(call *ast.CallExpr) bool {
 	if sel.Sel.Name != "Run" || len(call.Args) != 2 {
 		return false
 	}
-	// Verify the receiver is a testing parameter.
-	ident, ok := sel.X.(*ast.Ident)
+	return d.isTestingReceiver(sel.X)
+}
+
+// isTestingReceiver checks whether an expression has a type from
+// the "testing" package (e.g., *testing.T, *testing.B, testing.TB).
+func (d *assertionDetector) isTestingReceiver(expr ast.Expr) bool {
+	if d.pkg.TypesInfo == nil {
+		return false
+	}
+	tv, ok := d.pkg.TypesInfo.Types[expr]
 	if !ok {
 		return false
 	}
-	return ident.Name == "t" || ident.Name == "tb" || ident.Name == "tt"
+	return isTestingType(tv.Type)
+}
+
+// isTestingType reports whether t is a type from the "testing"
+// package, following pointer indirection.
+func isTestingType(t types.Type) bool {
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	named, ok := t.(*types.Named)
+	if !ok {
+		// Check interface types (testing.TB).
+		if iface, ok := t.(*types.Interface); ok {
+			_ = iface // testing.TB is typically embedded, check via method set
+		}
+		return false
+	}
+	obj := named.Obj()
+	return obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == "testing"
 }
 
 // detectTRunAssertions extracts assertions from t.Run sub-test
@@ -420,14 +447,13 @@ func (d *assertionDetector) detectHelperAssertions(
 		return nil
 	}
 
-	// Check if any argument looks like it's passing *testing.T.
+	// Check if any argument is a testing type (*testing.T, etc.)
+	// using type information rather than naming convention.
 	hasTestingT := false
 	for _, arg := range call.Args {
-		if ident, ok := arg.(*ast.Ident); ok {
-			if ident.Name == "t" || ident.Name == "tb" || ident.Name == "tt" {
-				hasTestingT = true
-				break
-			}
+		if d.isTestingReceiver(arg) {
+			hasTestingT = true
+			break
 		}
 	}
 	if !hasTestingT {
@@ -462,21 +488,28 @@ func (d *assertionDetector) extractFuncName(call *ast.CallExpr) string {
 	return ""
 }
 
-// findFuncDecl looks up a function declaration by name in the
-// package's syntax trees.
-func (d *assertionDetector) findFuncDecl(name string) *ast.FuncDecl {
-	for _, file := range d.pkg.Syntax {
+// buildFuncDeclIndex builds a map from function name to declaration
+// for all functions in the package's syntax trees. This is built
+// once per DetectAssertions call and provides O(1) lookups in
+// findFuncDecl, replacing the previous O(files × decls) scan.
+func buildFuncDeclIndex(pkg *packages.Package) map[string]*ast.FuncDecl {
+	index := make(map[string]*ast.FuncDecl)
+	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
 				continue
 			}
-			if fn.Name.Name == name {
-				return fn
-			}
+			index[fn.Name.Name] = fn
 		}
 	}
-	return nil
+	return index
+}
+
+// findFuncDecl looks up a function declaration by name using the
+// pre-built index.
+func (d *assertionDetector) findFuncDecl(name string) *ast.FuncDecl {
+	return d.funcDecls[name]
 }
 
 // acceptsTestingParam checks if a function accepts *testing.T or

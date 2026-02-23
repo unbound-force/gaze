@@ -53,7 +53,7 @@ func loadTestdataPackage(pkgName string) (*packages.Package, error) {
 			return pkg, nil
 		}
 	}
-	return pkgs[0], nil
+	return nil, fmt.Errorf("no test package found for %q — does it have *_test.go files?", pkgName)
 }
 
 // loadNonTestPackage loads a testdata fixture without test files.
