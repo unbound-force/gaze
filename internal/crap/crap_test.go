@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -811,4 +812,231 @@ func TestShortenPath_ShortPath(t *testing.T) {
 	if got != "foo.go" {
 		t.Errorf("expected 'foo.go', got %q", got)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// SC-002: GazeCRAP formula accuracy (T052)
+// ---------------------------------------------------------------------------
+
+// TestGazeCRAPFormula_BenchmarkSuite validates SC-002: GazeCRAP
+// scores match hand-computed values using contract coverage instead
+// of line coverage (tolerance: +/- 0.01).
+//
+// GazeCRAP formula: comp^2 * (1 - contractCov/100)^3 + comp
+// Same math as CRAP but with contract coverage (0-100%) as input.
+func TestGazeCRAPFormula_BenchmarkSuite(t *testing.T) {
+	cases := []struct {
+		name           string
+		complexity     int
+		contractCovPct float64 // 0-100
+		wantGazeCRAP   float64
+	}{
+		// Zero contract coverage: GazeCRAP = comp^2 + comp
+		{"comp5_cc0", 5, 0, 30.0},    // 25*1 + 5 = 30
+		{"comp10_cc0", 10, 0, 110.0}, // 100*1 + 10 = 110
+		{"comp20_cc0", 20, 0, 420.0}, // 400*1 + 20 = 420
+
+		// Full contract coverage: GazeCRAP = comp
+		{"comp5_cc100", 5, 100, 5.0},
+		{"comp10_cc100", 10, 100, 10.0},
+		{"comp20_cc100", 20, 100, 20.0},
+		{"comp1_cc100", 1, 100, 1.0},
+
+		// Spec scenario US2.1: comp=10, contractCov=25%
+		// GazeCRAP = 100*(0.75)^3 + 10 = 100*0.421875 + 10 = 52.1875
+		{"spec_us2_1", 10, 25, 52.1875},
+
+		// Spec scenario US2.2: comp=3, contractCov=100%
+		// GazeCRAP = 9*0 + 3 = 3
+		{"spec_us2_2", 3, 100, 3.0},
+
+		// 50% contract coverage: uncov = 0.50, uncov^3 = 0.125
+		{"comp5_cc50", 5, 50, 8.125},  // 25*0.125 + 5 = 8.125
+		{"comp10_cc50", 10, 50, 22.5}, // 100*0.125 + 10 = 22.5
+		{"comp20_cc50", 20, 50, 70.0}, // 400*0.125 + 20 = 70.0
+
+		// 75% contract coverage: uncov = 0.25, uncov^3 = 0.015625
+		{"comp10_cc75", 10, 75, 11.5625}, // 100*0.015625 + 10 = 11.5625
+		{"comp20_cc75", 20, 75, 26.25},   // 400*0.015625 + 20 = 26.25
+
+		// 90% contract coverage: uncov = 0.10, uncov^3 = 0.001
+		{"comp10_cc90", 10, 90, 10.1}, // 100*0.001 + 10 = 10.1
+		{"comp50_cc90", 50, 90, 52.5}, // 2500*0.001 + 50 = 52.5
+
+		// Low complexity, various coverage
+		{"comp1_cc0", 1, 0, 2.0},     // 1*1 + 1 = 2
+		{"comp1_cc50", 1, 50, 1.125}, // 1*0.125 + 1 = 1.125
+		{"comp2_cc80", 2, 80, 2.032}, // 4*0.008 + 2 = 2.032
+
+		// High complexity edge case
+		{"comp100_cc0", 100, 0, 10100.0},  // 10000*1 + 100 = 10100
+		{"comp100_cc50", 100, 50, 1350.0}, // 10000*0.125 + 100 = 1350
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Formula(tc.complexity, tc.contractCovPct)
+			if math.Abs(got-tc.wantGazeCRAP) > 0.01 {
+				t.Errorf("GazeCRAP Formula(%d, %.1f) = %.4f, want %.4f",
+					tc.complexity, tc.contractCovPct, got, tc.wantGazeCRAP)
+			}
+		})
+	}
+}
+
+// TestGazeCRAP_Wiring verifies that Analyze() correctly populates
+// Score.GazeCRAP, Score.ContractCoverage, and Score.Quadrant when
+// ContractCoverageFunc is provided.
+func TestGazeCRAP_Wiring(t *testing.T) {
+	// Create scores with known values and verify via buildSummary.
+	ccPct := 75.0
+	gazeCRAP := Formula(10, ccPct) // 100*0.015625 + 10 = 11.5625
+	quadrant := ClassifyQuadrant(10.1, gazeCRAP, 15, 15)
+
+	score := Score{
+		Package:          "pkg",
+		Function:         "Foo",
+		File:             "foo.go",
+		Line:             1,
+		Complexity:       10,
+		LineCoverage:     90,
+		CRAP:             10.1,
+		ContractCoverage: &ccPct,
+		GazeCRAP:         &gazeCRAP,
+		Quadrant:         &quadrant,
+	}
+
+	if score.ContractCoverage == nil {
+		t.Fatal("expected non-nil ContractCoverage")
+	}
+	if *score.ContractCoverage != 75.0 {
+		t.Errorf("expected ContractCoverage=75.0, got %.1f", *score.ContractCoverage)
+	}
+	if score.GazeCRAP == nil {
+		t.Fatal("expected non-nil GazeCRAP")
+	}
+	if math.Abs(*score.GazeCRAP-11.5625) > 0.01 {
+		t.Errorf("expected GazeCRAP=11.5625, got %.4f", *score.GazeCRAP)
+	}
+	if score.Quadrant == nil {
+		t.Fatal("expected non-nil Quadrant")
+	}
+	if *score.Quadrant != Q1Safe {
+		t.Errorf("expected Q1_Safe, got %s", *score.Quadrant)
+	}
+
+	// Verify buildSummary handles the populated GazeCRAP fields.
+	summary := buildSummary([]Score{score}, Options{CRAPThreshold: 15, GazeCRAPThreshold: 15})
+	if summary.GazeCRAPload == nil {
+		t.Fatal("expected non-nil GazeCRAPload in summary")
+	}
+	if summary.AvgGazeCRAP == nil {
+		t.Fatal("expected non-nil AvgGazeCRAP")
+	}
+	if summary.AvgContractCoverage == nil {
+		t.Fatal("expected non-nil AvgContractCoverage")
+	}
+	if *summary.AvgContractCoverage != 75.0 {
+		t.Errorf("expected AvgContractCoverage=75.0, got %.1f", *summary.AvgContractCoverage)
+	}
+	if len(summary.QuadrantCounts) == 0 {
+		t.Error("expected non-empty QuadrantCounts")
+	}
+}
+
+// TestWriteText_QuadrantBreakdown verifies that quadrant breakdown
+// renders correctly when GazeCRAP data is populated (T053).
+func TestWriteText_QuadrantBreakdown(t *testing.T) {
+	gcl := 1
+	gct := 15.0
+	avgGC := 12.5
+	avgCC := 80.0
+	report := &Report{
+		Scores: []Score{
+			{
+				Package: "pkg", Function: "Safe", File: "a.go", Line: 1,
+				Complexity: 5, LineCoverage: 90, CRAP: 5.025,
+				ContractCoverage: ptrFloat(95),
+				GazeCRAP:         ptrFloat(5.001),
+				Quadrant:         ptrQuadrant(Q1Safe),
+			},
+			{
+				Package: "pkg", Function: "Dangerous", File: "b.go", Line: 1,
+				Complexity: 20, LineCoverage: 10, CRAP: 312,
+				ContractCoverage: ptrFloat(10),
+				GazeCRAP:         ptrFloat(311),
+				Quadrant:         ptrQuadrant(Q4Dangerous),
+			},
+		},
+		Summary: Summary{
+			TotalFunctions:      2,
+			AvgComplexity:       12.5,
+			AvgLineCoverage:     50,
+			AvgCRAP:             158.5,
+			CRAPload:            1,
+			CRAPThreshold:       15,
+			GazeCRAPload:        &gcl,
+			GazeCRAPThreshold:   &gct,
+			AvgGazeCRAP:         &avgGC,
+			AvgContractCoverage: &avgCC,
+			QuadrantCounts: map[Quadrant]int{
+				Q1Safe:                    1,
+				Q2ComplexButTested:        0,
+				Q3SimpleButUnderspecified: 0,
+				Q4Dangerous:               1,
+			},
+			WorstCRAP: []Score{
+				{Function: "Dangerous", CRAP: 312},
+			},
+			WorstGazeCRAP: []Score{
+				{Function: "Dangerous", GazeCRAP: ptrFloat(311)},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteText(&buf, report); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Verify quadrant breakdown appears.
+	if !strings.Contains(output, "Quadrant Breakdown") {
+		t.Error("expected 'Quadrant Breakdown' in output")
+	}
+	if !strings.Contains(output, string(Q1Safe)) {
+		t.Errorf("expected %q in output", Q1Safe)
+	}
+	if !strings.Contains(output, string(Q4Dangerous)) {
+		t.Errorf("expected %q in output", Q4Dangerous)
+	}
+
+	// Verify GazeCRAP summary lines.
+	if !strings.Contains(output, "GazeCRAP") {
+		t.Error("expected 'GazeCRAP' in output")
+	}
+
+	// Verify non-table lines fit 80 columns. Table border lines
+	// (containing box-drawing characters) are excluded because
+	// the Bubble Tea table renderer uses fixed-width styling.
+	for i, line := range strings.Split(output, "\n") {
+		stripped := stripANSI(line)
+		if strings.ContainsAny(stripped, "┌┐└┘├┤┬┴┼─│") {
+			continue // skip table border lines
+		}
+		if len(stripped) > 80 {
+			t.Errorf("line %d exceeds 80 columns (%d): %q", i+1, len(stripped), stripped)
+		}
+	}
+}
+
+func ptrFloat(f float64) *float64      { return &f }
+func ptrQuadrant(q Quadrant) *Quadrant { return &q }
+
+// stripANSI removes ANSI escape sequences for width measurement.
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
 }

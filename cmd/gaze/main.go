@@ -48,6 +48,7 @@ produced by their test targets.`,
 	root.AddCommand(newQualityCmd())
 	root.AddCommand(newSchemaCmd())
 	root.AddCommand(newDocscanCmd())
+	root.AddCommand(newSelfCheckCmd())
 
 	if err := root.Execute(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -838,6 +839,89 @@ Requires the target package to have existing test files.`,
 		"fail if contract coverage is below this percentage (0 = no limit)")
 	cmd.Flags().IntVar(&maxOverSpecification, "max-over-specification", 0,
 		"fail if over-specification count exceeds this (0 = no limit)")
+
+	return cmd
+}
+
+// selfCheckParams holds the parsed flags for the self-check command.
+type selfCheckParams struct {
+	format          string
+	maxCrapload     int
+	maxGazeCrapload int
+	stdout          io.Writer
+	stderr          io.Writer
+}
+
+// runSelfCheck runs the full CRAP pipeline on Gaze's own source
+// code. It reports CRAPload, GazeCRAPload (when contract coverage
+// is available), and worst offenders by CRAP score. This serves
+// as both a dogfooding exercise and a code quality gate.
+func runSelfCheck(p selfCheckParams) error {
+	if p.format != "text" && p.format != "json" {
+		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	}
+
+	moduleDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getting working directory: %w", err)
+	}
+
+	patterns := []string{"./..."}
+
+	opts := crap.DefaultOptions()
+	opts.Stderr = p.stderr
+
+	logger.Info("self-check: computing CRAP scores for Gaze source")
+	rpt, err := crap.Analyze(patterns, moduleDir, opts)
+	if err != nil {
+		return fmt.Errorf("self-check analysis: %w", err)
+	}
+
+	logger.Info("self-check complete",
+		"functions", len(rpt.Scores),
+		"crapload", rpt.Summary.CRAPload)
+
+	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
+		return err
+	}
+
+	printCISummary(p.stderr, rpt, p.maxCrapload, p.maxGazeCrapload)
+
+	return checkCIThresholds(rpt, p.maxCrapload, p.maxGazeCrapload)
+}
+
+func newSelfCheckCmd() *cobra.Command {
+	var (
+		format          string
+		maxCrapload     int
+		maxGazeCrapload int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "self-check",
+		Short: "Run CRAP analysis on Gaze's own source code",
+		Long: `Analyze Gaze's own source code for CRAP scores, serving as
+both a dogfooding exercise and a code quality gate. Reports
+CRAPload, GazeCRAPload (when contract coverage is available),
+and the worst offenders by CRAP score.`,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runSelfCheck(selfCheckParams{
+				format:          format,
+				maxCrapload:     maxCrapload,
+				maxGazeCrapload: maxGazeCrapload,
+				stdout:          os.Stdout,
+				stderr:          os.Stderr,
+			})
+		},
+	}
+
+	cmd.Flags().StringVar(&format, "format", "text",
+		"output format: text or json")
+	cmd.Flags().IntVar(&maxCrapload, "max-crapload", 0,
+		"fail if CRAPload exceeds this count (0 = no limit)")
+	cmd.Flags().IntVar(&maxGazeCrapload, "max-gaze-crapload", 0,
+		"fail if GazeCRAPload exceeds this count (0 = no limit)")
 
 	return cmd
 }

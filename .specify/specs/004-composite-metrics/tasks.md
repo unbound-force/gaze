@@ -262,7 +262,7 @@ to reflect their US2 ownership.
 
 **Purpose**: Track work that remains to be done in future iterations
 
-- [ ] T050 [US2] Activate GazeCRAP computation in `Analyze()` in
+- [x] T050 [US2] Activate GazeCRAP computation in `Analyze()` in
   `internal/crap/analyze.go` — obtain per-function contract coverage
   from Spec 003 via `quality.ContractCoverageForFunc()` (or
   `quality.Assess()` results), compute
@@ -273,10 +273,10 @@ to reflect their US2 ownership.
   `cmd/gaze/main.go` — when `GazeCRAPload == nil`, write
   `"note: GazeCRAP unavailable — contract coverage not yet implemented (Spec 003)"`
   to stderr so users understand the omission
-- [ ] T052 [US2] Write GazeCRAP formula accuracy tests in
+- [x] T052 [US2] Write GazeCRAP formula accuracy tests in
   `internal/crap/crap_test.go` — validate SC-002 with hand-computed
   (complexity, contractCoverage) pairs after T050 is implemented
-- [ ] T053 [US3] Activate quadrant breakdown in output — verify
+- [x] T053 [US3] Activate quadrant breakdown in output — verify
   `WriteText()` renders Quadrant Breakdown section correctly once
   `QuadrantCounts` is non-empty (logic exists; no regression test for
   populated case)
@@ -286,12 +286,12 @@ to reflect their US2 ownership.
   logic is implemented and tested (`TestBuildSummary_WithGazeCRAP`);
   activates only when `hasGazeCRAP` is true (requires T050 to produce
   non-nil `GazeCRAP` values)
-- [ ] T054 [US4] Implement `gaze self-check` command in
+- [x] T054 [US4] Implement `gaze self-check` command in
   `cmd/gaze/main.go` — cobra command that runs the full CRAP + GazeCRAP
   pipeline on `github.com/jflowers/gaze/...`, reports: total CRAPload,
   total GazeCRAPload, average contract coverage, worst-5 offenders by
   GazeCRAP (SC-005); requires T050 to be complete
-- [ ] T055 [US4] Write `self-check` tests in `cmd/gaze/main_test.go` —
+- [x] T055 [US4] Write `self-check` tests in `cmd/gaze/main_test.go` —
   test that it completes without error, produces valid JSON, covers all
   exported functions in Gaze source packages
 

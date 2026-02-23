@@ -888,3 +888,76 @@ func TestSC005_CIThresholds(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// runSelfCheck tests (T055)
+// ---------------------------------------------------------------------------
+
+func TestRunSelfCheck_InvalidFormat(t *testing.T) {
+	err := runSelfCheck(selfCheckParams{
+		format: "xml",
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid format")
+	}
+	if !strings.Contains(err.Error(), `invalid format "xml"`) {
+		t.Errorf("unexpected error message: %s", err)
+	}
+}
+
+func TestRunSelfCheck_TextFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping self-check in short mode")
+	}
+	var stdout, stderr bytes.Buffer
+	err := runSelfCheck(selfCheckParams{
+		format: "text",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("self-check text failed: %v", err)
+	}
+	if stdout.Len() == 0 {
+		t.Error("expected non-empty text output")
+	}
+}
+
+func TestRunSelfCheck_JSONFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping self-check in short mode")
+	}
+	var stdout, stderr bytes.Buffer
+	err := runSelfCheck(selfCheckParams{
+		format: "json",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("self-check json failed: %v", err)
+	}
+
+	// Verify valid JSON with expected structure.
+	var output map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if _, ok := output["scores"]; !ok {
+		t.Error("expected 'scores' key in JSON output")
+	}
+	if _, ok := output["summary"]; !ok {
+		t.Error("expected 'summary' key in JSON output")
+	}
+
+	// Verify it analyzed functions.
+	summary, ok := output["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'summary' to be an object")
+	}
+	totalFunctions, ok := summary["total_functions"].(float64)
+	if !ok || totalFunctions == 0 {
+		t.Errorf("expected non-zero total_functions, got %v", summary["total_functions"])
+	}
+}
