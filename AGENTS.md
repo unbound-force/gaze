@@ -90,6 +90,17 @@ Branch names follow the same numbering pattern (e.g., `001-side-effect-detection
 
 When a task from `tasks.md` is completed during implementation, its checkbox **must** be updated from `- [ ]` to `- [x]` immediately. Do not defer this — mark tasks complete as they are finished, not in a batch after all work is done. This keeps the task list an accurate, real-time view of progress and prevents drift between the codebase and the plan.
 
+### Documentation Validation Gate
+
+Before marking any task complete, you **must** validate whether the change requires documentation updates. Check and update as needed:
+
+- `README.md` — new/changed commands, flags, output formats, or architecture
+- `AGENTS.md` — new conventions, packages, patterns, or workflow changes
+- GoDoc comments — new or modified exported functions, types, and packages
+- Spec artifacts under `specs/` — if the change affects planned behavior
+
+A task is not complete until its documentation impact has been assessed and any necessary updates have been made. Skipping this step causes documentation drift, which compounds over time and erodes project accuracy.
+
 ### Spec Commit Gate
 
 All spec artifacts (`spec.md`, `plan.md`, `tasks.md`, and any other files under `specs/`) **must** be committed and pushed before implementation begins. This ensures the planning record is preserved in version control before code changes start, and provides a clean baseline to diff against if implementation drifts from the plan. Run `/speckit.implement` only after the spec commit is on the remote.
