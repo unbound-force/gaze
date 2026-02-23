@@ -1,0 +1,4 @@
+# Force LF line endings for embedded scaffold assets to ensure
+# consistent content across platforms (drift detection depends on
+# byte-for-byte comparison).
+internal/scaffold/assets/** text eol=lf

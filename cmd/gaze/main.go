@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	charmlog "github.com/charmbracelet/log"
+	"github.com/spf13/cobra"
 	"github.com/unbound-force/gaze/internal/analysis"
 	"github.com/unbound-force/gaze/internal/classify"
 	"github.com/unbound-force/gaze/internal/config"
@@ -20,8 +21,8 @@ import (
 	"github.com/unbound-force/gaze/internal/loader"
 	"github.com/unbound-force/gaze/internal/quality"
 	"github.com/unbound-force/gaze/internal/report"
+	"github.com/unbound-force/gaze/internal/scaffold"
 	"github.com/unbound-force/gaze/internal/taxonomy"
-	"github.com/spf13/cobra"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -53,6 +54,7 @@ produced by their test targets.`,
 
 	root.AddCommand(newAnalyzeCmd())
 	root.AddCommand(newCrapCmd())
+	root.AddCommand(newInitCmd())
 	root.AddCommand(newQualityCmd())
 	root.AddCommand(newSchemaCmd())
 	root.AddCommand(newDocscanCmd())
@@ -62,6 +64,36 @@ produced by their test targets.`,
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// newInitCmd creates the "init" subcommand that scaffolds OpenCode
+// agent and command files into the current directory.
+func newInitCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Scaffold OpenCode agents and commands for Gaze",
+		Long: `Initialize OpenCode integration in the current directory.
+
+Creates .opencode/agents/ and .opencode/command/ directories with
+Gaze's quality reporting agent and commands. After running this,
+you can use /gaze in OpenCode to generate quality reports.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			force, _ := cmd.Flags().GetBool("force")
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			_, err = scaffold.Run(scaffold.Options{
+				TargetDir: cwd,
+				Force:     force,
+				Version:   version,
+				Stdout:    cmd.OutOrStdout(),
+			})
+			return err
+		},
+	}
+	cmd.Flags().Bool("force", false, "Overwrite existing files")
+	return cmd
 }
 
 // analyzeParams holds the parsed flags for the analyze command.

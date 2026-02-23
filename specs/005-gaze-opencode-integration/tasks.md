@@ -52,9 +52,9 @@
 
 ### Implementation for User Story 2
 
-- [ ] T014 [P] [US2] Create .goreleaser.yaml with GoReleaser v2 schema per plan.md (builds for darwin/linux x amd64/arm64, CGO_ENABLED=0, ldflags with version/commit/date, homebrew_casks for unbound-force/homebrew-tap, changelog grouping by conventional commits)
-- [ ] T015 [P] [US2] Create .github/workflows/release.yml triggered on v* tags per plan.md (checkout with fetch-depth 0, setup-go from go.mod, goreleaser-action@v7 with GITHUB_TOKEN and HOMEBREW_TAP_GITHUB_TOKEN)
-- [ ] T016 [US2] Validate GoReleaser config: run `goreleaser check` and fix any errors
+- [x] T014 [P] [US2] Create .goreleaser.yaml with GoReleaser v2 schema per plan.md (builds for darwin/linux x amd64/arm64, CGO_ENABLED=0, ldflags with version/commit/date, homebrew_casks for unbound-force/homebrew-tap, changelog grouping by conventional commits)
+- [x] T015 [P] [US2] Create .github/workflows/release.yml triggered on v* tags per plan.md (checkout with fetch-depth 0, setup-go from go.mod, goreleaser-action@v7 with GITHUB_TOKEN and HOMEBREW_TAP_GITHUB_TOKEN)
+- [x] T016 [US2] Validate GoReleaser config: run `goreleaser check` and fix any errors
 
 **Checkpoint**: Release pipeline configured. SC-012 verified. SC-013 can be verified locally with `goreleaser release --snapshot --clean`.
 
@@ -70,8 +70,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Document the manual prerequisite steps in quickstart.md: (1) Create `unbound-force/homebrew-tap` repo on GitHub, (2) Create PAT with repo scope, (3) Add as HOMEBREW_TAP_GITHUB_TOKEN secret
-- [ ] T018 [US3] Verify Homebrew tap repo exists at github.com/unbound-force/homebrew-tap (manual check, report if missing)
+- [x] T017 [US3] Document the manual prerequisite steps in quickstart.md: (1) Create `unbound-force/homebrew-tap` repo on GitHub, (2) Create PAT with repo scope, (3) Add as HOMEBREW_TAP_GITHUB_TOKEN secret
+- [x] T018 [US3] Verify Homebrew tap repo exists at github.com/unbound-force/homebrew-tap (manual check, report if missing)
 
 **Checkpoint**: Homebrew distribution prerequisites documented and verified. SC-015 verified after first release.
 
@@ -85,20 +85,20 @@
 
 ### Implementation for User Story 4
 
-- [ ] T019 [P] [US4] Create .opencode/agents/gaze-reporter.md with YAML frontmatter (description, tools: read+bash only) and agent body (mode parsing, binary resolution, command execution, JSON interpretation, report formatting per plan.md Phase 1C)
-- [ ] T020 [P] [US4] Create .opencode/command/gaze.md with YAML frontmatter (description, agent: gaze-reporter) and command body (passes $ARGUMENTS to agent, documents three usage modes: full, crap, quality)
-- [ ] T021 [US4] Create internal/scaffold/ directory structure: scaffold.go, assets/agents/, assets/command/
-- [ ] T022 [P] [US4] Copy .opencode/agents/gaze-reporter.md to internal/scaffold/assets/agents/gaze-reporter.md
-- [ ] T023 [P] [US4] Copy .opencode/agents/doc-classifier.md to internal/scaffold/assets/agents/doc-classifier.md
-- [ ] T024 [P] [US4] Copy .opencode/command/gaze.md to internal/scaffold/assets/command/gaze.md
-- [ ] T025 [P] [US4] Copy .opencode/command/classify-docs.md to internal/scaffold/assets/command/classify-docs.md
-- [ ] T026 [US4] Implement scaffold.go: Options and Result types, embed.FS directive for assets/*, Run() function that walks embedded FS, creates directories, checks file existence, prepends version marker, writes files, and returns Result (per contracts/scaffold-api.md and data-model.md)
-- [ ] T027 [US4] Implement summary output in scaffold.go: print created/skipped/overwritten files and hint message to Stdout (per contracts/cli-init.md output format)
-- [ ] T028 [US4] Add go.mod warning detection in scaffold.go: check if go.mod exists in TargetDir, print warning if absent (per US4-AS6)
-- [ ] T029 [US4] Add `init` subcommand to cmd/gaze/main.go: Cobra command with --force flag, delegates to scaffold.Run() (per contracts/scaffold-api.md CLI Integration section)
-- [ ] T030 [US4] Write scaffold_test.go: TestRun_CreatesFiles (SC-001), TestRun_SkipsExisting (SC-002), TestRun_ForceOverwrites (SC-003), TestRun_VersionMarker (SC-004), TestRun_NoGoMod_PrintsWarning (US4-AS6)
-- [ ] T031 [US4] Write TestEmbeddedAssetsMatchSource in scaffold_test.go: drift detection test comparing internal/scaffold/assets/ against .opencode/ source files (FR-017, SC-005)
-- [ ] T032 [US4] Verify `go build ./...` and `go test -race -count=1 -short ./...` pass with scaffold package
+- [x] T019 [P] [US4] Create .opencode/agents/gaze-reporter.md with YAML frontmatter (description, tools: read+bash only) and agent body (mode parsing, binary resolution, command execution, JSON interpretation, report formatting per plan.md Phase 1C)
+- [x] T020 [P] [US4] Create .opencode/command/gaze.md with YAML frontmatter (description, agent: gaze-reporter) and command body (passes $ARGUMENTS to agent, documents three usage modes: full, crap, quality)
+- [x] T021 [US4] Create internal/scaffold/ directory structure: scaffold.go, assets/agents/, assets/command/
+- [x] T022 [P] [US4] Copy .opencode/agents/gaze-reporter.md to internal/scaffold/assets/agents/gaze-reporter.md
+- [x] T023 [P] [US4] Copy .opencode/agents/doc-classifier.md to internal/scaffold/assets/agents/doc-classifier.md
+- [x] T024 [P] [US4] Copy .opencode/command/gaze.md to internal/scaffold/assets/command/gaze.md
+- [x] T025 [P] [US4] Copy .opencode/command/classify-docs.md to internal/scaffold/assets/command/classify-docs.md
+- [x] T026 [US4] Implement scaffold.go: Options and Result types, embed.FS directive for assets/*, Run() function that walks embedded FS, creates directories, checks file existence, prepends version marker, writes files, and returns Result (per contracts/scaffold-api.md and data-model.md)
+- [x] T027 [US4] Implement summary output in scaffold.go: print created/skipped/overwritten files and hint message to Stdout (per contracts/cli-init.md output format)
+- [x] T028 [US4] Add go.mod warning detection in scaffold.go: check if go.mod exists in TargetDir, print warning if absent (per US4-AS6)
+- [x] T029 [US4] Add `init` subcommand to cmd/gaze/main.go: Cobra command with --force flag, delegates to scaffold.Run() (per contracts/scaffold-api.md CLI Integration section)
+- [x] T030 [US4] Write scaffold_test.go: TestRun_CreatesFiles (SC-001), TestRun_SkipsExisting (SC-002), TestRun_ForceOverwrites (SC-003), TestRun_VersionMarker (SC-004), TestRun_NoGoMod_PrintsWarning (US4-AS6)
+- [x] T031 [US4] Write TestEmbeddedAssetsMatchSource in scaffold_test.go: drift detection test comparing internal/scaffold/assets/ against .opencode/ source files (FR-017, SC-005)
+- [x] T032 [US4] Verify `go build ./...` and `go test -race -count=1 -short ./...` pass with scaffold package
 
 **Checkpoint**: `gaze init` works end-to-end. SC-001 through SC-005, SC-010 verified.
 
