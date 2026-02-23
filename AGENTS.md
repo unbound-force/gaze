@@ -104,7 +104,13 @@ A mandatory gate at the planning phase. The constitution's three core principles
 # Build
 go build ./cmd/gaze
 
-# Run all tests (always use these flags)
+# Run unit + integration tests (use -short to skip e2e)
+go test -race -count=1 -short ./...
+
+# Run e2e tests only (self-check: spawns go test -coverprofile)
+go test -race -count=1 -run 'TestRunSelfCheck' -timeout 20m ./cmd/gaze/...
+
+# Run all tests (no -short, requires ~15min)
 go test -race -count=1 ./...
 
 # Lint
@@ -112,6 +118,17 @@ golangci-lint run
 ```
 
 Always run tests with `-race -count=1`. CI enforces this.
+
+### Test Suites
+
+Tests are organized into two CI suites that run in parallel:
+
+| Suite | Command | Timeout | What it runs |
+|-------|---------|---------|-------------|
+| Unit + Integration | `go test -race -count=1 -short ./...` | 10m (default) | All tests except those guarded by `testing.Short()` |
+| E2E | `go test -race -count=1 -run TestRunSelfCheck -timeout 20m ./cmd/gaze/...` | 20m | Self-check tests that spawn `go test -coverprofile` on the full module |
+
+Use `testing.Short()` to guard tests that spawn external `go test` processes or analyze the entire module. These are too slow for the standard CI timeout.
 
 ## Architecture
 
