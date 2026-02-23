@@ -66,7 +66,7 @@ func MapAssertionsToEffects(
 	// Build a map from types.Object to effect ID by finding the
 	// AST assignment that receives the target call's return values
 	// and correlating LHS identifiers with side effects.
-	objToEffectID := traceTargetValues(targetCall, effects, testFunc, testPkg)
+	objToEffectID := traceTargetValues(targetCall, effects, testPkg)
 
 	// Match assertion expressions to traced values.
 	for _, site := range sites {
@@ -202,7 +202,6 @@ func findTargetCallInFunc(
 func traceTargetValues(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
-	testFunc *ssa.Function,
 	testPkg *packages.Package,
 ) map[types.Object]string {
 	objToEffectID := make(map[types.Object]string)
