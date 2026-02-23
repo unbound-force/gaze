@@ -63,6 +63,26 @@ goreleaser release --snapshot --clean
 
 This produces archives in `dist/` without publishing.
 
+### Homebrew Tap Prerequisites (One-Time Setup)
+
+Before the first release, the following manual steps are required:
+
+1. **Create the tap repository**: Create `unbound-force/homebrew-tap`
+   on GitHub. This is where GoReleaser publishes the Homebrew cask
+   formula on each release.
+
+2. **Create a Personal Access Token (PAT)**: Generate a GitHub PAT
+   with `repo` scope that has push access to
+   `unbound-force/homebrew-tap`.
+
+3. **Add the secret**: In the `unbound-force/gaze` repository
+   settings, add the PAT as a repository secret named
+   `HOMEBREW_TAP_GITHUB_TOKEN`.
+
+Without these prerequisites, the release workflow will build and
+publish binaries to the GitHub Release page, but the Homebrew cask
+update step will fail.
+
 ### Create a Release
 
 ```bash
@@ -73,7 +93,7 @@ git push origin v0.1.0
 The GitHub Actions release workflow handles the rest:
 1. Builds binaries for macOS + Linux (amd64 + arm64)
 2. Creates a GitHub Release with archives and checksums
-3. Updates the Homebrew formula in `unbound-force/homebrew-tap`
+3. Updates the Homebrew cask in `unbound-force/homebrew-tap`
 
 ### Dogfooding
 
