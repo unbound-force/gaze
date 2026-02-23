@@ -353,6 +353,16 @@ func runCrap(p crapParams) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
 	}
 
+	// Wire the quality pipeline to provide contract coverage for
+	// GazeCRAP scoring. This is best-effort: if quality analysis
+	// fails for any package, GazeCRAP falls back to unavailable.
+	if p.opts.ContractCoverageFunc == nil {
+		ccFunc := buildContractCoverageFunc(p.patterns, p.moduleDir, p.stderr)
+		if ccFunc != nil {
+			p.opts.ContractCoverageFunc = ccFunc
+		}
+	}
+
 	logger.Info("computing CRAP scores", "patterns", p.patterns)
 	rpt, err := crap.Analyze(p.patterns, p.moduleDir, p.opts)
 	if err != nil {
@@ -427,6 +437,123 @@ func checkCIThresholds(rpt *crap.Report, maxCrapload, maxGazeCrapload int) error
 			*rpt.Summary.GazeCRAPload, maxGazeCrapload)
 	}
 	return nil
+}
+
+// buildContractCoverageFunc runs the quality pipeline across the
+// given package patterns and returns a ContractCoverageFunc callback
+// for GazeCRAP scoring. This is best-effort: if the quality pipeline
+// fails for any package (no tests, config errors, etc.), those
+// packages are silently skipped. Returns nil if no coverage data
+// could be collected.
+func buildContractCoverageFunc(
+	patterns []string,
+	moduleDir string,
+	stderr io.Writer,
+) func(pkg, function string) (float64, bool) {
+	// Resolve the package patterns to individual package paths.
+	cfg := &packages.Config{
+		Mode: packages.NeedName,
+		Dir:  moduleDir,
+	}
+	pkgs, err := packages.Load(cfg, patterns...)
+	if err != nil {
+		logger.Debug("quality pipeline: failed to resolve packages", "err", err)
+		return nil
+	}
+
+	// Collect unique package paths (skip test variants).
+	pkgPaths := make([]string, 0, len(pkgs))
+	seen := make(map[string]bool)
+	for _, pkg := range pkgs {
+		if pkg.PkgPath == "" || seen[pkg.PkgPath] || strings.HasSuffix(pkg.PkgPath, "_test") {
+			continue
+		}
+		seen[pkg.PkgPath] = true
+		pkgPaths = append(pkgPaths, pkg.PkgPath)
+	}
+
+	if len(pkgPaths) == 0 {
+		return nil
+	}
+
+	// Load config once for all packages.
+	gazeConfig, cfgErr := loadConfig("", -1, -1)
+	if cfgErr != nil {
+		logger.Debug("quality pipeline: config load failed", "err", cfgErr)
+		gazeConfig = config.DefaultConfig()
+	}
+
+	// Build coverage map: "shortPkg:qualifiedName" -> percentage.
+	coverageMap := make(map[string]float64)
+
+	analysisOpts := analysis.Options{
+		IncludeUnexported: false,
+		Version:           version,
+	}
+
+	qualOpts := quality.Options{
+		Version: version,
+		Stderr:  stderr,
+	}
+
+	for _, pkgPath := range pkgPaths {
+		// Step 1: Analyze (Spec 001).
+		results, err := analysis.LoadAndAnalyze(pkgPath, analysisOpts)
+		if err != nil || len(results) == 0 {
+			continue
+		}
+
+		// Step 2: Classify (Spec 002).
+		classified, err := runClassify(results, pkgPath, gazeConfig, false)
+		if err != nil {
+			continue
+		}
+
+		// Step 3: Load test package.
+		testPkg, err := loadTestPackage(pkgPath)
+		if err != nil {
+			continue
+		}
+
+		// Step 4: Assess quality (Spec 003).
+		reports, _, err := quality.Assess(classified, testPkg, qualOpts)
+		if err != nil {
+			continue
+		}
+
+		// Aggregate: for each target function, take the maximum
+		// contract coverage across all test functions that exercise it.
+		for _, report := range reports {
+			shortPkg := extractShortPkgName(report.TargetFunction.Package)
+			key := shortPkg + ":" + report.TargetFunction.QualifiedName()
+			if existing, ok := coverageMap[key]; !ok || report.ContractCoverage.Percentage > existing {
+				coverageMap[key] = report.ContractCoverage.Percentage
+			}
+		}
+	}
+
+	if len(coverageMap) == 0 {
+		return nil
+	}
+
+	logger.Info("quality pipeline complete",
+		"functions_with_coverage", len(coverageMap))
+
+	return func(pkg, function string) (float64, bool) {
+		key := pkg + ":" + function
+		pct, ok := coverageMap[key]
+		return pct, ok
+	}
+}
+
+// extractShortPkgName returns the short package name from a full
+// import path. For "github.com/jflowers/gaze/internal/crap", it
+// returns "crap".
+func extractShortPkgName(importPath string) string {
+	if idx := strings.LastIndex(importPath, "/"); idx >= 0 {
+		return importPath[idx+1:]
+	}
+	return importPath
 }
 
 func newCrapCmd() *cobra.Command {
@@ -878,10 +1005,9 @@ type selfCheckParams struct {
 
 // runSelfCheck runs the CRAP pipeline on Gaze's own source code.
 // It reports CRAPload and worst offenders by CRAP score. GazeCRAP
-// is included when ContractCoverageFunc is set on the crap.Options
-// (currently not wired in the CLI — requires integration of the
-// quality pipeline, tracked as a follow-up). This serves as both
-// a dogfooding exercise and a code quality gate.
+// is included when contract coverage data is available from the
+// quality pipeline. This serves as both a dogfooding exercise and
+// a code quality gate.
 func runSelfCheck(p selfCheckParams) error {
 	if p.format != "text" && p.format != "json" {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
@@ -896,6 +1022,12 @@ func runSelfCheck(p selfCheckParams) error {
 
 	opts := crap.DefaultOptions()
 	opts.Stderr = p.stderr
+
+	// Wire the quality pipeline for GazeCRAP scoring.
+	ccFunc := buildContractCoverageFunc(patterns, moduleDir, p.stderr)
+	if ccFunc != nil {
+		opts.ContractCoverageFunc = ccFunc
+	}
 
 	logger.Info("self-check: computing CRAP scores for Gaze source")
 	rpt, err := crap.Analyze(patterns, moduleDir, opts)
