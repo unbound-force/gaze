@@ -207,7 +207,7 @@ These principles (from the project constitution) guide all development:
 Two GitHub Actions workflows on push/PR to `main`:
 
 1. **Test** (`.github/workflows/test.yml`): Build + test with `-race -count=1`.
-2. **MegaLinter** (`.github/workflows/mega-linter.yml`): Runs golangci-lint, revive, markdownlint, yamllint, and gitleaks. Auto-commits lint fixes to PR branches.
+2. **MegaLinter** (`.github/workflows/mega-linter.yml`): Runs golangci-lint, markdownlint, yamllint, and gitleaks. Auto-commits lint fixes to PR branches.
 
 ## Linting
 
