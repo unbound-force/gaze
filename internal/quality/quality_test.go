@@ -1055,7 +1055,7 @@ func TestSC003_MappingAccuracy(t *testing.T) {
 	// dead code. When the AST-to-SSA bridge ships, set the floor
 	// to the actual measured percentage.
 	//
-	// TODO(#5): Bridge AST-to-SSA name gap to reach 90% accuracy.
+	// TODO(#6): Bridge AST-to-SSA name gap to reach 90% accuracy.
 	const baselineFloor = -1.0 // disabled — update when accuracy > 0%
 	if accuracy < baselineFloor {
 		t.Errorf("SC-003: mapping accuracy %.1f%% regressed below baseline floor %.0f%% (%d/%d mapped)",
@@ -1064,7 +1064,7 @@ func TestSC003_MappingAccuracy(t *testing.T) {
 	if accuracy >= 90.0 {
 		t.Logf("SC-003 PASSED: mapping accuracy %.1f%% meets 90%% target", accuracy)
 	} else {
-		t.Logf("SC-003 NOT MET: mapping accuracy %.1f%% (%d/%d) — target >= 90%% (known gap: AST-to-SSA name bridging, TODO #5)",
+		t.Logf("SC-003 NOT MET: mapping accuracy %.1f%% (%d/%d) — target >= 90%% (known gap: AST-to-SSA name bridging, TODO #6)",
 			accuracy, mappedAssertions, totalAssertions)
 	}
 }
