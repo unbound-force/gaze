@@ -263,8 +263,9 @@ to reflect their US2 ownership.
 **Purpose**: Track work that remains to be done in future iterations
 
 - [ ] T050 [US2] Activate GazeCRAP computation in `Analyze()` in
-  `internal/crap/analyze.go` — accept contract coverage input from Spec 003
-  `classify.Classify()` results, compute
+  `internal/crap/analyze.go` — obtain per-function contract coverage
+  from Spec 003 via `quality.ContractCoverageForFunc()` (or
+  `quality.Assess()` results), compute
   `GazeCRAP(m) = comp^2 * (1 - contractCov)^3 + comp` per function,
   populate `Score.GazeCRAP`, `Score.ContractCoverage`, and
   `Score.Quadrant` via `ClassifyQuadrant()`

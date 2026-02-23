@@ -184,6 +184,7 @@ func buildMetadata(start time.Time, version string) taxonomy.Metadata {
 	return taxonomy.Metadata{
 		GazeVersion: version,
 		GoVersion:   runtime.Version(),
+		Timestamp:   start,
 		Duration:    time.Since(start),
 		Warnings:    nil,
 	}
