@@ -12,16 +12,17 @@ import (
 	"strings"
 
 	charmlog "github.com/charmbracelet/log"
-	"github.com/jflowers/gaze/internal/analysis"
-	"github.com/jflowers/gaze/internal/classify"
-	"github.com/jflowers/gaze/internal/config"
-	"github.com/jflowers/gaze/internal/crap"
-	"github.com/jflowers/gaze/internal/docscan"
-	"github.com/jflowers/gaze/internal/loader"
-	"github.com/jflowers/gaze/internal/quality"
-	"github.com/jflowers/gaze/internal/report"
-	"github.com/jflowers/gaze/internal/taxonomy"
 	"github.com/spf13/cobra"
+	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/internal/classify"
+	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/internal/loader"
+	"github.com/unbound-force/gaze/internal/quality"
+	"github.com/unbound-force/gaze/internal/report"
+	"github.com/unbound-force/gaze/internal/scaffold"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -30,8 +31,12 @@ var logger = charmlog.NewWithOptions(os.Stderr, charmlog.Options{
 	ReportTimestamp: false,
 })
 
-// Set by build flags.
-var version = "dev"
+// Set by build flags (-ldflags "-X main.version=... -X main.commit=... -X main.date=...").
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	root := &cobra.Command{
@@ -42,9 +47,14 @@ and measures whether unit tests assert on all contractual changes
 produced by their test targets.`,
 		Version: version,
 	}
+	// Override the default version template to include commit and build date.
+	root.SetVersionTemplate(
+		fmt.Sprintf("gaze version %s (commit %s, built %s)\n", version, commit, date),
+	)
 
 	root.AddCommand(newAnalyzeCmd())
 	root.AddCommand(newCrapCmd())
+	root.AddCommand(newInitCmd())
 	root.AddCommand(newQualityCmd())
 	root.AddCommand(newSchemaCmd())
 	root.AddCommand(newDocscanCmd())
@@ -54,6 +64,54 @@ produced by their test targets.`,
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// initParams holds the parsed flags for the init command.
+type initParams struct {
+	targetDir string
+	force     bool
+	version   string
+	stdout    io.Writer
+}
+
+// runInit is the extracted, testable body of the init command.
+func runInit(p initParams) error {
+	_, err := scaffold.Run(scaffold.Options{
+		TargetDir: p.targetDir,
+		Force:     p.force,
+		Version:   p.version,
+		Stdout:    p.stdout,
+	})
+	return err
+}
+
+// newInitCmd creates the "init" subcommand that scaffolds OpenCode
+// agent and command files into the current directory.
+func newInitCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Scaffold OpenCode agents and commands for Gaze",
+		Long: `Initialize OpenCode integration in the current directory.
+
+Creates .opencode/agents/ and .opencode/command/ directories with
+Gaze's quality reporting agent and commands. After running this,
+you can use /gaze in OpenCode to generate quality reports.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			force, _ := cmd.Flags().GetBool("force")
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			return runInit(initParams{
+				targetDir: cwd,
+				force:     force,
+				version:   version,
+				stdout:    cmd.OutOrStdout(),
+			})
+		},
+	}
+	cmd.Flags().Bool("force", false, "Overwrite existing files")
+	return cmd
 }
 
 // analyzeParams holds the parsed flags for the analyze command.
@@ -547,7 +605,7 @@ func buildContractCoverageFunc(
 }
 
 // extractShortPkgName returns the short package name from a full
-// import path. For "github.com/jflowers/gaze/internal/crap", it
+// import path. For "github.com/unbound-force/gaze/internal/crap", it
 // returns "crap".
 func extractShortPkgName(importPath string) string {
 	if idx := strings.LastIndex(importPath, "/"); idx >= 0 {

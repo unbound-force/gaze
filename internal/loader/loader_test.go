@@ -3,12 +3,12 @@ package loader_test
 import (
 	"testing"
 
-	"github.com/jflowers/gaze/internal/loader"
+	"github.com/unbound-force/gaze/internal/loader"
 )
 
 func TestLoad_ValidPackage(t *testing.T) {
 	// Load the loader package itself (it's a valid Go package).
-	result, err := loader.Load("github.com/jflowers/gaze/internal/loader")
+	result, err := loader.Load("github.com/unbound-force/gaze/internal/loader")
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
 	}
@@ -18,8 +18,8 @@ func TestLoad_ValidPackage(t *testing.T) {
 	if result.Fset == nil {
 		t.Fatal("expected non-nil Fset")
 	}
-	if result.Pkg.PkgPath != "github.com/jflowers/gaze/internal/loader" {
-		t.Errorf("expected pkg path 'github.com/jflowers/gaze/internal/loader', got %q",
+	if result.Pkg.PkgPath != "github.com/unbound-force/gaze/internal/loader" {
+		t.Errorf("expected pkg path 'github.com/unbound-force/gaze/internal/loader', got %q",
 			result.Pkg.PkgPath)
 	}
 }

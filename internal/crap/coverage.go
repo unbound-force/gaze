@@ -199,7 +199,7 @@ func resolveFilePath(profileName string, moduleDir string) string {
 	}
 
 	// The profile uses import-path-relative filenames like
-	// "github.com/jflowers/gaze/internal/analysis/returns.go".
+	// "github.com/unbound-force/gaze/internal/analysis/returns.go".
 	// We need to map this to the actual file on disk.
 	//
 	// Strategy: strip the module prefix and join with moduleDir.

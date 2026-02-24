@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jflowers/gaze/internal/analysis"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )

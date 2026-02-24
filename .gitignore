@@ -1,14 +1,24 @@
 # Build artifacts
 /gaze
 *.exe
+vendor/
 
 # Test artifacts
 cover.out
 *.test
+*.out
+*.prof*
 
 # MegaLinter reports
 megalinter-reports/
 mega-linter.log
+
+# GoReleaser
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # IDE / editor
 .idea/

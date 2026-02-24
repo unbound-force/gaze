@@ -3,9 +3,9 @@ package multilib
 import (
 	"testing"
 
-	"github.com/jflowers/gaze/internal/quality/testdata/src/multilib/assert"
-	"github.com/jflowers/gaze/internal/quality/testdata/src/multilib/cmp"
-	"github.com/jflowers/gaze/internal/quality/testdata/src/multilib/require"
+	"github.com/unbound-force/gaze/internal/quality/testdata/src/multilib/assert"
+	"github.com/unbound-force/gaze/internal/quality/testdata/src/multilib/cmp"
+	"github.com/unbound-force/gaze/internal/quality/testdata/src/multilib/require"
 )
 
 // TestNewUser_Testify uses testify/assert patterns.

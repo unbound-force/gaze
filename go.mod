@@ -1,4 +1,4 @@
-module github.com/jflowers/gaze
+module github.com/unbound-force/gaze
 
 go 1.24.2
 

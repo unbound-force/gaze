@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/jflowers/gaze/internal/analysis"
-	"github.com/jflowers/gaze/internal/classify"
-	"github.com/jflowers/gaze/internal/config"
-	"github.com/jflowers/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/internal/classify"
+	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // testdataDir returns the absolute path to the testdata/src directory.

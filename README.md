@@ -6,14 +6,22 @@ Gaze statically analyzes Go functions to detect all observable side effects and 
 
 ## Installation
 
+### Homebrew (recommended)
+
 ```bash
-go install github.com/jflowers/gaze/cmd/gaze@latest
+brew install unbound-force/tap/gaze
 ```
 
-Or build from source:
+### Go Install
 
 ```bash
-git clone https://github.com/jflowers/gaze.git
+go install github.com/unbound-force/gaze/cmd/gaze@latest
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/unbound-force/gaze.git
 cd gaze
 go build -o gaze ./cmd/gaze
 ```
@@ -217,6 +225,31 @@ gaze docscan ./internal/analysis
 gaze docscan --config=.gaze.yaml ./internal/analysis
 ```
 
+### `gaze init` -- OpenCode Integration Setup
+
+Scaffold OpenCode agent and command files into the current project directory for AI-assisted quality reporting.
+
+```bash
+# Initialize OpenCode integration
+gaze init
+
+# Overwrite existing files
+gaze init --force
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing OpenCode files |
+
+This creates 4 files in `.opencode/`:
+
+- `.opencode/agents/gaze-reporter.md` -- Quality report agent
+- `.opencode/agents/doc-classifier.md` -- Document-enhanced classifier
+- `.opencode/command/gaze.md` -- `/gaze` command
+- `.opencode/command/classify-docs.md` -- `/classify-docs` command
+
 ### `gaze self-check` -- Self-Analysis
 
 Run CRAP analysis on Gaze's own source code, serving as both a dogfooding exercise and a code quality gate.
@@ -257,6 +290,18 @@ The `analyze`, `crap`, `quality`, and `self-check` commands support `--format=te
 
 JSON output conforms to documented schemas. Use `gaze schema` to print the analysis report schema. The schemas are embedded in the binary at `internal/report/schema.go`.
 
+## OpenCode Integration
+
+After running `gaze init`, use the `/gaze` command in OpenCode for AI-assisted quality reporting:
+
+```text
+/gaze ./...                     # Full report: CRAP + quality + classification
+/gaze crap ./internal/store     # CRAP scores only
+/gaze quality ./pkg/api         # Test quality metrics only
+```
+
+The `gaze-reporter` agent runs gaze CLI commands with `--format=json`, interprets the output, and produces human-readable markdown summaries with actionable recommendations.
+
 ## Architecture
 
 ```text
@@ -277,6 +322,7 @@ internal/
   crap/                CRAP score computation and reporting
   quality/             Test quality assessment (contract coverage)
   docscan/             Documentation file scanner
+  scaffold/            OpenCode file scaffolding (embed.FS)
 ```
 
 ## Known Limitations

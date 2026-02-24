@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jflowers/gaze/internal/config"
+	"github.com/unbound-force/gaze/internal/config"
 )
 
 // Filter returns true if the given relative path should be included
