@@ -66,6 +66,25 @@ produced by their test targets.`,
 	}
 }
 
+// initParams holds the parsed flags for the init command.
+type initParams struct {
+	targetDir string
+	force     bool
+	version   string
+	stdout    io.Writer
+}
+
+// runInit is the extracted, testable body of the init command.
+func runInit(p initParams) error {
+	_, err := scaffold.Run(scaffold.Options{
+		TargetDir: p.targetDir,
+		Force:     p.force,
+		Version:   p.version,
+		Stdout:    p.stdout,
+	})
+	return err
+}
+
 // newInitCmd creates the "init" subcommand that scaffolds OpenCode
 // agent and command files into the current directory.
 func newInitCmd() *cobra.Command {
@@ -83,13 +102,12 @@ you can use /gaze in OpenCode to generate quality reports.`,
 			if err != nil {
 				return fmt.Errorf("getting working directory: %w", err)
 			}
-			_, err = scaffold.Run(scaffold.Options{
-				TargetDir: cwd,
-				Force:     force,
-				Version:   version,
-				Stdout:    cmd.OutOrStdout(),
+			return runInit(initParams{
+				targetDir: cwd,
+				force:     force,
+				version:   version,
+				stdout:    cmd.OutOrStdout(),
 			})
-			return err
 		},
 	}
 	cmd.Flags().Bool("force", false, "Overwrite existing files")

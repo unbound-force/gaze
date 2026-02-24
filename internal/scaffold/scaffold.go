@@ -4,6 +4,7 @@ package scaffold
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,7 +13,7 @@ import (
 	"strings"
 )
 
-//go:embed assets/*
+//go:embed assets
 var assets embed.FS
 
 // Options configures the scaffold operation.
@@ -88,7 +89,7 @@ func Run(opts Options) (*Result, error) {
 
 	// Check for go.mod and warn if absent.
 	goModPath := filepath.Join(opts.TargetDir, "go.mod")
-	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+	if _, err := os.Stat(goModPath); errors.Is(err, fs.ErrNotExist) {
 		fmt.Fprintln(opts.Stdout, "Warning: no go.mod found in current directory.")
 		fmt.Fprintln(opts.Stdout, "Gaze works best in a Go module root.")
 		fmt.Fprintln(opts.Stdout)
@@ -111,8 +112,13 @@ func Run(opts Options) (*Result, error) {
 		relPath := strings.TrimPrefix(path, "assets/")
 		outPath := filepath.Join(opts.TargetDir, ".opencode", relPath)
 
-		// Check if the file already exists.
+		// Check if the file already exists. Return an error for
+		// stat failures other than "not exist" (e.g., permission
+		// denied) rather than silently treating them as absent.
 		_, statErr := os.Stat(outPath)
+		if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+			return fmt.Errorf("checking %s: %w", filepath.Join(".opencode", relPath), statErr)
+		}
 		exists := statErr == nil
 
 		if exists && !opts.Force {
@@ -158,7 +164,11 @@ func Run(opts Options) (*Result, error) {
 // printSummary writes a human-readable summary of the scaffold
 // operation to w.
 func printSummary(w io.Writer, r *Result, force bool) {
-	fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
+	if len(r.Created) > 0 || len(r.Overwritten) > 0 {
+		fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
+	} else {
+		fmt.Fprintln(w, "Gaze OpenCode integration already up to date:")
+	}
 
 	for _, f := range r.Created {
 		fmt.Fprintf(w, "  created: %s\n", f)
@@ -173,15 +183,19 @@ func printSummary(w io.Writer, r *Result, force bool) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Run /gaze in OpenCode to generate quality reports.")
 
-	if len(r.Skipped) > 0 {
-		fmt.Fprintf(w, "%d file(s) skipped (use --force to overwrite).\n", len(r.Skipped))
+	if n := len(r.Skipped); n > 0 {
+		word := "file"
+		if n > 1 {
+			word = "files"
+		}
+		fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", n, word)
 	}
 }
 
-// AssetPaths returns the relative paths of all embedded assets.
+// assetPaths returns the relative paths of all embedded assets.
 // This is used by the drift detection test to enumerate expected
 // files.
-func AssetPaths() ([]string, error) {
+func assetPaths() ([]string, error) {
 	var paths []string
 	err := fs.WalkDir(assets, "assets", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -196,8 +210,8 @@ func AssetPaths() ([]string, error) {
 	return paths, err
 }
 
-// AssetContent returns the raw content of an embedded asset by
+// assetContent returns the raw content of an embedded asset by
 // its relative path (e.g., "agents/gaze-reporter.md").
-func AssetContent(relPath string) ([]byte, error) {
+func assetContent(relPath string) ([]byte, error) {
 	return assets.ReadFile("assets/" + relPath)
 }

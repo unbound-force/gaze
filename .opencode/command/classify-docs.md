@@ -33,18 +33,18 @@ Examples:
 
 1. **Build the binary** (ensures it reflects the current code):
    ```bash
-   go build -o /tmp/gaze-classify-docs ./cmd/gaze
+    go build -o "${TMPDIR:-/tmp}/gaze-classify-docs" ./cmd/gaze
    ```
 
 2. **Run mechanical classification**:
    ```bash
-   /tmp/gaze-classify-docs analyze --classify --format=json $ARGUMENTS
+    "${TMPDIR:-/tmp}/gaze-classify-docs" analyze --classify --format=json $ARGUMENTS
    ```
    Capture the JSON output as `MECHANICAL_JSON`.
 
 3. **Scan project documentation**:
    ```bash
-   /tmp/gaze-classify-docs docscan $ARGUMENTS
+    "${TMPDIR:-/tmp}/gaze-classify-docs" docscan $ARGUMENTS
    ```
    Capture the JSON output (array of `{path, content, priority}`) as
    `DOCS_JSON`.

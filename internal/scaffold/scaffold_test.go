@@ -2,6 +2,8 @@ package scaffold
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,18 +174,18 @@ func TestRun_VersionMarker(t *testing.T) {
 	var buf bytes.Buffer
 	_, err := Run(Options{
 		TargetDir: dir,
-		Version:   "0.1.0",
+		Version:   "v0.1.0",
 		Stdout:    &buf,
 	})
 	if err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
 
-	expected := "<!-- scaffolded by gaze 0.1.0 -->"
+	expected := "<!-- scaffolded by gaze v0.1.0 -->"
 
-	paths, err := AssetPaths()
+	paths, err := assetPaths()
 	if err != nil {
-		t.Fatalf("AssetPaths() returned error: %v", err)
+		t.Fatalf("assetPaths() returned error: %v", err)
 	}
 	for _, relPath := range paths {
 		fullPath := filepath.Join(dir, ".opencode", relPath)
@@ -219,15 +221,22 @@ func TestRun_VersionMarker_Dev(t *testing.T) {
 	}
 
 	expected := "<!-- scaffolded by gaze dev -->"
-	path := filepath.Join(dir, ".opencode", "agents", "gaze-reporter.md")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading file: %v", err)
-	}
 
-	firstLine := strings.SplitN(string(content), "\n", 2)[0]
-	if firstLine != expected {
-		t.Errorf("expected first line %q, got %q", expected, firstLine)
+	paths, err := assetPaths()
+	if err != nil {
+		t.Fatalf("assetPaths() returned error: %v", err)
+	}
+	for _, relPath := range paths {
+		fullPath := filepath.Join(dir, ".opencode", relPath)
+		content, err := os.ReadFile(fullPath)
+		if err != nil {
+			t.Fatalf("reading %s: %v", relPath, err)
+		}
+
+		firstLine := strings.SplitN(string(content), "\n", 2)[0]
+		if firstLine != expected {
+			t.Errorf("file %s: expected first line %q, got %q", relPath, expected, firstLine)
+		}
 	}
 }
 
@@ -270,9 +279,9 @@ func TestEmbeddedAssetsMatchSource(t *testing.T) {
 		t.Fatalf("finding project root: %v", err)
 	}
 
-	paths, err := AssetPaths()
+	paths, err := assetPaths()
 	if err != nil {
-		t.Fatalf("AssetPaths() returned error: %v", err)
+		t.Fatalf("assetPaths() returned error: %v", err)
 	}
 
 	if len(paths) != 4 {
@@ -280,7 +289,7 @@ func TestEmbeddedAssetsMatchSource(t *testing.T) {
 	}
 
 	for _, relPath := range paths {
-		embedded, err := AssetContent(relPath)
+		embedded, err := assetContent(relPath)
 		if err != nil {
 			t.Fatalf("reading embedded asset %s: %v", relPath, err)
 		}
@@ -302,9 +311,9 @@ func TestEmbeddedAssetsMatchSource(t *testing.T) {
 // TestAssetPaths_Returns4Files verifies the embedded asset manifest
 // contains exactly 4 files.
 func TestAssetPaths_Returns4Files(t *testing.T) {
-	paths, err := AssetPaths()
+	paths, err := assetPaths()
 	if err != nil {
-		t.Fatalf("AssetPaths() returned error: %v", err)
+		t.Fatalf("assetPaths() returned error: %v", err)
 	}
 
 	expected := map[string]bool{
@@ -335,8 +344,12 @@ func findProjectRoot() (string, error) {
 	}
 
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		_, err := os.Stat(filepath.Join(dir, "go.mod"))
+		if err == nil {
 			return dir, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

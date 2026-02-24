@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -964,5 +965,96 @@ func TestRunSelfCheck_JSONFormat(t *testing.T) {
 	totalFunctions, ok := summary["total_functions"].(float64)
 	if !ok || totalFunctions == 0 {
 		t.Errorf("expected non-zero total_functions, got %v", summary["total_functions"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runInit tests
+// ---------------------------------------------------------------------------
+
+func TestRunInit_CreatesFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create go.mod to avoid warning.
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := runInit(initParams{
+		targetDir: dir,
+		force:     false,
+		version:   "test",
+		stdout:    &stdout,
+	})
+	if err != nil {
+		t.Fatalf("runInit() returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "created:") {
+		t.Errorf("expected 'created:' in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Run /gaze in OpenCode") {
+		t.Errorf("expected hint in output, got:\n%s", output)
+	}
+
+	// Verify files exist.
+	expected := []string{
+		".opencode/agents/gaze-reporter.md",
+		".opencode/command/gaze.md",
+	}
+	for _, rel := range expected {
+		path := filepath.Join(dir, rel)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected file %s to exist", rel)
+		}
+	}
+}
+
+func TestRunInit_ForceFlag(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	// First run: create files.
+	var buf1 bytes.Buffer
+	if err := runInit(initParams{
+		targetDir: dir,
+		force:     false,
+		version:   "v1.0.0",
+		stdout:    &buf1,
+	}); err != nil {
+		t.Fatalf("first runInit() returned error: %v", err)
+	}
+
+	// Second run without force: should skip.
+	var buf2 bytes.Buffer
+	if err := runInit(initParams{
+		targetDir: dir,
+		force:     false,
+		version:   "v1.0.0",
+		stdout:    &buf2,
+	}); err != nil {
+		t.Fatalf("second runInit() returned error: %v", err)
+	}
+	if !strings.Contains(buf2.String(), "skipped:") {
+		t.Errorf("expected 'skipped:' in output, got:\n%s", buf2.String())
+	}
+
+	// Third run with force: should overwrite.
+	var buf3 bytes.Buffer
+	if err := runInit(initParams{
+		targetDir: dir,
+		force:     true,
+		version:   "v2.0.0",
+		stdout:    &buf3,
+	}); err != nil {
+		t.Fatalf("third runInit() with force returned error: %v", err)
+	}
+	if !strings.Contains(buf3.String(), "overwritten:") {
+		t.Errorf("expected 'overwritten:' in output, got:\n%s", buf3.String())
 	}
 }

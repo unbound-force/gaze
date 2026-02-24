@@ -27,9 +27,9 @@ Before running any gaze command, locate the `gaze` binary:
 2. **Build from source**: If `cmd/gaze/main.go` exists in the
    current project (i.e., you are in the Gaze repo itself), run:
    ```bash
-   go build -o /tmp/gaze-reporter ./cmd/gaze
+    go build -o "${TMPDIR:-/tmp}/gaze-reporter" ./cmd/gaze
    ```
-   Use `/tmp/gaze-reporter` as the binary.
+    Use the built binary path as the binary.
 3. **Install from module**: As a last resort, run:
    ```bash
    go install github.com/unbound-force/gaze/cmd/gaze@latest
@@ -61,7 +61,7 @@ Run:
 Produce a summary containing:
 
 1. **Total functions analyzed** — count of functions in the JSON output
-2. **CRAPload count** — number of functions with CRAP score >= 30
+2. **CRAPload count** — the `summary.crapload` value from the JSON output (functions at or above the configured threshold, default 15)
 3. **Top 5 worst CRAP scores** — table with columns:
    - Function name
    - CRAP score
