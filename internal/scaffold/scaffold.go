@@ -90,9 +90,9 @@ func Run(opts Options) (*Result, error) {
 	// Check for go.mod and warn if absent.
 	goModPath := filepath.Join(opts.TargetDir, "go.mod")
 	if _, err := os.Stat(goModPath); errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(opts.Stdout, "Warning: no go.mod found in current directory.")
-		fmt.Fprintln(opts.Stdout, "Gaze works best in a Go module root.")
-		fmt.Fprintln(opts.Stdout)
+		_, _ = fmt.Fprintln(opts.Stdout, "Warning: no go.mod found in current directory.")
+		_, _ = fmt.Fprintln(opts.Stdout, "Gaze works best in a Go module root.")
+		_, _ = fmt.Fprintln(opts.Stdout)
 	}
 
 	result := &Result{}
@@ -165,30 +165,30 @@ func Run(opts Options) (*Result, error) {
 // operation to w.
 func printSummary(w io.Writer, r *Result, force bool) {
 	if len(r.Created) > 0 || len(r.Overwritten) > 0 {
-		fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
+		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
 	} else {
-		fmt.Fprintln(w, "Gaze OpenCode integration already up to date:")
+		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration already up to date:")
 	}
 
 	for _, f := range r.Created {
-		fmt.Fprintf(w, "  created: %s\n", f)
+		_, _ = fmt.Fprintf(w, "  created: %s\n", f)
 	}
 	for _, f := range r.Skipped {
-		fmt.Fprintf(w, "  skipped: %s (already exists)\n", f)
+		_, _ = fmt.Fprintf(w, "  skipped: %s (already exists)\n", f)
 	}
 	for _, f := range r.Overwritten {
-		fmt.Fprintf(w, "  overwritten: %s\n", f)
+		_, _ = fmt.Fprintf(w, "  overwritten: %s\n", f)
 	}
 
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Run /gaze in OpenCode to generate quality reports.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Run /gaze in OpenCode to generate quality reports.")
 
 	if n := len(r.Skipped); n > 0 {
 		word := "file"
 		if n > 1 {
 			word = "files"
 		}
-		fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", n, word)
+		_, _ = fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", n, word)
 	}
 }
 

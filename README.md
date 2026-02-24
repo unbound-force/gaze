@@ -294,7 +294,7 @@ JSON output conforms to documented schemas. Use `gaze schema` to print the analy
 
 After running `gaze init`, use the `/gaze` command in OpenCode for AI-assisted quality reporting:
 
-```
+```text
 /gaze ./...                     # Full report: CRAP + quality + classification
 /gaze crap ./internal/store     # CRAP scores only
 /gaze quality ./pkg/api         # Test quality metrics only
