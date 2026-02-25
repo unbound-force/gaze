@@ -1,8 +1,72 @@
 # Gaze
 
-Test quality analysis via side effect detection for Go.
+**Test quality analysis via side effect detection for Go.**
 
-Gaze statically analyzes Go functions to detect all observable side effects and computes CRAP (Change Risk Anti-Patterns) scores by combining cyclomatic complexity with test coverage. It helps you find functions that are complex and under-tested -- the riskiest code to change.
+Line coverage tells you which lines ran. It does not tell you whether your tests actually verified anything.
+
+A function can have 90% line coverage and tests that assert on nothing contractually meaningful — logging calls, goroutine lifecycle, internal stdout writes — while leaving the return values, error paths, and state mutations completely unverified. That function is dangerous to change, and traditional coverage metrics will not warn you.
+
+Gaze fixes this by working from first principles:
+
+1. **Detect** every observable side effect a function produces (return values, error returns, mutations, I/O, channel sends, etc.).
+2. **Classify** each effect as *contractual* (part of the function's public obligation), *incidental* (an implementation detail), or *ambiguous*.
+3. **Measure** whether your tests actually assert on the contractual effects — and flag the ones they don't.
+
+This produces three actionable metrics:
+
+### Contract Coverage
+
+The percentage of a function's contractual side effects that at least one test assertion verifies.
+
+```
+ContractCoverage% = (contractual effects asserted on / total contractual effects) × 100
+```
+
+A function with 90% line coverage but 20% contract coverage has tests that run code without checking correctness. Gaze surfaces the specific effects that have no assertion — the exact gaps you need to close.
+
+| Range | Status |
+|-------|--------|
+| ≥ 80% | Good |
+| 50–79% | Warning |
+| < 50%  | Bad |
+
+### Over-Specification Score
+
+The count and ratio of test assertions that target *incidental* effects — implementation details that are not part of the function's contract.
+
+```
+OverSpec.Ratio = incidental assertions / total mapped assertions
+```
+
+Tests that assert on log output, goroutine lifecycle, or internal stdout will break during refactoring even when the function's actual contract is preserved. Gaze identifies each over-specified assertion and explains why it is fragile.
+
+| Count | Status |
+|-------|--------|
+| 0 | Good |
+| 1–3 | Warning |
+| > 3 | Bad |
+
+### GazeCRAP
+
+A composite risk score that replaces line coverage with contract coverage in the CRAP (Change Risk Anti-Patterns) formula.
+
+```
+CRAP(m)     = complexity² × (1 − lineCoverage/100)³ + complexity
+GazeCRAP(m) = complexity² × (1 − contractCoverage)³ + complexity
+```
+
+Functions are placed in a quadrant based on both scores:
+
+| | Low GazeCRAP | High GazeCRAP |
+|---|---|---|
+| **Low CRAP** | Safe | Simple but underspecified |
+| **High CRAP** | Complex but tested | **Dangerous** |
+
+The **Dangerous** quadrant — complex functions whose tests don't verify their contracts — is the highest-priority target for remediation.
+
+---
+
+Gaze requires no annotations, no test framework changes, and no restructuring of your code. It analyzes your existing Go packages as-is.
 
 ## Installation
 
