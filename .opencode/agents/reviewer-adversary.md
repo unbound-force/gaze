@@ -62,6 +62,46 @@ Evaluate all recent changes (staged, unstaged, and untracked files). Use `git di
 - Are there tests that depend on external network access or filesystem state outside the repo?
 - Do tests use only the standard `testing` package (no testify, gomega, etc.)?
 
+### 6. Security and Vulnerabilities
+
+**Input validation and path safety**
+
+- Are user-supplied paths (package patterns, `--config`, `--coverprofile`, `--target`, etc.) validated before use? Could a crafted value cause path traversal outside the working directory?
+- Are paths constructed with `filepath.Join` or equivalent safe combinators — never raw string concatenation?
+- Is shell metacharacter injection possible in any value forwarded to an `os/exec` invocation (e.g., `go test`, `go build` subprocesses)?
+
+**Subprocess execution**
+
+- Are all arguments passed to `exec.Command` sourced from a safe, controlled list? Verify that user-supplied strings are passed as distinct arguments (never interpolated into a shell string).
+- Is there a timeout or context cancellation on every `exec.Command` invocation to prevent indefinite blocking?
+- Is subprocess output size bounded? Unbounded reads from a subprocess pipe are a resource-exhaustion vector.
+
+**Dependency vulnerabilities**
+
+- Do any direct or indirect dependencies in `go.mod` have known CVEs? Flag any dependency that has not been updated in an unusually long time relative to the rest of the module.
+- Are dependency version pins specific (not floating ranges)?
+
+**Resource exhaustion and denial of service**
+
+- Is recursion depth bounded in AST and SSA traversal (e.g., helper call depth, `walkCalls`)? Could a pathological input trigger a stack overflow or unbounded allocation?
+- Are there any loops or recursive calls whose iteration count is proportional to untrusted input size without an explicit ceiling?
+- Are large SSA or AST structures retained in memory longer than their analysis phase requires? (Unnecessary retention blocks GC and can exhaust heap under concurrent package analysis.)
+
+**Information disclosure**
+
+- Do error messages or log lines expose absolute filesystem paths, internal memory addresses, or environment variable values that are not necessary for diagnosis?
+- Are config file parse errors reported without echoing the raw file content (which might contain credentials or tokens)?
+
+**File and permission safety**
+
+- Are newly created or written files (e.g., coverage profiles, scaffold output) created with appropriately restrictive permissions (0600 or 0644 — not world-writable)?
+- Does the tool follow symlinks when scanning directories? If so, is there a guard against symlink loops or escape outside the module root?
+
+**Secrets and credential handling**
+
+- Are there code paths that could log or surface values sourced from environment variables that might hold credentials (e.g., `GONOSUMCHECK`, proxy auth tokens)?
+- Are embedded file contents (via `embed.FS`) free of credentials, API keys, or internal hostnames?
+
 ## Output Format
 
 For each finding, provide:
