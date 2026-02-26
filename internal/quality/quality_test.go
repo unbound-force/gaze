@@ -1186,7 +1186,8 @@ func TestWriteText_GapHints(t *testing.T) {
 }
 
 // TestWriteText_DiscardedReturns verifies that the text formatter renders a
-// "Discarded returns:" section when discarded returns are present (SC-003, FR-009).
+// "Discarded returns:" section with hint lines when discarded returns are
+// present (SC-003, FR-009, FR-009a).
 func TestWriteText_DiscardedReturns(t *testing.T) {
 	reports := []taxonomy.QualityReport{
 		{
@@ -1206,6 +1207,7 @@ func TestWriteText_DiscardedReturns(t *testing.T) {
 						Location:    "parse.go:15",
 					},
 				},
+				DiscardedReturnHints: []string{"if err != nil { t.Fatal(err) }"},
 			},
 			AssertionDetectionConfidence: 90,
 		},
@@ -1225,6 +1227,12 @@ func TestWriteText_DiscardedReturns(t *testing.T) {
 	}
 	if !strings.Contains(output, "parse.go:15") {
 		t.Error("expected discarded effect location 'parse.go:15' in output")
+	}
+	if !strings.Contains(output, "hint:") {
+		t.Error("expected 'hint:' line under discarded return entry")
+	}
+	if !strings.Contains(output, "t.Fatal(err)") {
+		t.Error("expected hint text 'if err != nil { t.Fatal(err) }' under discarded return")
 	}
 }
 
@@ -1452,6 +1460,60 @@ func TestWriteJSON_UnmappedReason(t *testing.T) {
 	}
 	if !strings.Contains(raw, `"helper_param"`) {
 		t.Error("expected 'helper_param' value in JSON output")
+	}
+}
+
+// TestWriteJSON_DiscardedReturnHints verifies that discarded_return_hints
+// are serialized in JSON output parallel to discarded_returns (SC-003, FR-009a).
+func TestWriteJSON_DiscardedReturnHints(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestStore_Set",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Set",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       0,
+				CoveredCount:     0,
+				TotalContractual: 0,
+				DiscardedReturns: []taxonomy.SideEffect{
+					{ID: "se-001", Type: taxonomy.ErrorReturn, Tier: taxonomy.TierP0,
+						Description: "returns error", Target: "error"},
+				},
+				DiscardedReturnHints: []string{"if err != nil { t.Fatal(err) }"},
+			},
+			AssertionDetectionConfidence: 80,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	var output map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	qualReports, _ := output["quality_reports"].([]interface{})
+	if len(qualReports) == 0 {
+		t.Fatal("expected non-empty quality_reports")
+	}
+	report, _ := qualReports[0].(map[string]interface{})
+	cc, _ := report["contract_coverage"].(map[string]interface{})
+
+	hints, ok := cc["discarded_return_hints"].([]interface{})
+	if !ok {
+		t.Fatalf("expected discarded_return_hints array in JSON, got %T", cc["discarded_return_hints"])
+	}
+	if len(hints) != 1 {
+		t.Errorf("expected 1 discarded_return_hint, got %d", len(hints))
+	}
+	hint, _ := hints[0].(string)
+	if !strings.Contains(hint, "t.Fatal(err)") {
+		t.Errorf("expected hint to contain 't.Fatal(err)', got %q", hint)
 	}
 }
 

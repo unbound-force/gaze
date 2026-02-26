@@ -312,6 +312,12 @@ type ContractCoverage struct {
 	// values were explicitly discarded (e.g., _ = target()),
 	// making them definitively unasserted.
 	DiscardedReturns []SideEffect `json:"discarded_returns"`
+
+	// DiscardedReturnHints contains a Go code snippet for each
+	// discarded return, suggesting how to assert on it. Parallel to
+	// DiscardedReturns: len(DiscardedReturnHints) == len(DiscardedReturns).
+	// Omitted from JSON when there are no discarded returns.
+	DiscardedReturnHints []string `json:"discarded_return_hints,omitempty"`
 }
 
 // OverSpecificationScore measures how many incidental side effects

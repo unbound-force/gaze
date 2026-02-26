@@ -2,7 +2,17 @@
 
 **Feature Branch**: `006-agent-quality-report-enhancements`
 **Created**: 2026-02-26
-**Status**: Draft
+**Status**: Complete
+
+## Clarifications
+
+### Session 2026-02-26
+
+- Q: Should `Discarded returns:` entries also show an assertion hint (same `hint:` format as gaps)? → A: Yes — show hints under discarded returns, same `hint:` format as gaps. Also expose `discarded_return_hints` in JSON parallel to `discarded_returns`.
+- Q: Is the `inline_call` heuristic (`len(objToEffectID) == 0`) acceptable for v1 when a function has mixed return + mutation effects? → A: Yes — accept for v1; document the known edge case. Full fix deferred to the inline-call tracing improvement tracked in `report.md`.
+- Q: Does adding new JSON output fields (`unmapped_reason`, `gap_hints`, `discarded_return_hints`) require a semantic version bump? → A: No explicit version gate — the project has not released yet; versioning handled at release time.
+
+---
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -111,9 +121,13 @@ effect with type, description, and location.
 
 1. **Given** a test that discards a return value (`_ = target()`),
    **When** text output is rendered, **Then** a `Discarded returns:`
-   section appears listing the effect type, description, and location.
+   section appears listing the effect type, description, location, and
+   a `hint:` line with the assertion code snippet.
 2. **Given** no discarded returns, **When** text output is rendered,
    **Then** no `Discarded returns:` section appears.
+3. **Given** `--format=json` output, **When** parsed, **Then**
+   `contract_coverage.discarded_return_hints` is present and
+   `len(discarded_return_hints) == len(discarded_returns)`.
 
 ---
 
@@ -154,6 +168,13 @@ output with type, description, and location.
 - When `site.Depth == 0` but `objToEffectID` is empty for reasons other
   than an inline call (e.g., mutations only), the reason MUST default to
   `no_effect_match` not `inline_call`.
+- **Known v1 limitation**: When a function has both `ReturnValue` and
+  `ReceiverMutation` effects and the return value is called inline, the
+  mutation tracing populates `objToEffectID` (so `len > 0`), causing an
+  inline-called return assertion to be classified as `no_effect_match`
+  instead of `inline_call`. This is acceptable for v1 — `no_effect_match`
+  is still actionable. Full resolution deferred to the inline-call tracing
+  improvement documented in `report.md`.
 
 ## Requirements *(mandatory)*
 
@@ -167,8 +188,11 @@ output with type, description, and location.
   `json:"unmapped_reason,omitempty"`.
 - **FR-003**: `MapAssertionsToEffects` MUST populate `UnmappedReason`
   for each unmapped `AssertionMapping` based on: `site.Depth > 0` →
-  `helper_param`; depth 0 with no traced return values and return effects
-  present → `inline_call`; all other cases → `no_effect_match`.
+  `helper_param`; depth 0 with `len(objToEffectID) == 0` and return/error
+  effects present → `inline_call`; all other cases → `no_effect_match`.
+  *v1 known limitation*: functions with mixed return + mutation effects
+  may misclassify an inline-called return as `no_effect_match` because
+  mutation tracing populates `objToEffectID` — acceptable for v1.
 - **FR-004**: `ContractCoverage` MUST include a `gap_hints` field
   (`[]string`, `json:"gap_hints,omitempty"`) parallel to `gaps`.
 - **FR-005**: `ComputeContractCoverage` MUST populate `GapHints` with
@@ -182,7 +206,11 @@ output with type, description, and location.
 - **FR-008**: The text formatter `WriteText` MUST show a hint line
   indented under each coverage gap.
 - **FR-009**: The text formatter `WriteText` MUST show a `Discarded
-  returns:` section listing each discarded effect when present.
+  returns:` section listing each discarded effect when present, with a
+  `hint:` line per entry (same format as gap hints).
+- **FR-009a**: `ContractCoverage` MUST include a `discarded_return_hints`
+  field (`[]string`, `json:"discarded_return_hints,omitempty"`) parallel
+  to `discarded_returns`, populated by `hintForEffect`.
 - **FR-010**: The text formatter `WriteText` MUST expand ambiguous
   effects from a count to a per-item list showing type, description,
   and location.
@@ -211,8 +239,9 @@ output with type, description, and location.
   corresponding non-empty entry in `gap_hints`; `len(gap_hints) ==
   len(gaps)` verified by automated test.
 - **SC-003**: Text output for the `undertested` fixture contains a
-  `Discarded returns:` section with at least one entry, verified by
-  automated test.
+  `Discarded returns:` section with at least one entry and a `hint:`
+  line per entry; `discarded_return_hints` in JSON has the same length
+  as `discarded_returns`, verified by automated test.
 - **SC-004**: Text output for a fixture with ambiguous effects lists
   each ambiguous effect individually (type + location), not just a
   count, verified by automated test.

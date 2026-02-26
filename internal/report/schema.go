@@ -299,6 +299,13 @@ const QualitySchema = `{
             { "type": "null" }
           ],
           "description": "Contractual return/error effects explicitly discarded (e.g., _ = target())"
+        },
+        "discarded_return_hints": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "null" }
+          ],
+          "description": "Go code snippets suggesting how to assert on each discarded return. Parallel to discarded_returns: len(discarded_return_hints) == len(discarded_returns). Omitted when there are no discarded returns."
         }
       }
     },

@@ -156,6 +156,9 @@ func Assess(
 			// Compute metrics, including discarded return detection.
 			coverage := ComputeContractCoverage(result.SideEffects, mappings)
 			coverage.DiscardedReturns = collectDiscardedReturns(result.SideEffects, discardedIDs)
+			for _, dr := range coverage.DiscardedReturns {
+				coverage.DiscardedReturnHints = append(coverage.DiscardedReturnHints, hintForEffect(dr))
+			}
 			overSpec := ComputeOverSpecification(result.SideEffects, mappings)
 			ambiguous := collectAmbiguous(result.SideEffects)
 			detectionConf := computeDetectionConfidence(sites)
