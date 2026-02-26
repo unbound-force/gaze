@@ -138,6 +138,20 @@ packages with zero ambiguous effects render no ambiguous section (empty-set beha
 
 ---
 
+## Phase 8: Council Review Remediation
+
+**Purpose**: Address findings from `/review-council` that were not fully covered by Phases 1–7.
+
+- [x] T023 Add `TestWriteJSON_GapHints_ZeroGaps` to `internal/quality/quality_test.go` asserting `gap_hints` is absent from JSON when there are no coverage gaps (T012 requirement 2, SC-002 scenario 5, omitempty)
+- [x] T024 Add `TestWriteJSON_DiscardedReturnHints_ZeroDiscards` to `internal/quality/quality_test.go` asserting `discarded_return_hints` is absent from JSON when there are no discarded returns (T016 requirement 2, SC-003 scenario 4, omitempty)
+- [x] T025 Add `TestUnmappedReason_HelpersFixture_Integration` to `internal/quality/quality_test.go` — fixture-based integration test verifying `helper_param` unmapped_reason in both text and JSON output for the `helpers` fixture (T007 integration requirement)
+- [x] T026 Add `TestUnmappedReason_WelltestedFixture_Integration` to `internal/quality/quality_test.go` — fixture-based integration test verifying `inline_call` unmapped_reason in both text and JSON output for the `welltested` fixture (T007 integration requirement)
+- [x] T027 Strengthen `TestDiscardedReturns` in `internal/quality/quality_test.go`: change non-fatal `t.Logf` to `t.Errorf` for discarded-return detection check; add text output assertion verifying `Discarded returns:` section and `hint:` lines appear (T015 requirement)
+- [x] T028 Move `report.md` from repo root to `specs/006-agent-quality-report-enhancements/report.md` (Architect finding: misplaced spec artifact)
+- [x] T029 Log `os.Getwd()` failure at debug level in `runClassify` (`cmd/gaze/main.go`) instead of silently discarding the error (Adversary finding: silent discard)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

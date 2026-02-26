@@ -284,7 +284,11 @@ func runClassify(
 	// Load the module for caller/interface analysis. Use the
 	// directory containing the target package if possible.
 	logger.Info("loading module packages for classification")
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		logger.Debug("could not determine working directory for module load", "err", err)
+		cwd = ""
+	}
 	modResult, modErr := loader.LoadModule(cwd)
 	var modPkgs []*packages.Package
 	if modErr != nil {
