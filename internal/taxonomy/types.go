@@ -243,6 +243,31 @@ const (
 	AssertionCustom     AssertionType = "custom"
 )
 
+// UnmappedReasonType enumerates the reasons why an assertion could not
+// be linked to a detected side effect.
+type UnmappedReasonType string
+
+// Unmapped reason constants.
+const (
+	// UnmappedReasonHelperParam indicates the assertion is inside a
+	// helper function body (depth > 0). The helper's parameter objects
+	// cannot be traced back to the test's variable assignments without
+	// param-substitution support.
+	UnmappedReasonHelperParam UnmappedReasonType = "helper_param"
+
+	// UnmappedReasonInlineCall indicates the target function was called
+	// inline without assigning its return value (e.g., "if f() != x").
+	// Gaze only traces return values that appear on the LHS of an
+	// assignment statement.
+	UnmappedReasonInlineCall UnmappedReasonType = "inline_call"
+
+	// UnmappedReasonNoEffectMatch indicates the assertion is in the
+	// test body and return values were traced, but no identifier in
+	// the assertion expression matched a traced side effect object.
+	// Typically a cross-target assertion or an unsupported pattern.
+	UnmappedReasonNoEffectMatch UnmappedReasonType = "no_effect_match"
+)
+
 // AssertionMapping links a test assertion to the side effect it verifies.
 type AssertionMapping struct {
 	// AssertionLocation is the source position (file:line) of the assertion.
@@ -256,6 +281,11 @@ type AssertionMapping struct {
 
 	// Confidence is the mapping confidence (0-100).
 	Confidence int `json:"confidence"`
+
+	// UnmappedReason explains why this assertion could not be linked to
+	// a side effect. Only populated for unmapped assertions (Confidence 0,
+	// SideEffectID empty). Omitted from JSON for mapped assertions.
+	UnmappedReason UnmappedReasonType `json:"unmapped_reason,omitempty"`
 }
 
 // ContractCoverage is the primary test quality metric: the ratio of
@@ -272,6 +302,11 @@ type ContractCoverage struct {
 
 	// Gaps lists contractual effects that are NOT asserted on.
 	Gaps []SideEffect `json:"gaps"`
+
+	// GapHints contains a Go code snippet for each gap, suggesting how
+	// to write the missing assertion. Parallel to Gaps: len(GapHints)
+	// always equals len(Gaps). Omitted from JSON when there are no gaps.
+	GapHints []string `json:"gap_hints,omitempty"`
 
 	// DiscardedReturns lists contractual return/error effects whose
 	// values were explicitly discarded (e.g., _ = target()),

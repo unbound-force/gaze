@@ -23,7 +23,11 @@ import (
 //
 // Assertions that cannot be linked to a specific side effect are
 // reported as unmapped per the spec (FR-003): they are excluded from
-// both Contract Coverage and Over-Specification metrics.
+// both Contract Coverage and Over-Specification metrics. Each unmapped
+// AssertionMapping carries an UnmappedReason field classifying why the
+// mapping failed: helper_param (assertion in a helper body at depth > 0),
+// inline_call (return value asserted inline without assignment), or
+// no_effect_match (no side effect object matched the assertion).
 //
 // It returns three values: mapped assertions, unmapped assertions,
 // and a set of side effect IDs whose return values were explicitly
@@ -45,6 +49,7 @@ func MapAssertionsToEffects(
 				AssertionLocation: s.Location,
 				AssertionType:     mapKindToType(s.Kind),
 				Confidence:        0,
+				UnmappedReason:    classifyUnmappedReason(s, nil, effects),
 			})
 		}
 		return nil, unmapped, discardedIDs
@@ -80,6 +85,7 @@ func MapAssertionsToEffects(
 				AssertionLocation: site.Location,
 				AssertionType:     mapKindToType(site.Kind),
 				Confidence:        0,
+				UnmappedReason:    classifyUnmappedReason(site, objToEffectID, effects),
 			})
 		}
 	}
@@ -529,6 +535,52 @@ func sameFunction(a, b *ssa.Function) bool {
 		return false
 	}
 	return aPkg.Pkg.Path() == bPkg.Pkg.Path()
+}
+
+// classifyUnmappedReason determines why an assertion site could not be
+// mapped to a side effect. It uses three signals:
+//
+//  1. site.Depth > 0 → the assertion is inside a helper body;
+//     helper parameters cannot be traced back to the test's variables.
+//
+//  2. depth == 0, objToEffectID is empty, AND the target has at least
+//     one ReturnValue or ErrorReturn effect → the target was likely
+//     called inline without assigning the return value
+//     (e.g., "if f() != x"). traceReturnValues only handles assignments.
+//
+//  3. All other cases → no side effect object matched the assertion
+//     identifiers. Typically a cross-target assertion or an unsupported
+//     assertion pattern.
+func classifyUnmappedReason(
+	site AssertionSite,
+	objToEffectID map[types.Object]string,
+	effects []taxonomy.SideEffect,
+) taxonomy.UnmappedReasonType {
+	// Cause A: assertion is inside a helper body.
+	if site.Depth > 0 {
+		return taxonomy.UnmappedReasonHelperParam
+	}
+
+	// Cause B: return values were not traced because the call was inline.
+	// Heuristic: no traced objects AND target has return/error effects.
+	if len(objToEffectID) == 0 && hasReturnEffects(effects) {
+		return taxonomy.UnmappedReasonInlineCall
+	}
+
+	// Cause C: general no-match case.
+	return taxonomy.UnmappedReasonNoEffectMatch
+}
+
+// hasReturnEffects reports whether the effect list contains at least one
+// ReturnValue or ErrorReturn effect. Used by classifyUnmappedReason to
+// distinguish inline-call unmapping from other no-match cases.
+func hasReturnEffects(effects []taxonomy.SideEffect) bool {
+	for _, e := range effects {
+		if e.Type == taxonomy.ReturnValue || e.Type == taxonomy.ErrorReturn {
+			return true
+		}
+	}
+	return false
 }
 
 // mapKindToType converts an AssertionKind to an AssertionType for
