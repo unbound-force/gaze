@@ -103,9 +103,12 @@ func WriteText(w io.Writer, reports []taxonomy.QualityReport, summary *taxonomy.
 		// Discarded returns (definitively unasserted).
 		if len(r.ContractCoverage.DiscardedReturns) > 0 {
 			_, _ = fmt.Fprintln(w, muted.Render("    Discarded returns (definitively unasserted):"))
-			for _, dr := range r.ContractCoverage.DiscardedReturns {
+			for i, dr := range r.ContractCoverage.DiscardedReturns {
 				_, _ = fmt.Fprintf(w, "      - %s: %s (%s)\n",
 					dr.Type, dr.Description, dr.Location)
+				if i < len(r.ContractCoverage.DiscardedReturnHints) && r.ContractCoverage.DiscardedReturnHints[i] != "" {
+					_, _ = fmt.Fprintf(w, "        hint: %s\n", r.ContractCoverage.DiscardedReturnHints[i])
+				}
 			}
 		}
 
