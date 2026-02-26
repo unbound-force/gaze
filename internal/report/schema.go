@@ -286,6 +286,13 @@ const QualitySchema = `{
           ],
           "description": "Contractual effects NOT asserted on"
         },
+        "gap_hints": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "null" }
+          ],
+          "description": "Go code snippets suggesting how to assert on each gap. Parallel to gaps: len(gap_hints) == len(gaps). Omitted when there are no gaps."
+        },
         "discarded_returns": {
           "oneOf": [
             { "type": "array", "items": { "$ref": "#/$defs/SideEffectRef" } },
@@ -346,6 +353,11 @@ const QualitySchema = `{
           "minimum": 0,
           "maximum": 100,
           "description": "Mapping confidence (0-100)"
+        },
+        "unmapped_reason": {
+          "type": "string",
+          "enum": ["helper_param", "inline_call", "no_effect_match"],
+          "description": "Why this assertion could not be mapped to a side effect. Only present on unmapped assertions (confidence 0). helper_param: assertion is inside a helper body at depth > 0; inline_call: target was called inline without assigning the return value; no_effect_match: no side effect object matched the assertion."
         }
       }
     },
