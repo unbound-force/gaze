@@ -128,6 +128,9 @@ effect with type, description, and location.
 3. **Given** `--format=json` output, **When** parsed, **Then**
    `contract_coverage.discarded_return_hints` is present and
    `len(discarded_return_hints) == len(discarded_returns)`.
+4. **Given** no discarded returns, **When** `--format=json` output is
+   parsed, **Then** `discarded_return_hints` is absent from the JSON
+   output (omitempty — the key must not appear, not merely be empty).
 
 ---
 
@@ -215,7 +218,8 @@ output with type, description, and location.
   effects from a count to a per-item list showing type, description,
   and location.
 - **FR-011**: The `QualitySchema` JSON Schema constant MUST be updated
-  to reflect the new `unmapped_reason` and `gap_hints` fields.
+  to reflect the new `unmapped_reason`, `gap_hints`, and
+  `discarded_return_hints` fields.
 
 ### Key Entities
 
