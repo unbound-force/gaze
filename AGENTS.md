@@ -79,9 +79,12 @@ Specs are numbered with 3-digit zero-padded prefixes and stored under `specs/`:
   scripts/bash/                  # Automation scripts
 specs/
   001-side-effect-detection/     # spec.md, plan.md, tasks.md
-  002-contract-classification/   # spec.md
-  003-test-quality-metrics/      # spec.md
-  004-composite-metrics/         # spec.md
+  002-contract-classification/   # spec.md, plan.md, tasks.md
+  003-test-quality-metrics/      # spec.md, plan.md, clarify.md, tasks.md
+  004-composite-metrics/         # spec.md, plan.md, tasks.md (retroactive)
+  005-gaze-opencode-integration/ # spec.md, plan.md, tasks.md, research.md
+  006-agent-quality-report-enhancements/ # spec.md, plan.md, tasks.md
+  007-assertion-mapping-depth/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -231,4 +234,6 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 007-assertion-mapping-depth: Assertion mapping depth improvements (spec, plan, research, data-model, quickstart, tasks complete — implementation pending)
+- 006-agent-quality-report-enhancements: Unmapped assertion reasons, gap hints, discarded return details, ambiguous effects expansion in quality reports
 - 005-gaze-opencode-integration: Added `gaze init` subcommand (internal/scaffold), GoReleaser v2 release pipeline, Homebrew cask distribution, OpenCode agent (gaze-reporter) and command (/gaze) files

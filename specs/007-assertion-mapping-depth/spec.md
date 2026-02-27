@@ -2,8 +2,17 @@
 
 **Feature Branch**: `007-assertion-mapping-depth`
 **Created**: 2026-02-27
-**Status**: Draft
+**Status**: Ready for Implementation
 **Input**: User description: "Spec 007: Assertion Mapping Depth — Reaching 80% Contract Coverage."
+
+## Clarifications
+
+### Session 2026-02-27
+
+- Q: How should US5 (Helper Return Value Tracing) be characterized relative to the original scope? → A: US5 is a justified scope expansion — a deliberate decision driven by research findings (research.md R3), not scope creep. The research phase proved expression resolution alone (US1-US3) reaches only ~45-55% weighted average contract coverage because the `analysis` package (108 pairs, 51% of all pairs) uses helper indirection. US5 was added to achieve the 80% SC-001 target, making it load-bearing for the primary success criterion.
+- Q: Is SC-001's 80% weighted average contract coverage a hard gate or best-effort target? → A: 80% is a best-effort target. If not met after full implementation of US1-US5, SC-001 should be revised to the actual achieved value and the remaining gap documented as a known limitation with follow-on tracking, rather than blocking the release.
+- Q: Should the variable shadowing edge case be promoted to a formal FR? → A: Yes. Add FR-016 for variable shadowing to ensure full traceability from requirement to task to test. The edge case already uses MUST language and describes a distinct failure mode (traced variable reassigned in same scope).
+- Q: For US5 helper verification (FR-014), does "calls the target" mean structural presence in SSA or data-flow tracing of the return value? → A: Structural presence only. The helper must contain a `*ssa.Call` instruction whose callee is the target function (verified by iterating the helper's SSA blocks). No data-flow tracing of the return value path is required. This keeps implementation simple and avoids the complexity of full SSA value chain analysis for marginal accuracy gain. Confidence 65 already reflects this reduced precision.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -30,10 +39,13 @@ pattern in the project. The `analysis` package (108 test-target pairs,
 test asserts on struct fields of the return value. Fixing this one
 pattern has the highest impact on the weighted average.
 
-**Independent Test**: Run `gaze quality` on the `analysis` package
-before and after the change. Before: ~6.9% average contract coverage.
-After: the majority of test-target pairs that assert on return value
-fields report coverage for their `ReturnValue` effect.
+**Independent Test**: Run `gaze quality` on packages where tests use
+selector assertion patterns — `multilib` (testify-style `user.Name`),
+`crap` (struct field assertions on Report), or `classify` (nested
+slice/struct access). Before: these packages report 58-69% contract
+coverage. After: test-target pairs that assert on return value fields
+report coverage for their `ReturnValue` effect. (Note: the `analysis`
+package requires US5 helper tracing in addition to selector matching.)
 
 **Acceptance Scenarios**:
 
@@ -161,6 +173,52 @@ have a distinct, lower confidence value.
 
 ---
 
+### User Story 5 — Helper Return Value Tracing (Priority: P2)
+
+A developer writes tests that delegate target function calls to helper
+functions (e.g., `result := analyzeFunc(t, "returns", "SingleReturn")`
+where `analyzeFunc` internally calls the target function
+`analysis.AnalyzeFunctionWithSSA`). Currently `traceReturnValues` only
+traces when the target call appears directly in an assignment statement
+in the test function's AST. When the target call is inside a helper,
+`findAssignLHS` fails because the helper's AST is in a different
+function body, and `objToEffectID` remains empty.
+
+After this feature, when the direct target call assignment search
+fails, the mapping engine searches the test function's AST for
+assignments whose RHS is a call to the helper function that
+(transitively) returns the target's result. The helper's return
+variable is then traced as if it were the target's return value.
+
+**Why this priority**: The `analysis` package has 108 test-target pairs
+(51% of all pairs) that use helper indirection exclusively. Without
+this fix, the weighted average contract coverage cannot reach 80%.
+This is equal priority with US2 because it addresses a distinct
+root cause that affects the largest package.
+
+**Independent Test**: Run `gaze quality` on the `analysis` package
+before and after. Before: ~6.9% average contract coverage. After:
+test-target pairs using `result := analyzeFunc(t, ...)` followed by
+assertions on `result.SideEffects` (combining this with US1 selector
+resolution) report coverage for the `ReturnValue` effect.
+
+**Acceptance Scenarios**:
+
+1. **Given** a test that calls a helper `result := helper(t, args...)`
+   where the helper internally calls the target and returns its
+   result, **When** `gaze quality` runs, **Then** `result` is traced
+   to the target's `ReturnValue` effect and assertions on `result`
+   (or `result.Field` via US1) are mapped.
+2. **Given** a test that calls a helper returning a value unrelated
+   to the target function, **When** `gaze quality` runs, **Then** no
+   false positive mapping is created.
+3. **Given** a helper that wraps the target call with additional
+   processing (e.g., `result := target(); validate(result); return result`),
+   **When** `gaze quality` runs, **Then** the mapping still succeeds
+   because the helper's return value originates from the target call.
+
+---
+
 ### Edge Cases
 
 - A selector expression on a variable that is NOT a traced return
@@ -185,6 +243,14 @@ have a distinct, lower confidence value.
   lowered.
 - All existing mapped assertions MUST remain mapped — no regressions
   in the set of assertions that currently map successfully.
+- Helper return tracing MUST only activate when direct target call
+  assignment search fails — it is a fallback, not the primary path.
+- A helper that calls multiple functions (including the target) MUST
+  still correctly trace the return value if the helper's return
+  originates from the target call.
+- A helper that does NOT call the target function MUST NOT cause
+  false positive tracing — the return value tracing must verify the
+  helper transitively invokes the target.
 
 ## Requirements *(mandatory)*
 
@@ -228,6 +294,28 @@ have a distinct, lower confidence value.
 - **FR-012**: All existing assertion mappings that succeed at
   confidence 75 MUST continue to succeed at the same confidence.
   No regressions in existing mapping behavior.
+- **FR-013**: When `findAssignLHS` fails to find a direct assignment
+  for the target call, the mapping engine MUST search the test
+  function's AST for assignments whose RHS calls a function that
+  transitively invokes the target, and trace the LHS variable as
+  the return value receiver at indirect confidence (65).
+- **FR-014**: Helper return tracing MUST verify that the helper
+  function actually calls the target function before tracing.
+  Verification uses structural presence: the helper's SSA must
+  contain a `*ssa.Call` instruction whose callee is the target
+  function, verified by iterating the helper's SSA blocks and
+  instructions. No data-flow tracing of the return value path is
+  required. A helper that does not call the target MUST NOT produce
+  a mapping.
+- **FR-015**: Helper return tracing MUST be limited to depth 1 —
+  only direct callers of the target, not transitive chains of
+  helpers calling helpers. This bounds complexity and prevents
+  false positive traces through long call chains.
+- **FR-016**: When a traced return value variable is reassigned in
+  the same scope (e.g., `result = localValue` after
+  `result := target()`), assertions on the reassigned variable MUST
+  NOT be mapped to the original return value's side effect. The
+  mapping engine must respect the most recent assignment.
 
 ### Key Entities
 
@@ -246,9 +334,17 @@ have a distinct, lower confidence value.
 ### Measurable Outcomes
 
 - **SC-001**: The weighted average contract coverage across all
-  packages with tests reaches >= 80%, measured by running
-  `gaze quality --format=json` on each package and computing the
-  test-target-pair-weighted average of `contract_coverage.percentage`.
+  packages with tests reaches >= 80% (best-effort target), measured
+  by running `gaze quality --format=json` on each package and
+  computing the test-target-pair-weighted average of
+  `contract_coverage.percentage`. This requires both expression
+  resolution (US1-US3) and helper return tracing (US5) working
+  together. Expression resolution alone is projected to reach only
+  ~45-55% (see research.md R3) because the `analysis` package (51%
+  of pairs) uses helper indirection. US5 was added to scope to close
+  this gap. If the 80% target is not met after full implementation,
+  the criterion should be revised to the actual achieved value and
+  the remaining gap documented as a known limitation.
 - **SC-002**: The mapping accuracy ratchet (TestSC003_MappingAccuracy)
   reaches >= 85% across the standard test fixtures, with the baseline
   floor raised accordingly.
