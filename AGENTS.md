@@ -227,6 +227,8 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
+- Go 1.24+ + `go/packages`, `go/ast`, `go/types`, `golang.org/x/tools/go/ssa` (008-contract-coverage-gaps)
+- N/A (test-only changes) (008-contract-coverage-gaps)
 
 - Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
