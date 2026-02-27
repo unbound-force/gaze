@@ -33,7 +33,8 @@ type Options struct {
 }
 
 // Analyze performs side effect analysis on all functions in the
-// loaded package, returning an AnalysisResult per function.
+// loaded package. Returns a slice of AnalysisResult (one per
+// function) and any error encountered during analysis.
 func Analyze(pkg *packages.Package, opts Options) ([]taxonomy.AnalysisResult, error) {
 	start := time.Now()
 
@@ -109,9 +110,11 @@ func AnalyzeFunction(
 }
 
 // AnalyzeFunctionWithSSA performs side effect analysis on a single
-// function using a pre-built SSA package. If ssaPkg is nil, SSA is
-// built on-demand. Pre-building SSA via BuildSSA and reusing it
-// across multiple calls avoids redundant SSA construction.
+// function using a pre-built SSA package. Returns an AnalysisResult
+// containing the function target metadata and detected side effects.
+// If ssaPkg is nil, SSA is built on-demand. Pre-building SSA via
+// BuildSSA and reusing it across multiple calls avoids redundant SSA
+// construction.
 func AnalyzeFunctionWithSSA(
 	pkg *packages.Package,
 	fd *ast.FuncDecl,

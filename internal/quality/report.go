@@ -90,9 +90,25 @@ func WriteText(w io.Writer, reports []taxonomy.QualityReport, summary *taxonomy.
 		// Gaps.
 		if len(r.ContractCoverage.Gaps) > 0 {
 			_, _ = fmt.Fprintln(w, muted.Render("    Gaps (untested contractual effects):"))
-			for _, gap := range r.ContractCoverage.Gaps {
+			for i, gap := range r.ContractCoverage.Gaps {
 				_, _ = fmt.Fprintf(w, "      - %s: %s (%s)\n",
 					gap.Type, gap.Description, gap.Location)
+				// Hint: show the suggested assertion if available.
+				if i < len(r.ContractCoverage.GapHints) && r.ContractCoverage.GapHints[i] != "" {
+					_, _ = fmt.Fprintf(w, "        hint: %s\n", r.ContractCoverage.GapHints[i])
+				}
+			}
+		}
+
+		// Discarded returns (definitively unasserted).
+		if len(r.ContractCoverage.DiscardedReturns) > 0 {
+			_, _ = fmt.Fprintln(w, muted.Render("    Discarded returns (definitively unasserted):"))
+			for i, dr := range r.ContractCoverage.DiscardedReturns {
+				_, _ = fmt.Fprintf(w, "      - %s: %s (%s)\n",
+					dr.Type, dr.Description, dr.Location)
+				if i < len(r.ContractCoverage.DiscardedReturnHints) && r.ContractCoverage.DiscardedReturnHints[i] != "" {
+					_, _ = fmt.Fprintf(w, "        hint: %s\n", r.ContractCoverage.DiscardedReturnHints[i])
+				}
 			}
 		}
 
@@ -104,16 +120,29 @@ func WriteText(w io.Writer, reports []taxonomy.QualityReport, summary *taxonomy.
 			}
 		}
 
-		// Ambiguous effects.
+		// Ambiguous effects — per-item list so agents can target GoDoc fixes.
 		if len(r.AmbiguousEffects) > 0 {
-			_, _ = fmt.Fprintf(w, "    Ambiguous effects (excluded): %d\n",
+			_, _ = fmt.Fprintf(w, "    Ambiguous effects (excluded from metrics): %d\n",
 				len(r.AmbiguousEffects))
+			for _, ae := range r.AmbiguousEffects {
+				_, _ = fmt.Fprintf(w, "      - %s: %s (%s)\n",
+					ae.Type, ae.Description, ae.Location)
+			}
 		}
 
-		// Unmapped assertions.
+		// Unmapped assertions — per-item list with location, type, and reason.
 		if len(r.UnmappedAssertions) > 0 {
 			_, _ = fmt.Fprintf(w, "    Unmapped assertions: %d\n",
 				len(r.UnmappedAssertions))
+			for _, ua := range r.UnmappedAssertions {
+				if ua.UnmappedReason != "" {
+					_, _ = fmt.Fprintf(w, "      - %s  %s  [%s]\n",
+						ua.AssertionLocation, ua.AssertionType, ua.UnmappedReason)
+				} else {
+					_, _ = fmt.Fprintf(w, "      - %s  %s\n",
+						ua.AssertionLocation, ua.AssertionType)
+				}
+			}
 		}
 	}
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -1118,7 +1119,9 @@ func TestSC007_TableDrivenUnion(t *testing.T) {
 // --- Acceptance Test: Discarded Returns ---
 
 func TestDiscardedReturns(t *testing.T) {
-	// Verify that discarded returns (_ = target()) are detected.
+	// Verify that discarded returns (_ = target()) are detected and that the
+	// text output surfaces a "Discarded returns:" section with hint lines
+	// (SC-003, T015, FR-009, FR-009a).
 
 	reports, _ := assessFixture(t, "undertested")
 
@@ -1130,14 +1133,644 @@ func TestDiscardedReturns(t *testing.T) {
 			len(r.ContractCoverage.Gaps))
 	}
 
-	// TestParse_Valid discards the error return: _, _ := Parse("42")
-	// should detect the discarded error effect.
+	// TestParse_Valid uses `got, _ := Parse("42")`. Go SSA generates an
+	// Extract instruction even for blank identifiers in partial assignments,
+	// so the implementation treats this as a gap (not a discard) — a known
+	// v1 limitation for partial blank assignments. Log for visibility only.
+	for i := range reports {
+		if reports[i].TestFunction == "TestParse_Valid" {
+			if len(reports[i].ContractCoverage.DiscardedReturns) == 0 {
+				t.Logf("TestParse_Valid: error return is a gap (not a discard) — SSA generates Extract for blank in partial assignment; this is expected v1 behavior")
+			}
+			break
+		}
+	}
+
+	// TestStore_Set uses `s.Set("key", "value")` with no assignment at all —
+	// a complete discard. This MUST be detected as a discarded return.
+	var setReport *taxonomy.QualityReport
+	for i := range reports {
+		if reports[i].TestFunction == "TestStore_Set" &&
+			reports[i].TargetFunction.Function == "Set" {
+			setReport = &reports[i]
+			break
+		}
+	}
+	if setReport == nil {
+		t.Fatal("TestStore_Set -> Set report not found in undertested fixture")
+	}
+	if len(setReport.ContractCoverage.DiscardedReturns) == 0 {
+		t.Error("TestStore_Set -> Set: expected at least one discarded return (s.Set(...) return value completely ignored, no assignment)")
+	}
+
+	// Verify the text formatter renders a "Discarded returns:" section with
+	// "hint:" lines for any report that has discarded returns (SC-003, T015).
+	var anyDiscarded bool
 	for _, r := range reports {
-		if r.TestFunction == "TestParse_Valid" {
-			if len(r.ContractCoverage.DiscardedReturns) == 0 {
-				t.Logf("TestParse_Valid: no discarded returns detected (may depend on SSA representation)")
+		if len(r.ContractCoverage.DiscardedReturns) > 0 {
+			anyDiscarded = true
+			break
+		}
+	}
+	if !anyDiscarded {
+		t.Error("expected at least one report with discarded returns in undertested fixture")
+	} else {
+		var textBuf bytes.Buffer
+		if err := quality.WriteText(&textBuf, reports, nil); err != nil {
+			t.Fatalf("WriteText failed: %v", err)
+		}
+		output := textBuf.String()
+		if !strings.Contains(output, "Discarded returns") {
+			t.Error("expected text output to contain 'Discarded returns' section when discarded returns are present")
+		}
+		if !strings.Contains(output, "hint:") {
+			t.Error("expected text output to contain 'hint:' lines under discarded returns section")
+		}
+	}
+}
+
+// --- Spec 006: Agent-Oriented Quality Report Enhancement Tests ---
+
+// TestWriteText_GapHints verifies that the text formatter renders a
+// "hint:" line under each coverage gap (SC-002, FR-008).
+func TestWriteText_GapHints(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestStore_Set",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Set",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       0,
+				CoveredCount:     0,
+				TotalContractual: 1,
+				Gaps: []taxonomy.SideEffect{
+					{
+						Type:        taxonomy.ErrorReturn,
+						Description: "returns error from Set",
+						Location:    "store.go:22",
+					},
+				},
+				GapHints: []string{"if err != nil { t.Fatal(err) }"},
+			},
+			AssertionDetectionConfidence: 80,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteText(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "hint:") {
+		t.Error("expected 'hint:' in text output for gap with hint")
+	}
+	if !strings.Contains(output, "t.Fatal(err)") {
+		t.Error("expected hint text 'if err != nil { t.Fatal(err) }' in output")
+	}
+}
+
+// TestWriteText_DiscardedReturns verifies that the text formatter renders a
+// "Discarded returns:" section with hint lines when discarded returns are
+// present (SC-003, FR-009, FR-009a).
+func TestWriteText_DiscardedReturns(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestParse_Valid",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Parse",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       0,
+				CoveredCount:     0,
+				TotalContractual: 0,
+				DiscardedReturns: []taxonomy.SideEffect{
+					{
+						Type:        taxonomy.ErrorReturn,
+						Description: "returns error from Parse",
+						Location:    "parse.go:15",
+					},
+				},
+				DiscardedReturnHints: []string{"if err != nil { t.Fatal(err) }"},
+			},
+			AssertionDetectionConfidence: 90,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteText(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Discarded returns") {
+		t.Error("expected 'Discarded returns' section in text output")
+	}
+	if !strings.Contains(output, "ErrorReturn") {
+		t.Error("expected discarded effect type 'ErrorReturn' in output")
+	}
+	if !strings.Contains(output, "parse.go:15") {
+		t.Error("expected discarded effect location 'parse.go:15' in output")
+	}
+	if !strings.Contains(output, "hint:") {
+		t.Error("expected 'hint:' line under discarded return entry")
+	}
+	if !strings.Contains(output, "t.Fatal(err)") {
+		t.Error("expected hint text 'if err != nil { t.Fatal(err) }' under discarded return")
+	}
+}
+
+// TestWriteText_NoDiscardedReturns verifies that no "Discarded returns:"
+// section appears when the list is empty.
+func TestWriteText_NoDiscardedReturns(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction:                 "TestFoo",
+			TargetFunction:               taxonomy.FunctionTarget{Package: "pkg", Function: "Foo"},
+			ContractCoverage:             taxonomy.ContractCoverage{Percentage: 100},
+			AssertionDetectionConfidence: 100,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteText(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+
+	if strings.Contains(buf.String(), "Discarded returns") {
+		t.Error("unexpected 'Discarded returns' section when DiscardedReturns is empty")
+	}
+}
+
+// TestWriteText_AmbiguousEffectsDetail verifies that ambiguous effects are
+// rendered as a per-item list (not just a count) in the text formatter
+// (SC-004, FR-010).
+func TestWriteText_AmbiguousEffectsDetail(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestHandler",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Handler",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{Percentage: 100},
+			AmbiguousEffects: []taxonomy.SideEffect{
+				{
+					Type:        taxonomy.LogWrite,
+					Description: "writes to logger",
+					Location:    "handler.go:42",
+				},
+				{
+					Type:        taxonomy.ReturnValue,
+					Description: "returns interface{}",
+					Location:    "handler.go:55",
+				},
+			},
+			AssertionDetectionConfidence: 80,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteText(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Ambiguous effects") {
+		t.Error("expected 'Ambiguous effects' section in output")
+	}
+	if !strings.Contains(output, "handler.go:42") {
+		t.Error("expected ambiguous effect location 'handler.go:42' in output")
+	}
+	if !strings.Contains(output, "handler.go:55") {
+		t.Error("expected ambiguous effect location 'handler.go:55' in output")
+	}
+	if !strings.Contains(output, "LogWrite") {
+		t.Error("expected ambiguous effect type 'LogWrite' in output")
+	}
+}
+
+// TestWriteText_UnmappedAssertionsDetail verifies that unmapped assertions
+// are rendered as a per-item list with location, type, and reason
+// (SC-001, FR-007).
+func TestWriteText_UnmappedAssertionsDetail(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestMultiply",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Multiply",
+			},
+			ContractCoverage:             taxonomy.ContractCoverage{Percentage: 100},
+			AssertionDetectionConfidence: 75,
+			UnmappedAssertions: []taxonomy.AssertionMapping{
+				{
+					AssertionLocation: "helpers_test.go:15",
+					AssertionType:     taxonomy.AssertionEquality,
+					Confidence:        0,
+					UnmappedReason:    taxonomy.UnmappedReasonHelperParam,
+				},
+				{
+					AssertionLocation: "counter_test.go:22",
+					AssertionType:     taxonomy.AssertionEquality,
+					Confidence:        0,
+					UnmappedReason:    taxonomy.UnmappedReasonInlineCall,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteText(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Unmapped assertions: 2") {
+		t.Error("expected 'Unmapped assertions: 2' header in output")
+	}
+	if !strings.Contains(output, "helpers_test.go:15") {
+		t.Error("expected unmapped assertion location 'helpers_test.go:15' in output")
+	}
+	if !strings.Contains(output, "counter_test.go:22") {
+		t.Error("expected unmapped assertion location 'counter_test.go:22' in output")
+	}
+	if !strings.Contains(output, string(taxonomy.UnmappedReasonHelperParam)) {
+		t.Errorf("expected unmapped reason %q in output", taxonomy.UnmappedReasonHelperParam)
+	}
+	if !strings.Contains(output, string(taxonomy.UnmappedReasonInlineCall)) {
+		t.Errorf("expected unmapped reason %q in output", taxonomy.UnmappedReasonInlineCall)
+	}
+}
+
+// TestWriteJSON_GapHints verifies that gap_hints are serialized in JSON
+// output and have the same length as gaps (SC-002, FR-004, FR-005).
+func TestWriteJSON_GapHints(t *testing.T) {
+	gaps := []taxonomy.SideEffect{
+		{ID: "se-001", Type: taxonomy.ErrorReturn, Tier: taxonomy.TierP0,
+			Description: "returns error", Target: "error"},
+		{ID: "se-002", Type: taxonomy.ReturnValue, Tier: taxonomy.TierP0,
+			Description: "returns int", Target: "int"},
+	}
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestFoo",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Foo",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       0,
+				CoveredCount:     0,
+				TotalContractual: 2,
+				Gaps:             gaps,
+				GapHints: []string{
+					"if err != nil { t.Fatal(err) }",
+					"got := target(); // assert got == expected",
+				},
+			},
+			AssertionDetectionConfidence: 80,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	var output map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	// Navigate to contract_coverage.gap_hints.
+	qualReports, ok := output["quality_reports"].([]interface{})
+	if !ok || len(qualReports) == 0 {
+		t.Fatal("expected non-empty quality_reports array")
+	}
+	report, ok := qualReports[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected quality_reports[0] to be an object")
+	}
+	cc, ok := report["contract_coverage"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected contract_coverage to be an object")
+	}
+	gapHints, ok := cc["gap_hints"].([]interface{})
+	if !ok {
+		t.Fatalf("expected gap_hints to be an array in JSON, got %T", cc["gap_hints"])
+	}
+	if len(gapHints) != 2 {
+		t.Errorf("expected 2 gap_hints, got %d", len(gapHints))
+	}
+	first, _ := gapHints[0].(string)
+	if !strings.Contains(first, "t.Fatal(err)") {
+		t.Errorf("expected first hint to contain 't.Fatal(err)', got %q", first)
+	}
+}
+
+// TestWriteJSON_UnmappedReason verifies that unmapped_reason is serialized
+// in JSON output for unmapped assertions and omitted for mapped ones
+// (SC-001, FR-002).
+func TestWriteJSON_UnmappedReason(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestMultiply",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Multiply",
+			},
+			ContractCoverage:             taxonomy.ContractCoverage{Percentage: 100},
+			AssertionDetectionConfidence: 75,
+			UnmappedAssertions: []taxonomy.AssertionMapping{
+				{
+					AssertionLocation: "helpers_test.go:15",
+					AssertionType:     taxonomy.AssertionEquality,
+					Confidence:        0,
+					UnmappedReason:    taxonomy.UnmappedReasonHelperParam,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	raw := buf.String()
+	if !strings.Contains(raw, `"unmapped_reason"`) {
+		t.Error("expected 'unmapped_reason' key in JSON output")
+	}
+	if !strings.Contains(raw, `"helper_param"`) {
+		t.Error("expected 'helper_param' value in JSON output")
+	}
+}
+
+// TestWriteJSON_DiscardedReturnHints verifies that discarded_return_hints
+// are serialized in JSON output parallel to discarded_returns (SC-003, FR-009a).
+func TestWriteJSON_DiscardedReturnHints(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestStore_Set",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Set",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       0,
+				CoveredCount:     0,
+				TotalContractual: 0,
+				DiscardedReturns: []taxonomy.SideEffect{
+					{ID: "se-001", Type: taxonomy.ErrorReturn, Tier: taxonomy.TierP0,
+						Description: "returns error", Target: "error"},
+				},
+				DiscardedReturnHints: []string{"if err != nil { t.Fatal(err) }"},
+			},
+			AssertionDetectionConfidence: 80,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	var output map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	qualReports, _ := output["quality_reports"].([]interface{})
+	if len(qualReports) == 0 {
+		t.Fatal("expected non-empty quality_reports")
+	}
+	report, _ := qualReports[0].(map[string]interface{})
+	cc, _ := report["contract_coverage"].(map[string]interface{})
+
+	hints, ok := cc["discarded_return_hints"].([]interface{})
+	if !ok {
+		t.Fatalf("expected discarded_return_hints array in JSON, got %T", cc["discarded_return_hints"])
+	}
+	if len(hints) != 1 {
+		t.Errorf("expected 1 discarded_return_hint, got %d", len(hints))
+	}
+	hint, _ := hints[0].(string)
+	if !strings.Contains(hint, "t.Fatal(err)") {
+		t.Errorf("expected hint to contain 't.Fatal(err)', got %q", hint)
+	}
+}
+
+// TestWriteJSON_GapHints_ZeroGaps verifies that gap_hints is absent from JSON
+// output when there are no coverage gaps (omitempty behavior, T012, SC-002
+// scenario 5).
+func TestWriteJSON_GapHints_ZeroGaps(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestAdd",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Add",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       100,
+				CoveredCount:     1,
+				TotalContractual: 1,
+				// Gaps and GapHints are nil → omitempty omits both JSON keys.
+			},
+			AssertionDetectionConfidence: 100,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	var output map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	qualReports, _ := output["quality_reports"].([]interface{})
+	if len(qualReports) == 0 {
+		t.Fatal("expected non-empty quality_reports")
+	}
+	report, _ := qualReports[0].(map[string]interface{})
+	cc, _ := report["contract_coverage"].(map[string]interface{})
+
+	if _, ok := cc["gap_hints"]; ok {
+		t.Error("expected gap_hints to be absent from JSON when there are no gaps (omitempty)")
+	}
+}
+
+// TestWriteJSON_DiscardedReturnHints_ZeroDiscards verifies that
+// discarded_return_hints is absent from JSON output when there are no
+// discarded returns (omitempty behavior, T016, SC-003 scenario 4).
+func TestWriteJSON_DiscardedReturnHints_ZeroDiscards(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestAdd",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Add",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       100,
+				CoveredCount:     1,
+				TotalContractual: 1,
+				// DiscardedReturns and DiscardedReturnHints are nil → omitempty omits both.
+			},
+			AssertionDetectionConfidence: 100,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	var output map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	qualReports, _ := output["quality_reports"].([]interface{})
+	if len(qualReports) == 0 {
+		t.Fatal("expected non-empty quality_reports")
+	}
+	report, _ := qualReports[0].(map[string]interface{})
+	cc, _ := report["contract_coverage"].(map[string]interface{})
+
+	if _, ok := cc["discarded_return_hints"]; ok {
+		t.Error("expected discarded_return_hints to be absent from JSON when there are no discarded returns (omitempty)")
+	}
+}
+
+// TestUnmappedReason_HelpersFixture_Integration verifies that running the
+// helpers fixture through the full quality pipeline produces unmapped
+// assertions with UnmappedReasonHelperParam. The helpers fixture uses
+// depth-1 helper functions (assertEqual, assertNoError, assertError) whose
+// parameter objects cannot be traced back to the test's variable assignments
+// (SC-001, T007).
+func TestUnmappedReason_HelpersFixture_Integration(t *testing.T) {
+	reports, _ := assessFixture(t, "helpers")
+
+	var anyHelperParam bool
+	for _, r := range reports {
+		for _, ua := range r.UnmappedAssertions {
+			t.Logf("  %s -> %s: unmapped at %s [%s]",
+				r.TestFunction, r.TargetFunction.QualifiedName(),
+				ua.AssertionLocation, ua.UnmappedReason)
+			if ua.UnmappedReason == taxonomy.UnmappedReasonHelperParam {
+				anyHelperParam = true
+			}
+			if ua.UnmappedReason == "" {
+				t.Errorf("%s -> %s: unmapped assertion at %s has empty UnmappedReason",
+					r.TestFunction, r.TargetFunction.QualifiedName(),
+					ua.AssertionLocation)
 			}
 		}
+	}
+
+	if !anyHelperParam {
+		t.Error("expected at least one unmapped assertion with UnmappedReasonHelperParam in helpers fixture")
+	}
+
+	// Verify JSON output carries the unmapped_reason field.
+	var jsonBuf bytes.Buffer
+	if err := quality.WriteJSON(&jsonBuf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+	if !strings.Contains(jsonBuf.String(), `"helper_param"`) {
+		t.Error("expected JSON output to contain unmapped_reason \"helper_param\" for helpers fixture")
+	}
+
+	// Verify text output contains [helper_param] for the unmapped entry.
+	var textBuf bytes.Buffer
+	if err := quality.WriteText(&textBuf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+	if !strings.Contains(textBuf.String(), "[helper_param]") {
+		t.Error("expected text output to contain \"[helper_param]\" for helpers fixture")
+	}
+}
+
+// TestUnmappedReason_WelltestedFixture_Integration verifies that running the
+// welltested fixture through the full quality pipeline produces at least one
+// unmapped assertion with UnmappedReasonInlineCall for TestCounter_Increment,
+// which calls c.Value() inline without assigning the return value
+// (SC-001, T007).
+func TestUnmappedReason_WelltestedFixture_Integration(t *testing.T) {
+	reports, _ := assessFixture(t, "welltested")
+
+	var anyInlineCall bool
+	for _, r := range reports {
+		for _, ua := range r.UnmappedAssertions {
+			t.Logf("  %s -> %s: unmapped at %s [%s]",
+				r.TestFunction, r.TargetFunction.QualifiedName(),
+				ua.AssertionLocation, ua.UnmappedReason)
+			if ua.UnmappedReason == taxonomy.UnmappedReasonInlineCall {
+				anyInlineCall = true
+			}
+			if ua.UnmappedReason == "" {
+				t.Errorf("%s -> %s: unmapped assertion at %s has empty UnmappedReason",
+					r.TestFunction, r.TargetFunction.QualifiedName(),
+					ua.AssertionLocation)
+			}
+		}
+	}
+
+	if !anyInlineCall {
+		t.Error("expected at least one unmapped assertion with UnmappedReasonInlineCall in welltested fixture (TestCounter_Increment calls c.Value() inline)")
+	}
+
+	// Verify JSON output carries the unmapped_reason field.
+	var jsonBuf bytes.Buffer
+	if err := quality.WriteJSON(&jsonBuf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+	if !strings.Contains(jsonBuf.String(), `"inline_call"`) {
+		t.Error("expected JSON output to contain unmapped_reason \"inline_call\" for welltested fixture")
+	}
+
+	// Verify text output contains [inline_call] for the unmapped entry.
+	var textBuf bytes.Buffer
+	if err := quality.WriteText(&textBuf, reports, nil); err != nil {
+		t.Fatalf("WriteText failed: %v", err)
+	}
+	if !strings.Contains(textBuf.String(), "[inline_call]") {
+		t.Error("expected text output to contain \"[inline_call]\" for welltested fixture")
+	}
+}
+
+// TestWriteJSON_UnmappedReason_OmitEmpty verifies that unmapped_reason is
+// omitted from JSON for mapped assertions (confidence > 0, side_effect_id set).
+func TestWriteJSON_UnmappedReason_OmitEmpty(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestAdd",
+			TargetFunction: taxonomy.FunctionTarget{
+				Package:  "pkg",
+				Function: "Add",
+			},
+			ContractCoverage:             taxonomy.ContractCoverage{Percentage: 100},
+			AssertionDetectionConfidence: 100,
+			// No unmapped assertions; the mapped assertion should not have unmapped_reason.
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := quality.WriteJSON(&buf, reports, nil); err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+
+	// Confirm the key is absent (not present as empty string either).
+	if strings.Contains(buf.String(), `"unmapped_reason"`) {
+		t.Error("expected 'unmapped_reason' to be absent when there are no unmapped assertions")
 	}
 }
 
