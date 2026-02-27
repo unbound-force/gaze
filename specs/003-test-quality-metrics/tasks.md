@@ -334,7 +334,7 @@ tests for all success criteria.
 ### Cross-Spec Dependencies
 
 - **Spec 001** (analysis): Must be complete (it is — 42/42 tasks)
-- **Spec 002** (classify): Must be complete (it is — 59/59 tasks)
+- **Spec 002** (classify): Must be complete (it is — 56 tasks + T051a/T051b)
 - **Spec 004** (CRAP): T050 depends on this spec's completion to
   activate GazeCRAP computation
 

@@ -3,6 +3,11 @@
 **Feature Branch**: `006-agent-quality-report-enhancements`
 **Created**: 2026-02-26
 **Status**: Complete
+**Input**: "Agents consuming `gaze quality` output cannot determine
+why assertions are unmapped or what assertion code to write for
+coverage gaps — the output lacks actionable detail for automated
+remediation." (Derived from contract coverage investigation during
+Spec 005 work; see [report.md](report.md) for root cause analysis.)
 
 ## Clarifications
 

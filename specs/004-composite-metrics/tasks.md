@@ -258,9 +258,10 @@ to reflect their US2 ownership.
 
 ---
 
-## Phase 7: Deferred — Not Yet Implemented
+## Phase 7: GazeCRAP Activation & Self-Check
 
-**Purpose**: Track work that remains to be done in future iterations
+**Purpose**: GazeCRAP computation activation, self-check command, and
+remaining validation work. Originally labeled "Deferred" — now complete.
 
 - [x] T050 [US2] Activate GazeCRAP computation in `Analyze()` in
   `internal/crap/analyze.go` — added `ContractCoverageFunc` callback

@@ -161,9 +161,9 @@ subprocess execution. This mirrors the pattern established in Specs 001-002.
                              ┌───────┴───────┐
                              ▼               ▼
                     ┌─────────────┐  ┌─────────────┐
-                    │ US4:        │  │ US5: CI     │
-                    │ self-check  │  │ enforcement │
-                    │ NOT BUILT   │  │ COMPLETE    │
+                     │ US4:        │  │ US5: CI     │
+                     │ self-check  │  │ enforcement │
+                     │ COMPLETE    │  │ COMPLETE    │
                     └─────────────┘  └─────────────┘
 ```
 
@@ -196,11 +196,11 @@ subprocess execution. This mirrors the pattern established in Specs 001-002.
 | FR-005 (partial) | GazeCRAPload | `buildSummary()` populates only when `GazeCRAP != nil` |
 | — | Summary aggregate fields | `AvgGazeCRAP *float64`, `AvgContractCoverage *float64`, `WorstGazeCRAP []Score` declared in `Summary` struct as nullable/omitempty stubs; population logic in `buildSummary()` activates when `hasGazeCRAP` is true |
 
-### Not yet implemented (US4)
+### US4 (self-check)
 
 | FR | Requirement | Status |
 |----|-------------|--------|
-| FR-010 | `gaze self-check` command | Not implemented; no `self-check` cobra command registered |
+| FR-010 | `gaze self-check` command | COMPLETE — `self-check` cobra command registered (T054) |
 | FR-015 | Stderr warning when GazeCRAP unavailable | COMPLETE — `runCrap()` in `cmd/gaze/main.go` emits "note: GazeCRAP unavailable" to stderr when `GazeCRAPload == nil` |
 
 ---
@@ -210,10 +210,10 @@ subprocess execution. This mirrors the pattern established in Specs 001-002.
 | SC | Criterion | Status |
 |----|-----------|--------|
 | SC-001 | CRAP formula accuracy ±0.01 for 20+ functions | PASS — 7 individual tests + 21-case table-driven `TestFormula_BenchmarkSuite` = 28 total hand-computed (comp, cov) pairs |
-| SC-002 | GazeCRAP uses contract coverage correctly | NOT TESTABLE — pending Spec 003 |
+| SC-002 | GazeCRAP uses contract coverage correctly | PASS — `TestFormula_BenchmarkSuite` validates GazeCRAP formula with `ContractCoverageFunc` callback (T050, T052) |
 | SC-003 | CRAPload count matches threshold | PASS — `TestBuildSummary_CRAPload` |
 | SC-004 | Quadrant classification for all 4 quadrants | PASS — 6 quadrant unit tests |
-| SC-005 | `gaze self-check` completes successfully | NOT IMPLEMENTED |
+| SC-005 | `gaze self-check` completes successfully | PASS — `self-check` command implemented and tested (T054, T055) |
 | SC-006 | CI threshold enforcement exits non-zero | PASS — 6 `checkCIThresholds` tests + 6 `printCISummary` tests |
 | SC-007 | Complexity matches gocyclo output | PASS — delegates directly to `gocyclo.Analyze()` |
 | SC-008 | Coverage matches `go tool cover -func` | PASS — uses same `cover.ParseProfiles()` + statement-block counting |

@@ -1,7 +1,8 @@
 # Contract Coverage Investigation Report
 
 **Date:** 2026-02-25  
-**Branch:** (current working branch)  
+**Branch:** `006-agent-quality-report-enhancements`  
+**Spec**: [spec.md](spec.md)  
 **Goal:** Improve contract coverage across the three identified tracks:
 1. Write tests for zero-coverage packages (`internal/crap`, `buildContractCoverageFunc`)
 2. Fix assertion-to-effect mapping accuracy from 73.8% to ≥ 90% (TODO #6)
