@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-gaze-opencode-integration`
 **Created**: 2026-02-23
-**Status**: Draft
+**Status**: Complete
 **Input**: User description: "Create a distributable OpenCode
 integration for Gaze that allows developers of any Go project to
 install and use Gaze's quality reporting capabilities within their
