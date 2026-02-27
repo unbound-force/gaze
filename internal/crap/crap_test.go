@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -1039,4 +1040,379 @@ var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func stripANSI(s string) string {
 	return ansiRe.ReplaceAllString(s, "")
+}
+
+// moduleRoot returns the root directory of the Go module by walking
+// up from the current test file until go.mod is found.
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	dir := filepath.Dir(thisFile)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("could not find module root (no go.mod found)")
+		}
+		dir = parent
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Analyze tests
+// ---------------------------------------------------------------------------
+
+// TestAnalyze_CoverProfileNotFound verifies that Analyze returns an
+// error when the user-supplied cover profile path does not exist.
+func TestAnalyze_CoverProfileNotFound(t *testing.T) {
+	opts := DefaultOptions()
+	opts.CoverProfile = "/nonexistent/path/cover.out"
+
+	_, err := Analyze([]string{"./internal/crap"}, moduleRoot(t), opts)
+	if err == nil {
+		t.Fatal("expected error for non-existent cover profile")
+	}
+	if !strings.Contains(err.Error(), "cover profile") {
+		t.Errorf("expected error to mention 'cover profile', got: %v", err)
+	}
+}
+
+// TestAnalyze_CoverProfileIsDirectory verifies that Analyze returns
+// an error when the user-supplied cover profile path is a directory.
+func TestAnalyze_CoverProfileIsDirectory(t *testing.T) {
+	opts := DefaultOptions()
+	opts.CoverProfile = t.TempDir() // a directory, not a file
+
+	_, err := Analyze([]string{"./internal/crap"}, moduleRoot(t), opts)
+	if err == nil {
+		t.Fatal("expected error when cover profile path is a directory")
+	}
+	if !strings.Contains(err.Error(), "directory") {
+		t.Errorf("expected error to mention 'directory', got: %v", err)
+	}
+}
+
+// TestAnalyze_WithPrebuiltProfile runs the full Analyze pipeline
+// using a pre-built coverage profile, bypassing the go test
+// subprocess. This tests steps 2-6 of Analyze and also exercises
+// ParseCoverProfile and buildCoverMap.
+func TestAnalyze_WithPrebuiltProfile(t *testing.T) {
+	modRoot := moduleRoot(t)
+
+	// Build a minimal coverage profile that references crap.go.
+	// Formula (lines 89-92) and ClassifyQuadrant (lines 97-107)
+	// are marked as covered (Count=1); everything else is absent
+	// and defaults to 0% coverage.
+	profileContent := "mode: set\n" +
+		"github.com/unbound-force/gaze/internal/crap/crap.go:89.39,92.2 2 1\n" +
+		"github.com/unbound-force/gaze/internal/crap/crap.go:97.57,105.2 3 1\n"
+
+	profileFile := filepath.Join(t.TempDir(), "cover.out")
+	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("writing cover profile: %v", err)
+	}
+
+	opts := DefaultOptions()
+	opts.CoverProfile = profileFile
+
+	report, err := Analyze([]string{"./internal/crap"}, modRoot, opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if report == nil {
+		t.Fatal("expected non-nil report")
+	}
+
+	// Should have analyzed multiple functions.
+	if report.Summary.TotalFunctions == 0 {
+		t.Error("expected TotalFunctions > 0")
+	}
+
+	// Formula and ClassifyQuadrant should have non-zero coverage
+	// (they're in the profile). All others should have 0%.
+	var formulaFound, classifyFound bool
+	for _, s := range report.Scores {
+		switch s.Function {
+		case "Formula":
+			formulaFound = true
+			if s.LineCoverage == 0 {
+				t.Errorf("Formula: expected non-zero coverage from profile, got 0%%")
+			}
+		case "ClassifyQuadrant":
+			classifyFound = true
+			if s.LineCoverage == 0 {
+				t.Errorf("ClassifyQuadrant: expected non-zero coverage from profile, got 0%%")
+			}
+		}
+	}
+	if !formulaFound {
+		t.Error("expected 'Formula' in scores")
+	}
+	if !classifyFound {
+		t.Error("expected 'ClassifyQuadrant' in scores")
+	}
+
+	// Summary fields are populated.
+	if report.Summary.AvgComplexity == 0 {
+		t.Error("expected non-zero AvgComplexity")
+	}
+	if report.Summary.CRAPThreshold != 15 {
+		t.Errorf("expected CRAPThreshold=15, got %.0f", report.Summary.CRAPThreshold)
+	}
+	if len(report.Summary.WorstCRAP) == 0 {
+		t.Error("expected at least one WorstCRAP entry")
+	}
+}
+
+// TestAnalyze_ContractCoverageFunc verifies that Analyze populates
+// GazeCRAP, ContractCoverage, and Quadrant when ContractCoverageFunc
+// is provided.
+func TestAnalyze_ContractCoverageFunc(t *testing.T) {
+	modRoot := moduleRoot(t)
+
+	profileContent := "mode: set\n" +
+		"github.com/unbound-force/gaze/internal/crap/crap.go:89.39,92.2 2 1\n"
+	profileFile := filepath.Join(t.TempDir(), "cover.out")
+	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("writing cover profile: %v", err)
+	}
+
+	opts := DefaultOptions()
+	opts.CoverProfile = profileFile
+	opts.ContractCoverageFunc = func(pkg, function string) (float64, bool) {
+		if function == "Formula" {
+			return 80.0, true
+		}
+		return 0, false
+	}
+
+	report, err := Analyze([]string{"./internal/crap"}, modRoot, opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	// Find Formula and verify GazeCRAP fields are populated.
+	var formulaScore *Score
+	for i := range report.Scores {
+		if report.Scores[i].Function == "Formula" {
+			formulaScore = &report.Scores[i]
+			break
+		}
+	}
+	if formulaScore == nil {
+		t.Fatal("Formula not found in scores")
+	}
+	if formulaScore.GazeCRAP == nil {
+		t.Error("expected non-nil GazeCRAP for Formula")
+	}
+	if formulaScore.ContractCoverage == nil {
+		t.Error("expected non-nil ContractCoverage for Formula")
+	} else if *formulaScore.ContractCoverage != 80.0 {
+		t.Errorf("expected ContractCoverage=80.0, got %.1f", *formulaScore.ContractCoverage)
+	}
+	if formulaScore.Quadrant == nil {
+		t.Error("expected non-nil Quadrant for Formula")
+	}
+
+	// Summary should show GazeCRAP data.
+	if report.Summary.GazeCRAPload == nil {
+		t.Error("expected non-nil GazeCRAPload in summary")
+	}
+}
+
+// TestAnalyze_IgnoreGeneratedFiles verifies that generated files are
+// skipped when IgnoreGenerated is true.
+func TestAnalyze_IgnoreGeneratedFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a minimal go.mod.
+	gomod := "module example.com/gentest\n\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a generated file with a single function.
+	generatedSrc := `// Code generated by protoc-gen-go. DO NOT EDIT.
+package gentest
+
+func GeneratedFunc() int { return 42 }
+`
+	if err := os.WriteFile(filepath.Join(dir, "gen.go"), []byte(generatedSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a minimal (empty) cover profile so Analyze doesn't
+	// spawn a subprocess.
+	profileContent := "mode: set\n"
+	profileFile := filepath.Join(t.TempDir(), "cover.out")
+	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := DefaultOptions()
+	opts.CoverProfile = profileFile
+	opts.IgnoreGenerated = true
+
+	report, err := Analyze([]string{"."}, dir, opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	for _, s := range report.Scores {
+		if s.Function == "GeneratedFunc" {
+			t.Error("GeneratedFunc should be excluded when IgnoreGenerated=true")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WriteText specific-value assertion tests
+// ---------------------------------------------------------------------------
+
+// TestWriteText_ExactCRAPScore verifies that WriteText renders the
+// exact CRAP score value in the output table.
+func TestWriteText_ExactCRAPScore(t *testing.T) {
+	rpt := &Report{
+		Scores: []Score{
+			{
+				Package:      "pkg",
+				Function:     "MyFunc",
+				File:         "myfile.go",
+				Line:         42,
+				Complexity:   7,
+				LineCoverage: 50.0,
+				CRAP:         22.5,
+			},
+		},
+		Summary: Summary{
+			TotalFunctions:  1,
+			AvgComplexity:   7,
+			AvgLineCoverage: 50.0,
+			AvgCRAP:         22.5,
+			CRAPload:        1,
+			CRAPThreshold:   15,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteText(&buf, rpt); err != nil {
+		t.Fatal(err)
+	}
+
+	out := stripANSI(buf.String())
+
+	// Exact CRAP score "22.5" must appear in the table.
+	if !strings.Contains(out, "22.5") {
+		t.Errorf("expected CRAP score '22.5' in output, got:\n%s", out)
+	}
+	// Complexity "7" must appear.
+	if !strings.Contains(out, "7") {
+		t.Errorf("expected complexity '7' in output, got:\n%s", out)
+	}
+	// Coverage "50.0%" must appear.
+	if !strings.Contains(out, "50.0%") {
+		t.Errorf("expected coverage '50.0%%' in output, got:\n%s", out)
+	}
+	// Function name must appear.
+	if !strings.Contains(out, "MyFunc") {
+		t.Errorf("expected function name 'MyFunc' in output, got:\n%s", out)
+	}
+	// File and line must appear.
+	if !strings.Contains(out, "myfile.go:42") {
+		t.Errorf("expected 'myfile.go:42' in output, got:\n%s", out)
+	}
+}
+
+// TestWriteText_SummaryNumericValues verifies that summary section
+// renders correct numeric values.
+func TestWriteText_SummaryNumericValues(t *testing.T) {
+	rpt := &Report{
+		Scores: []Score{
+			{Function: "A", Complexity: 3, LineCoverage: 100, CRAP: 3},
+			{Function: "B", Complexity: 5, LineCoverage: 0, CRAP: 30},
+		},
+		Summary: Summary{
+			TotalFunctions:  2,
+			AvgComplexity:   4.0,
+			AvgLineCoverage: 50.0,
+			AvgCRAP:         16.5,
+			CRAPload:        1,
+			CRAPThreshold:   15,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteText(&buf, rpt); err != nil {
+		t.Fatal(err)
+	}
+
+	out := stripANSI(buf.String())
+
+	if !strings.Contains(out, "2") {
+		t.Errorf("expected TotalFunctions '2' in summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "4.0") {
+		t.Errorf("expected AvgComplexity '4.0' in summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "50.0%") {
+		t.Errorf("expected AvgLineCoverage '50.0%%' in summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "16.5") {
+		t.Errorf("expected AvgCRAP '16.5' in summary, got:\n%s", out)
+	}
+}
+
+// TestWriteText_EmptyReport verifies "No functions analyzed" message.
+func TestWriteText_EmptyReport(t *testing.T) {
+	rpt := &Report{Scores: nil, Summary: Summary{CRAPThreshold: 15}}
+	var buf bytes.Buffer
+	if err := WriteText(&buf, rpt); err != nil {
+		t.Fatal(err)
+	}
+	out := stripANSI(buf.String())
+	if !strings.Contains(out, "No functions analyzed") {
+		t.Errorf("expected 'No functions analyzed', got:\n%s", out)
+	}
+}
+
+// TestWriteText_WorstOffendersSection verifies that the worst
+// offenders section contains function names and CRAP scores.
+func TestWriteText_WorstOffendersSection(t *testing.T) {
+	rpt := &Report{
+		Scores: []Score{
+			{Function: "WorstFunc", File: "bad.go", Line: 1, Complexity: 20, LineCoverage: 0, CRAP: 420},
+			{Function: "GoodFunc", File: "good.go", Line: 1, Complexity: 2, LineCoverage: 100, CRAP: 2},
+		},
+		Summary: Summary{
+			TotalFunctions: 2,
+			CRAPThreshold:  15,
+			CRAPload:       1,
+			WorstCRAP: []Score{
+				{Function: "WorstFunc", File: "bad.go", Line: 1, CRAP: 420},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteText(&buf, rpt); err != nil {
+		t.Fatal(err)
+	}
+
+	out := stripANSI(buf.String())
+
+	if !strings.Contains(out, "Worst Offenders") {
+		t.Errorf("expected 'Worst Offenders' section, got:\n%s", out)
+	}
+	if !strings.Contains(out, "WorstFunc") {
+		t.Errorf("expected 'WorstFunc' in worst offenders, got:\n%s", out)
+	}
+	if !strings.Contains(out, "420.0") {
+		t.Errorf("expected '420.0' CRAP score, got:\n%s", out)
+	}
 }

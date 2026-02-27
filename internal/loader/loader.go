@@ -79,6 +79,11 @@ type ModuleResult struct {
 // pattern. This provides access to sibling packages for caller
 // analysis. The dir parameter specifies the module root directory;
 // if empty, the current directory is used.
+//
+// Returns a *ModuleResult containing the valid (error-free) packages
+// and their shared FileSet, or an error if package loading fails or
+// all packages have errors. Packages with individual errors are
+// silently excluded from the result.
 func LoadModule(dir string) (*ModuleResult, error) {
 	cfg := &packages.Config{
 		Mode:  LoadMode,
