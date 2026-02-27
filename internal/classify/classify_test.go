@@ -3,6 +3,7 @@ package classify_test
 import (
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/packages"
@@ -252,6 +253,127 @@ func TestScoreComputation_CustomThresholds(t *testing.T) {
 	if c.Label != taxonomy.Contractual {
 		t.Errorf("custom threshold: label = %q, want %q",
 			c.Label, taxonomy.Contractual)
+	}
+}
+
+// TestScoreComputation_ReasoningContainsThreshold verifies that the
+// Reasoning field is populated and references the classification
+// threshold used (FR-014).
+func TestScoreComputation_ReasoningContainsThreshold(t *testing.T) {
+	// Contractual: score=90, threshold=80.
+	contractual := classify.ComputeScore([]taxonomy.Signal{
+		{Source: "interface", Weight: 30},
+		{Source: "visibility", Weight: 10},
+	}, nil)
+	if contractual.Reasoning == "" {
+		t.Error("contractual: expected non-empty Reasoning")
+	}
+	if !strings.Contains(contractual.Reasoning, "80") {
+		t.Errorf("contractual: expected threshold '80' in Reasoning, got: %q",
+			contractual.Reasoning)
+	}
+
+	// Incidental: score=40, threshold=50.
+	incidental := classify.ComputeScore([]taxonomy.Signal{
+		{Source: "naming", Weight: -10},
+	}, nil)
+	if incidental.Reasoning == "" {
+		t.Error("incidental: expected non-empty Reasoning")
+	}
+	if !strings.Contains(incidental.Reasoning, "50") {
+		t.Errorf("incidental: expected threshold '50' in Reasoning, got: %q",
+			incidental.Reasoning)
+	}
+
+	// Ambiguous: score=60, between 50 and 80.
+	ambiguous := classify.ComputeScore([]taxonomy.Signal{
+		{Source: "naming", Weight: 10},
+	}, nil)
+	if ambiguous.Reasoning == "" {
+		t.Error("ambiguous: expected non-empty Reasoning")
+	}
+	if !strings.Contains(ambiguous.Reasoning, "ambiguous") {
+		t.Errorf("ambiguous: expected 'ambiguous' in Reasoning, got: %q",
+			ambiguous.Reasoning)
+	}
+}
+
+// TestScoreComputation_SignalsInResult verifies that the input
+// signals are returned in the Classification.Signals field.
+func TestScoreComputation_SignalsInResult(t *testing.T) {
+	signals := []taxonomy.Signal{
+		{Source: "interface", Weight: 30},
+		{Source: "visibility", Weight: 10},
+	}
+
+	c := classify.ComputeScore(signals, nil)
+
+	if len(c.Signals) == 0 {
+		t.Fatal("expected non-empty Signals in Classification")
+	}
+
+	// Both input signals must appear in the result.
+	sources := make(map[string]int)
+	for _, s := range c.Signals {
+		sources[s.Source] = s.Weight
+	}
+
+	if w, ok := sources["interface"]; !ok || w != 30 {
+		t.Errorf("expected signal 'interface' weight=30, got ok=%v w=%d", ok, w)
+	}
+	if w, ok := sources["visibility"]; !ok || w != 10 {
+		t.Errorf("expected signal 'visibility' weight=10, got ok=%v w=%d", ok, w)
+	}
+}
+
+// TestScoreComputation_ContradictionSignalAdded verifies that when
+// both positive and negative signals exist, a contradiction penalty
+// signal is added to Classification.Signals (FR-007).
+func TestScoreComputation_ContradictionSignalAdded(t *testing.T) {
+	signals := []taxonomy.Signal{
+		{Source: "interface", Weight: 30},
+		{Source: "naming", Weight: -10},
+	}
+
+	c := classify.ComputeScore(signals, nil)
+
+	// Contradiction penalty must appear as a signal in the result.
+	var contradictionFound bool
+	for _, s := range c.Signals {
+		if s.Source == "contradiction" {
+			contradictionFound = true
+			if s.Weight != -20 {
+				t.Errorf("contradiction signal weight = %d, want -20", s.Weight)
+			}
+			if s.Reasoning == "" {
+				t.Error("contradiction signal: expected non-empty Reasoning")
+			}
+		}
+	}
+	if !contradictionFound {
+		t.Error("expected 'contradiction' signal in Classification.Signals")
+	}
+
+	// Reasoning must mention the contradiction.
+	if !strings.Contains(c.Reasoning, "contradiction") {
+		t.Errorf("expected 'contradiction' in Reasoning, got: %q", c.Reasoning)
+	}
+}
+
+// TestScoreComputation_ZeroWeightSignalsFiltered verifies that zero-
+// weight, empty-source signals are excluded from Classification.Signals.
+func TestScoreComputation_ZeroWeightSignalsFiltered(t *testing.T) {
+	signals := []taxonomy.Signal{
+		{Source: "interface", Weight: 30},
+		{Source: "", Weight: 0}, // should be filtered
+	}
+
+	c := classify.ComputeScore(signals, nil)
+
+	for _, s := range c.Signals {
+		if s.Source == "" {
+			t.Error("expected empty-source signal to be filtered from result")
+		}
 	}
 }
 

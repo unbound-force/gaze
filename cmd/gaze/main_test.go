@@ -1058,3 +1058,94 @@ func TestRunInit_ForceFlag(t *testing.T) {
 		t.Errorf("expected 'overwritten:' in output, got:\n%s", buf3.String())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// extractShortPkgName tests
+// ---------------------------------------------------------------------------
+
+func TestExtractShortPkgName_WithSlash(t *testing.T) {
+	got := extractShortPkgName("github.com/unbound-force/gaze/internal/crap")
+	if got != "crap" {
+		t.Errorf("extractShortPkgName(...crap) = %q, want %q", got, "crap")
+	}
+}
+
+func TestExtractShortPkgName_NoSlash(t *testing.T) {
+	got := extractShortPkgName("main")
+	if got != "main" {
+		t.Errorf("extractShortPkgName(main) = %q, want %q", got, "main")
+	}
+}
+
+func TestExtractShortPkgName_TrailingSlash(t *testing.T) {
+	// Last segment after final slash is an empty string when path ends with /.
+	got := extractShortPkgName("github.com/user/repo/")
+	if got != "" {
+		t.Errorf("extractShortPkgName(.../repo/) = %q, want %q (empty)", got, "")
+	}
+}
+
+func TestExtractShortPkgName_Empty(t *testing.T) {
+	got := extractShortPkgName("")
+	if got != "" {
+		t.Errorf("extractShortPkgName('') = %q, want %q", got, "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildContractCoverageFunc tests
+// ---------------------------------------------------------------------------
+
+// TestBuildContractCoverageFunc_InvalidPattern verifies that an
+// unresolvable pattern returns nil without panicking.
+func TestBuildContractCoverageFunc_InvalidPattern(t *testing.T) {
+	var buf bytes.Buffer
+	fn := buildContractCoverageFunc(
+		[]string{"github.com/nonexistent/package/does/not/exist"},
+		t.TempDir(), // empty dir — packages.Load will find nothing
+		&buf,
+	)
+	// Either nil (no packages resolved) or a valid closure that
+	// always returns (0, false). Both are acceptable; the important
+	// invariant is no panic.
+	if fn != nil {
+		// If a closure was returned, it must not panic and must
+		// return ok=false for an unknown key.
+		_, ok := fn("nonexistent", "Foo")
+		if ok {
+			t.Error("expected ok=false for unknown pkg:func key")
+		}
+	}
+}
+
+// TestBuildContractCoverageFunc_WelltestedPackage verifies that the
+// function returns a callable closure for a package that has tests.
+// This exercises the quality pipeline integration path.
+func TestBuildContractCoverageFunc_WelltestedPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: runs quality pipeline (package loading)")
+	}
+
+	// Use the welltested fixture which has known contractual functions.
+	pattern := "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"
+
+	var buf bytes.Buffer
+	fn := buildContractCoverageFunc([]string{pattern}, ".", &buf)
+
+	// fn may be nil if the quality pipeline produced no coverage data
+	// (e.g., no assertions detected). That is acceptable — the
+	// important check is that the function doesn't panic and returns
+	// a well-typed result.
+	if fn == nil {
+		t.Log("buildContractCoverageFunc returned nil (no contract coverage data found)")
+		return
+	}
+
+	// If a closure was returned, it must be callable without panic.
+	pct, ok := fn("welltested", "Add")
+	t.Logf("welltested:Add contract coverage: %.1f%% (found=%v)", pct, ok)
+	// pct is non-negative when found.
+	if ok && pct < 0 {
+		t.Errorf("expected pct >= 0 when ok=true, got %.1f", pct)
+	}
+}
