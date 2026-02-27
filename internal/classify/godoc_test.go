@@ -2,6 +2,7 @@ package classify_test
 
 import (
 	"go/ast"
+	"strings"
 	"testing"
 
 	"github.com/unbound-force/gaze/internal/classify"
@@ -309,9 +310,9 @@ func TestAnalyzeGodocSignal_ReasoningContent(t *testing.T) {
 	if sig.Reasoning == "" {
 		t.Fatal("expected non-empty reasoning")
 	}
-	// Reasoning should mention the keyword.
-	if sig.Reasoning == "" {
-		t.Error("reasoning is empty")
+	// Reasoning should mention the matched keyword.
+	if !strings.Contains(sig.Reasoning, "returns") {
+		t.Errorf("reasoning %q should mention keyword 'returns'", sig.Reasoning)
 	}
 }
 

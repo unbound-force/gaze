@@ -171,14 +171,16 @@ func TestAnalyzeVisibilitySignal_WeightClamp(t *testing.T) {
 		t.Fatal("contracts package not found")
 	}
 
-	// (*RemoteFetcher).Fetch: exported method (+8), receiver
-	// RemoteFetcher is exported (+6), returns ([]byte, error) —
-	// []byte is not an exported named type, error is builtin.
-	// So this is only 8 + 6 = 14, not clamped.
+	// To test the weight clamp we need all 3 dimensions to fire:
+	// exported function (+8), exported receiver (+6), exported
+	// return type (+6) = 20, which hits the maxVisibilityWeight
+	// cap. No single fixture function has all three, so we
+	// construct a synthetic AST node.
 	//
-	// For a clamped scenario, we need all 3 dimensions. We can
-	// construct a synthetic AST node with exported function,
-	// exported return type, and exported receiver.
+	// We pair this synthetic funcDecl with a real types.Object
+	// (GetData) because funcObj.Exported() must return true. The
+	// production code reads receiver/return info from the AST
+	// (funcDecl), not from funcObj — so the mismatch is safe.
 	funcDecl := &ast.FuncDecl{
 		Name: ast.NewIdent("DoStuff"),
 		Recv: &ast.FieldList{

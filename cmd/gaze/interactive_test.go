@@ -1,11 +1,22 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/unbound-force/gaze/internal/taxonomy"
 )
+
+// TestMain forces lipgloss to use ASCII (no-color) rendering so that
+// string content assertions in renderAnalyzeContent tests are
+// deterministic across terminal environments and CI configurations.
+func TestMain(m *testing.M) {
+	lipgloss.DefaultRenderer().SetColorProfile(termenv.Ascii)
+	os.Exit(m.Run())
+}
 
 // TestRenderAnalyzeContent_EmptyResults verifies that an empty slice
 // produces output indicating zero functions and zero side effects (FR-016).
