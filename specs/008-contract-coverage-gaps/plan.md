@@ -6,6 +6,7 @@
 ## Summary
 
 Add direct unit tests with contract-level assertions to 8 functions
+(plus 2 deferred spec 007 validations — 10 items total)
 that have high GazeCRAP scores due to zero contract coverage (despite
 having good line coverage through indirect tests). Also complete the
 deferred spec 007 validation tasks (T037/T044) to establish a baseline
@@ -23,7 +24,7 @@ written; only test files are added or modified.
 **Project Type**: Single binary CLI (`cmd/gaze/`) with internal packages
 **Performance Goals**: N/A (tests must pass within CI timeout)
 **Constraints**: Tests must use `-race -count=1`; no external assertion libraries
-**Scale/Scope**: 8 functions across 3 packages (`internal/classify/`, `internal/analysis/`, `cmd/gaze/`)
+**Scale/Scope**: 8 functions across 3 packages (`internal/classify/`, `internal/analysis/`, `cmd/gaze/`) plus 2 deferred spec 007 validation tasks
 
 ## Constitution Check
 
