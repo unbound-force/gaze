@@ -85,6 +85,7 @@ specs/
   005-gaze-opencode-integration/ # spec.md, plan.md, tasks.md, research.md
   006-agent-quality-report-enhancements/ # spec.md, plan.md, tasks.md
   007-assertion-mapping-depth/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
+  008-contract-coverage-gaps/    # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -227,8 +228,6 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
-- Go 1.24+ + `go/packages`, `go/ast`, `go/types`, `golang.org/x/tools/go/ssa` (008-contract-coverage-gaps)
-- N/A (test-only changes) (008-contract-coverage-gaps)
 
 - Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
@@ -236,6 +235,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 008-contract-coverage-gaps: Contract coverage gap remediation — direct unit tests for 8 functions with zero contract coverage across `internal/classify/`, `internal/analysis/`, and `cmd/gaze/` (test-only, no production code changes)
 - 007-assertion-mapping-depth: Assertion mapping depth improvements — resolveExprRoot (selector/index/builtin unwinding), two-pass matching (direct 75/indirect 65), helper return value tracing (depth-1 SSA verification). Mapping accuracy improved from 73.8% to 78.8% (ratchet floor 76.0%)
 - 006-agent-quality-report-enhancements: Unmapped assertion reasons, gap hints, discarded return details, ambiguous effects expansion in quality reports
 - 005-gaze-opencode-integration: Added `gaze init` subcommand (internal/scaffold), GoReleaser v2 release pipeline, Homebrew cask distribution, OpenCode agent (gaze-reporter) and command (/gaze) files

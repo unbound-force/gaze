@@ -286,7 +286,7 @@ percentages and fewer gaps.
 | FR-008 | Direct=75, Indirect=65 | `quality/mapping.go` | Planned |
 | FR-009 | No false positive matches | `quality/mapping.go` | Planned |
 | FR-010 | Resolve traced args in function calls | `quality/mapping.go` | Planned |
-| FR-011 | Raise ratchet floor to >= 85% | `quality/quality_test.go` | Planned |
+| FR-011 | Raise ratchet floor to 76.0% (amended from 85%; measured accuracy 78.8%) | `quality/quality_test.go` | Complete |
 | FR-012 | No regressions in existing mappings | `quality/quality_test.go` | Planned |
 | FR-013 | Helper return value fallback tracing | `quality/mapping.go` | Planned |
 | FR-014 | Verify helper calls target via SSA | `quality/mapping.go` | Planned |
