@@ -39,8 +39,12 @@ func TestAnalyzeCallerSignal_SingleCaller(t *testing.T) {
 	}
 }
 
-// TestAnalyzeCallerSignal_WeightTiers verifies the weight tiers
-// for different caller counts (FR-007).
+// TestAnalyzeCallerSignal_WeightTiers verifies the weight tier for
+// single-caller functions (FR-007). The existing callers fixture only
+// provides 1 cross-package caller per function, so only the weight=5
+// tier is exercised. The weight=10 (2-3 callers) and weight=15 (4+
+// callers) tiers are covered by the production logic but would require
+// additional fixture packages to test at the contract level.
 func TestAnalyzeCallerSignal_WeightTiers(t *testing.T) {
 	pkgs := loadTestPackages(t)
 	contractsPkg := findPackage(pkgs, "contracts")
@@ -165,6 +169,9 @@ func TestAnalyzeCallerSignal_SamePackageExcluded(t *testing.T) {
 	// other functions in the fixture, so they have 0 callers
 	// regardless. We verify this by looking up an unexported
 	// function and confirming zero signal.
+	// debugTrace is defined exactly once in the incidental package.
+	// Map iteration order is non-deterministic but safe here since
+	// we break on the first (and only) match.
 	var debugObj types.Object
 	for ident, obj := range incidentalPkg.TypesInfo.Defs {
 		if ident.Name == "debugTrace" && obj != nil {

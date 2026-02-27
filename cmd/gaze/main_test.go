@@ -637,7 +637,7 @@ func TestLoadConfig_NoOverride(t *testing.T) {
 // error from the CLI-source error tested below.
 func TestLoadConfig_YAMLInvertedThresholdsRejected(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := dir + "/.gaze.yaml"
+	cfgPath := filepath.Join(dir, ".gaze.yaml")
 	content := []byte(`classification:
   thresholds:
     contractual: 50
@@ -1143,7 +1143,7 @@ func TestBuildContractCoverageFunc_WelltestedPackage(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true for welltested:Add, got ok=false")
 	}
-	if pct < 0 {
-		t.Errorf("expected pct >= 0 for welltested:Add, got %.1f", pct)
+	if pct <= 0 {
+		t.Errorf("expected pct > 0 for welltested:Add (well-tested fixture should have non-zero coverage), got %.1f", pct)
 	}
 }
