@@ -55,7 +55,9 @@ func DefaultOptions() Options {
 }
 
 // Analyze computes CRAP scores for all functions in the given
-// package patterns.
+// package patterns. Returns a *Report containing per-function scores
+// and a summary, or an error if coverage profiling or source loading
+// fails.
 func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error) {
 	if opts.CRAPThreshold <= 0 {
 		opts.CRAPThreshold = 15

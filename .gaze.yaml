@@ -1,0 +1,11 @@
+classification:
+  thresholds:
+    # Contractual threshold lowered from default 80 to 70.
+    # Rationale: internal packages with primitive return types (e.g.,
+    # Formula -> float64) cannot accumulate exported-return-type
+    # visibility signal (+6), making the default 80 unreachable for
+    # purely computational functions whose contracts are unambiguous.
+    # A threshold of 70 keeps the incidental gap (50-70) meaningful
+    # while correctly classifying well-documented primitives.
+    contractual: 70
+    incidental: 50

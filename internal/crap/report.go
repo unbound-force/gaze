@@ -14,14 +14,16 @@ import (
 	"github.com/unbound-force/gaze/internal/report"
 )
 
-// WriteJSON writes the CRAP report as formatted JSON.
+// WriteJSON writes the CRAP report as formatted JSON to w.
+// Returns nil on success, or an error if JSON encoding fails.
 func WriteJSON(w io.Writer, report *Report) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(report)
 }
 
-// WriteText writes the CRAP report as human-readable styled text.
+// WriteText writes the CRAP report as human-readable styled text to w.
+// Returns nil on success, or an error if writing to w fails.
 func WriteText(w io.Writer, rpt *Report) error {
 	styles := report.DefaultStyles()
 

@@ -8,6 +8,28 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// BuildSSA tests
+// ---------------------------------------------------------------------------
+
+// TestBuildSSA_ReturnsNonNilPackage verifies that BuildSSA returns a
+// non-nil *ssa.Package for a valid input package and that the SSA
+// members map contains the expected exported functions.
+func TestBuildSSA_ReturnsNonNilPackage(t *testing.T) {
+	pkg := loadTestPackage(t, "mutation")
+
+	ssaPkg := analysis.BuildSSA(pkg)
+	if ssaPkg == nil {
+		t.Fatal("BuildSSA returned nil for a valid package")
+	}
+
+	// The mutation fixture defines Normalize as a package-level
+	// function; it must appear in SSA members.
+	if _, ok := ssaPkg.Members["Normalize"]; !ok {
+		t.Error("expected 'Normalize' in SSA members after BuildSSA")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // baseTypeName tests
 // ---------------------------------------------------------------------------
 
