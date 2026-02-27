@@ -1132,20 +1132,18 @@ func TestBuildContractCoverageFunc_WelltestedPackage(t *testing.T) {
 	var buf bytes.Buffer
 	fn := buildContractCoverageFunc([]string{pattern}, ".", &buf)
 
-	// fn may be nil if the quality pipeline produced no coverage data
-	// (e.g., no assertions detected). That is acceptable — the
-	// important check is that the function doesn't panic and returns
-	// a well-typed result.
 	if fn == nil {
-		t.Log("buildContractCoverageFunc returned nil (no contract coverage data found)")
-		return
+		t.Fatal("buildContractCoverageFunc returned nil; expected non-nil closure for well-tested package")
 	}
 
-	// If a closure was returned, it must be callable without panic.
+	// The closure must be callable without panic and return coverage
+	// data for known functions in the welltested fixture.
 	pct, ok := fn("welltested", "Add")
 	t.Logf("welltested:Add contract coverage: %.1f%% (found=%v)", pct, ok)
-	// pct is non-negative when found.
-	if ok && pct < 0 {
-		t.Errorf("expected pct >= 0 when ok=true, got %.1f", pct)
+	if !ok {
+		t.Fatal("expected ok=true for welltested:Add, got ok=false")
+	}
+	if pct < 0 {
+		t.Errorf("expected pct >= 0 for welltested:Add, got %.1f", pct)
 	}
 }
