@@ -71,7 +71,7 @@ func MapAssertionsToEffects(
 	// Build a map from types.Object to effect ID by finding the
 	// AST assignment that receives the target call's return values
 	// and correlating LHS identifiers with side effects.
-	objToEffectID := traceTargetValues(targetCall, effects, testPkg)
+	objToEffectID := traceTargetValues(targetCall, effects, testPkg, testFunc, targetFunc)
 
 	// Match assertion expressions to traced values.
 	for _, site := range sites {
@@ -203,24 +203,36 @@ func findTargetCallInFunc(
 // For mutations (receiver/pointer args), it maps the argument
 // variable's types.Object to the mutation effect.
 //
+// The testFunc and targetFunc parameters are used for helper return
+// value tracing: when the direct assignment lookup fails (because
+// the target is called inside a helper), the function searches for
+// helpers that call the target and traces their return assignments.
+//
 // The returned map keys are types.Object instances that can be
 // matched against assertion operands using TypesInfo.Uses.
 func traceTargetValues(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
 	testPkg *packages.Package,
+	testFunc *ssa.Function,
+	targetFunc *ssa.Function,
 ) map[types.Object]string {
 	objToEffectID := make(map[types.Object]string)
 
-	if targetCall == nil || testPkg == nil || testPkg.TypesInfo == nil {
+	if testPkg == nil || testPkg.TypesInfo == nil {
 		return objToEffectID
 	}
 
 	// Trace return values by finding the AST assignment.
-	traceReturnValues(targetCall, effects, objToEffectID, testPkg)
+	// When targetCall is nil (target called inside a helper),
+	// traceReturnValues falls back to helper return tracing.
+	traceReturnValues(targetCall, effects, objToEffectID, testPkg, testFunc, targetFunc)
 
 	// Trace mutations (receiver and pointer arg values).
-	traceMutations(targetCall, effects, objToEffectID, testPkg)
+	// Mutation tracing requires a direct target call.
+	if targetCall != nil {
+		traceMutations(targetCall, effects, objToEffectID, testPkg)
+	}
 
 	return objToEffectID
 }
@@ -235,11 +247,20 @@ func traceTargetValues(
 //
 // For `got := Add(2, 3)`:
 //   - LHS[0] "got" -> ReturnValue effect
+//
+// When the direct assignment lookup fails (because the target is
+// called inside a helper function), the function falls back to
+// helper return value tracing: it searches the test function's AST
+// for assignments whose RHS calls a function that (at depth 1 via
+// SSA call graph) invokes the target. The helper's return variable
+// is then traced as if it were the target's return value.
 func traceReturnValues(
 	targetCall *ssa.Call,
 	effects []taxonomy.SideEffect,
 	objToEffectID map[types.Object]string,
 	testPkg *packages.Package,
+	testFunc *ssa.Function,
+	targetFunc *ssa.Function,
 ) {
 	returnEffects := filterEffectsByType(effects,
 		taxonomy.ReturnValue, taxonomy.ErrorReturn)
@@ -247,19 +268,35 @@ func traceReturnValues(
 		return
 	}
 
-	// Find the AST assignment that contains the target call.
-	callPos := targetCall.Pos()
-	if !callPos.IsValid() {
-		return
+	// Try direct assignment tracing first.
+	if targetCall != nil {
+		callPos := targetCall.Pos()
+		if callPos.IsValid() {
+			assignLHS := findAssignLHS(testPkg, callPos)
+			if assignLHS != nil {
+				// Direct assignment found — map LHS identifiers to effects.
+				mapAssignLHSToEffects(assignLHS, returnEffects, objToEffectID, testPkg)
+				return
+			}
+		}
 	}
 
-	assignLHS := findAssignLHS(testPkg, callPos)
-	if assignLHS == nil {
-		return
-	}
+	// Fallback: helper return value tracing.
+	// When direct tracing fails (either targetCall is nil because
+	// the target is called inside a helper, or findAssignLHS returns
+	// nil), search the test function's SSA for calls to helpers that
+	// invoke the target at depth 1.
+	traceHelperReturnValues(returnEffects, objToEffectID, testPkg, testFunc, targetFunc)
+}
 
-	// Map each non-blank LHS identifier to the corresponding
-	// return effect by position index.
+// mapAssignLHSToEffects maps each non-blank LHS identifier of an
+// assignment to the corresponding return effect by position index.
+func mapAssignLHSToEffects(
+	assignLHS []ast.Expr,
+	returnEffects []taxonomy.SideEffect,
+	objToEffectID map[types.Object]string,
+	testPkg *packages.Package,
+) {
 	for i, lhsExpr := range assignLHS {
 		if i >= len(returnEffects) {
 			break
@@ -278,6 +315,129 @@ func traceReturnValues(
 			objToEffectID[obj] = returnEffects[i].ID
 		}
 	}
+}
+
+// traceHelperReturnValues searches the test function's SSA for call
+// instructions to functions that (at depth 1) invoke the target
+// function. When found, the corresponding AST assignment's LHS
+// variables are mapped to the return effects.
+//
+// This handles the pattern:
+//
+//	result := helperFunc(t, args...)  // helperFunc calls target
+//	// assertions on result.Field ...
+//
+// Constraints:
+//   - Only depth-1 helpers (the helper must directly call the target)
+//   - Fallback only — never activates when direct tracing succeeds
+//   - SSA call graph verification required before tracing
+func traceHelperReturnValues(
+	returnEffects []taxonomy.SideEffect,
+	objToEffectID map[types.Object]string,
+	testPkg *packages.Package,
+	testFunc *ssa.Function,
+	targetFunc *ssa.Function,
+) {
+	if testFunc == nil || testFunc.Blocks == nil || targetFunc == nil || testPkg == nil {
+		return
+	}
+
+	// Find helper calls in the test function's SSA that invoke
+	// the target at depth 1.
+	helperCall := findHelperCall(testFunc, targetFunc)
+	if helperCall == nil {
+		return
+	}
+
+	// Find the AST assignment for this helper call.
+	helperCallPos := helperCall.Pos()
+	if !helperCallPos.IsValid() {
+		return
+	}
+
+	assignLHS := findAssignLHS(testPkg, helperCallPos)
+	if assignLHS == nil {
+		return
+	}
+
+	// Map the helper assignment's LHS to the return effects.
+	mapAssignLHSToEffects(assignLHS, returnEffects, objToEffectID, testPkg)
+}
+
+// findHelperCall searches the test function's SSA (including closures)
+// for a call to any function that directly calls the target function
+// at depth 1. Returns the helper call instruction if found.
+func findHelperCall(
+	testFunc *ssa.Function,
+	targetFunc *ssa.Function,
+) *ssa.Call {
+	return findHelperCallInFunc(testFunc, targetFunc, make(map[*ssa.Function]bool))
+}
+
+// findHelperCallInFunc recursively searches an SSA function and its
+// closures for a call to a helper that invokes the target at depth 1.
+func findHelperCallInFunc(
+	fn *ssa.Function,
+	targetFunc *ssa.Function,
+	visited map[*ssa.Function]bool,
+) *ssa.Call {
+	if fn == nil || fn.Blocks == nil || visited[fn] {
+		return nil
+	}
+	visited[fn] = true
+
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			if call, ok := instr.(*ssa.Call); ok {
+				callee := call.Call.StaticCallee()
+				if callee == nil {
+					continue
+				}
+				// Skip the target function itself — we're looking
+				// for helpers that CALL the target, not direct calls.
+				if callee == targetFunc || sameFunction(callee, targetFunc) {
+					continue
+				}
+				// Check if this callee calls the target at depth 1.
+				if helperCallsTarget(callee, targetFunc) {
+					return call
+				}
+			}
+			// Follow closures (handles t.Run sub-tests).
+			if mc, ok := instr.(*ssa.MakeClosure); ok {
+				if closureFn, ok := mc.Fn.(*ssa.Function); ok {
+					if result := findHelperCallInFunc(closureFn, targetFunc, visited); result != nil {
+						return result
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// helperCallsTarget checks whether a helper SSA function directly
+// calls the target function (depth 1 only). It iterates the helper's
+// blocks and instructions looking for *ssa.Call instructions whose
+// callee matches the target.
+func helperCallsTarget(helper *ssa.Function, target *ssa.Function) bool {
+	if helper == nil || helper.Blocks == nil || target == nil {
+		return false
+	}
+
+	for _, block := range helper.Blocks {
+		for _, instr := range block.Instrs {
+			call, ok := instr.(*ssa.Call)
+			if !ok {
+				continue
+			}
+			callee := call.Call.StaticCallee()
+			if callee != nil && (callee == target || sameFunction(callee, target)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // findAssignLHS walks the test package's AST to find the assignment
@@ -434,12 +594,75 @@ func hasReceiverMutation(effects []taxonomy.SideEffect) bool {
 	return false
 }
 
+// resolveExprRoot recursively unwinds expression wrappers to find the
+// root *ast.Ident. It handles selector access (result.Field), index
+// access (results[0]), and value-inspecting built-in calls (len(x),
+// cap(x)). Returns nil if the expression cannot be unwound to an
+// identifier.
+//
+// Resolution rules:
+//   - *ast.Ident: return directly (base case)
+//   - *ast.SelectorExpr: recurse on .X (e.g., result.Field -> result)
+//   - *ast.IndexExpr: recurse on .X (e.g., results[0] -> results)
+//   - *ast.CallExpr: if Fun is a *types.Builtin with name "len" or
+//     "cap" and exactly 1 argument, recurse on Args[0]
+//   - All other types: return nil
+//
+// Stack depth is bounded by Go source expression nesting (typically <= 5).
+func resolveExprRoot(expr ast.Expr, info *types.Info) *ast.Ident {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e
+	case *ast.SelectorExpr:
+		return resolveExprRoot(e.X, info)
+	case *ast.IndexExpr:
+		return resolveExprRoot(e.X, info)
+	case *ast.CallExpr:
+		// Only unwind value-inspecting built-in calls: len, cap.
+		// Side-effecting built-ins (append, delete, etc.) are rejected.
+		if len(e.Args) != 1 {
+			return nil
+		}
+		funIdent, ok := e.Fun.(*ast.Ident)
+		if !ok {
+			return nil
+		}
+		if info == nil {
+			return nil
+		}
+		obj := info.Uses[funIdent]
+		builtin, ok := obj.(*types.Builtin)
+		if !ok {
+			return nil
+		}
+		switch builtin.Name() {
+		case "len", "cap":
+			return resolveExprRoot(e.Args[0], info)
+		default:
+			return nil
+		}
+	default:
+		return nil
+	}
+}
+
 // matchAssertionToEffect attempts to match an assertion site to a
 // traced side effect value using types.Object identity.
 //
-// It resolves identifiers in the assertion expression to their
-// types.Object via the package's TypesInfo.Uses map, then checks
-// for matches against the objToEffectID map built from AST tracing.
+// It uses a two-pass matching strategy:
+//
+// Pass 1 (direct): Walk the expression tree with ast.Inspect looking
+// for *ast.Ident nodes whose types.Object is directly in objToEffectID.
+// This is the original behavior. Matches produce confidence 75.
+//
+// Pass 2 (indirect): If Pass 1 found no match, walk the expression
+// tree again. For each SelectorExpr, IndexExpr, or CallExpr node,
+// call resolveExprRoot to unwind to the root identifier. If the
+// root's types.Object is in objToEffectID, produce a match at
+// confidence 65.
+//
+// Pass 1 always executes first so direct identity matches are never
+// degraded by indirect resolution.
 func matchAssertionToEffect(
 	site AssertionSite,
 	objToEffectID map[types.Object]string,
@@ -458,6 +681,7 @@ func matchAssertionToEffect(
 		return nil
 	}
 
+	// Pass 1: Direct identity matching (confidence 75).
 	var matched *taxonomy.AssertionMapping
 	ast.Inspect(site.Expr, func(n ast.Node) bool {
 		if matched != nil {
@@ -492,7 +716,62 @@ func matchAssertionToEffect(
 				AssertionLocation: site.Location,
 				AssertionType:     mapKindToType(site.Kind),
 				SideEffectID:      effectID,
-				Confidence:        75, // SSA-traced match
+				Confidence:        75, // SSA-traced direct match
+			}
+			return false
+		}
+		return true
+	})
+
+	if matched != nil {
+		return matched
+	}
+
+	// Pass 2: Indirect root resolution (confidence 65).
+	// For each composite expression node (SelectorExpr, IndexExpr,
+	// CallExpr), resolve to the root identifier and check against
+	// the traced object map.
+	ast.Inspect(site.Expr, func(n ast.Node) bool {
+		if matched != nil {
+			return false
+		}
+
+		// Only process composite expression nodes that wrap an
+		// identifier — skip bare Idents (already handled in Pass 1).
+		expr, ok := n.(ast.Expr)
+		if !ok {
+			return true
+		}
+		switch expr.(type) {
+		case *ast.SelectorExpr, *ast.IndexExpr, *ast.CallExpr:
+			// Proceed with resolution.
+		default:
+			return true
+		}
+
+		root := resolveExprRoot(expr, info)
+		if root == nil {
+			return true
+		}
+
+		obj := info.Uses[root]
+		if obj == nil {
+			obj = info.Defs[root]
+		}
+		if obj == nil {
+			return true
+		}
+
+		if effectID, ok := objToEffectID[obj]; ok {
+			effect := effectMap[effectID]
+			if effect == nil {
+				return true
+			}
+			matched = &taxonomy.AssertionMapping{
+				AssertionLocation: site.Location,
+				AssertionType:     mapKindToType(site.Kind),
+				SideEffectID:      effectID,
+				Confidence:        65, // Indirect root resolution match
 			}
 			return false
 		}
