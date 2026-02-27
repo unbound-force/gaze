@@ -7,6 +7,7 @@ import (
 
 	"github.com/unbound-force/gaze/internal/analysis"
 	"github.com/unbound-force/gaze/internal/quality"
+	"github.com/unbound-force/gaze/internal/taxonomy"
 )
 
 // BenchmarkAssess_SinglePair benchmarks quality assessment for
@@ -74,6 +75,59 @@ func BenchmarkDetectAssertions(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for _, tf := range testFuncs {
 			quality.DetectAssertions(tf.Decl, pkg, 3)
+		}
+	}
+}
+
+// BenchmarkMapAssertions benchmarks MapAssertionsToEffects using the
+// indirectmatch fixture, which exercises the two-pass matching
+// strategy (resolveExprRoot, selector/index/builtin unwinding,
+// and helper return tracing). This is the SC-005 benchmark.
+func BenchmarkMapAssertions(b *testing.B) {
+	pkg := loadBenchPkg(b, "indirectmatch")
+	nonTestPkg, err := loadNonTestPackage("indirectmatch")
+	if err != nil {
+		b.Fatalf("loading non-test package: %v", err)
+	}
+
+	opts := analysis.Options{Version: "bench"}
+	results, err := analysis.Analyze(nonTestPkg, opts)
+	if err != nil {
+		b.Fatalf("analysis failed: %v", err)
+	}
+
+	// Build result map for target lookup (keyed by qualified name).
+	resultMap := make(map[string]*taxonomy.AnalysisResult)
+	for i := range results {
+		resultMap[results[i].Target.QualifiedName()] = &results[i]
+	}
+
+	_, ssaPkg, err := quality.BuildTestSSA(pkg)
+	if err != nil {
+		b.Fatalf("BuildTestSSA failed: %v", err)
+	}
+
+	testFuncs := quality.FindTestFunctions(pkg)
+	qualOpts := quality.DefaultOptions()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, tf := range testFuncs {
+			ssaFunc := ssaPkg.Func(tf.Name)
+			if ssaFunc == nil {
+				continue
+			}
+			targets, _ := quality.InferTargets(ssaFunc, pkg, qualOpts)
+			for _, target := range targets {
+				result, ok := resultMap[target.FuncName]
+				if !ok {
+					continue
+				}
+				sites := quality.DetectAssertions(tf.Decl, pkg, 3)
+				quality.MapAssertionsToEffects(
+					ssaFunc, target.SSAFunc, sites, result.SideEffects, pkg,
+				)
+			}
 		}
 	}
 }
