@@ -1,6 +1,6 @@
 # Tasks: Contract Coverage Gap Remediation
 
-**Input**: Design documents from `/specs/008-contract-coverage-gaps/`
+**Input**: Design documents from `specs/008-contract-coverage-gaps/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, quickstart.md
 
 **Tests**: This feature is entirely test-only code. All tasks create or strengthen unit tests with contract-level assertions. No new production code is written.

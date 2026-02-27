@@ -2,7 +2,7 @@
 
 **Feature Branch**: `007-assertion-mapping-depth`
 **Created**: 2026-02-27
-**Status**: Ready for Implementation
+**Status**: Complete (2 tasks deferred to Spec 008)
 **Input**: User description: "Spec 007: Assertion Mapping Depth — Reaching 80% Contract Coverage."
 
 ## Clarifications

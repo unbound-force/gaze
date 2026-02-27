@@ -63,11 +63,11 @@ versioning deferred to first release. No principle violations introduced.
 specs/006-agent-quality-report-enhancements/
 ├── spec.md              # Feature specification (Complete, clarified)
 ├── plan.md              # This file
-├── research.md          # Phase 0: technology research and decisions
-├── data-model.md        # Phase 1: new taxonomy types and fields
-├── quickstart.md        # Phase 1: how to observe the new output
-└── tasks.md             # Task breakdown (complete, all checked)
+├── tasks.md             # Task breakdown (complete, all checked)
+└── report.md            # Root cause analysis and known limitations (moved from repo root per T028)
 ```
+
+> **Note**: `research.md`, `data-model.md`, and `quickstart.md` were intentionally omitted — no novel technology decisions were required, taxonomy type changes are documented inline in plan.md, and output changes are observable via `gaze quality` directly.
 
 ### Source Code (changes only)
 
