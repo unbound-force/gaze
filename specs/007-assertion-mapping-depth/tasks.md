@@ -146,14 +146,14 @@
 **Purpose**: Raise the ratchet baseline, verify success criteria, update documentation, run full validation
 
 - [x] T036 Update `TestSC003_MappingAccuracy` baseline floor in `internal/quality/quality_test.go` from `70.0` to `76.0` to reflect the new mapping accuracy (FR-011) — measured accuracy 78.8% (52/66), floor set to 76.0% with ~3-point margin
-- [ ] T037 Verify SC-001: Run `gaze quality --format=json` across packages with tests and compute the weighted average contract coverage — target >= 80% per SC-001
+- [ ] T037 Verify SC-001: Run `gaze quality --format=json` across packages with tests and compute the weighted average contract coverage — target >= 80% per SC-001 [DEFERRED: requires built binary and real package analysis; tracked as post-merge validation]
 - [x] T038 Verify SC-003: Run `go test -race -count=1 -run TestSC003_MappingAccuracy ./internal/quality/...` and confirm accuracy >= 76% with the new baseline floor passing
-- [x] T039 Verify SC-005: Run benchmarks `go test -race -count=1 -bench BenchmarkMapAssertions -benchmem ./internal/quality/...` and confirm per-pair processing time is within 2x of pre-change baseline
+- [x] T039 Verify SC-005: Run benchmarks `go test -race -count=1 -bench BenchmarkMapAssertions -benchmem ./internal/quality/...` and confirm per-pair processing time is within 2x of pre-change baseline — verified: ~1.03ms/op, 50KB/op, 506 allocs/op on Apple M1
 - [x] T040 [P] Update GoDoc comments on `matchAssertionToEffect` in `internal/quality/mapping.go` to document the two-pass matching strategy, confidence values, and the `resolveExprRoot` function
 - [x] T041 [P] Update GoDoc comments on `traceReturnValues` in `internal/quality/mapping.go` to document the helper return value fallback path
 - [x] T042 Run the full test suite `go test -race -count=1 -short ./...` to confirm all packages pass with no regressions (FR-012, SC-003)
 - [x] T043 Run `golangci-lint run` to verify no lint violations introduced
-- [ ] T044 Run quickstart.md validation steps: mapping accuracy test, quality on multilib fixture, before/after on real packages (crap, classify, docscan), confidence values in JSON output
+- [ ] T044 Run quickstart.md validation steps: mapping accuracy test, quality on multilib fixture, before/after on real packages (crap, classify, docscan), confidence values in JSON output [DEFERRED: requires built binary and real package analysis; tracked as post-merge validation]
 
 ---
 

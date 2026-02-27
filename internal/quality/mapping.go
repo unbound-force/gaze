@@ -374,14 +374,34 @@ func findHelperCall(
 	return findHelperCallInFunc(testFunc, targetFunc, make(map[*ssa.Function]bool))
 }
 
+// maxClosureDepth bounds the recursion depth when following MakeClosure
+// instructions in findHelperCallInFunc. This prevents deep call stacks
+// from nested anonymous functions (e.g., closures capturing closures).
+// The visited map prevents cycles, but this depth limit prevents stack
+// overflow from deep linear chains.
+const maxClosureDepth = 10
+
 // findHelperCallInFunc recursively searches an SSA function and its
 // closures for a call to a helper that invokes the target at depth 1.
+// The depth parameter tracks closure nesting to bound recursion.
 func findHelperCallInFunc(
 	fn *ssa.Function,
 	targetFunc *ssa.Function,
 	visited map[*ssa.Function]bool,
 ) *ssa.Call {
-	if fn == nil || fn.Blocks == nil || visited[fn] {
+	return findHelperCallInFuncDepth(fn, targetFunc, visited, 0)
+}
+
+// findHelperCallInFuncDepth is the depth-bounded implementation of
+// findHelperCallInFunc. It follows MakeClosure instructions up to
+// maxClosureDepth levels deep.
+func findHelperCallInFuncDepth(
+	fn *ssa.Function,
+	targetFunc *ssa.Function,
+	visited map[*ssa.Function]bool,
+	depth int,
+) *ssa.Call {
+	if fn == nil || fn.Blocks == nil || visited[fn] || depth > maxClosureDepth {
 		return nil
 	}
 	visited[fn] = true
@@ -406,7 +426,7 @@ func findHelperCallInFunc(
 			// Follow closures (handles t.Run sub-tests).
 			if mc, ok := instr.(*ssa.MakeClosure); ok {
 				if closureFn, ok := mc.Fn.(*ssa.Function); ok {
-					if result := findHelperCallInFunc(closureFn, targetFunc, visited); result != nil {
+					if result := findHelperCallInFuncDepth(closureFn, targetFunc, visited, depth+1); result != nil {
 						return result
 					}
 				}
@@ -654,12 +674,19 @@ func resolveExprRoot(expr ast.Expr, info *types.Info) *ast.Ident {
 // Pass 1 (direct): Walk the expression tree with ast.Inspect looking
 // for *ast.Ident nodes whose types.Object is directly in objToEffectID.
 // This is the original behavior. Matches produce confidence 75.
+// Because ast.Inspect visits all descendant nodes, this handles
+// simple selector expressions (e.g., result.Name) — the root ident
+// "result" is visited as a child of the SelectorExpr and matched
+// directly at confidence 75.
 //
 // Pass 2 (indirect): If Pass 1 found no match, walk the expression
 // tree again. For each SelectorExpr, IndexExpr, or CallExpr node,
 // call resolveExprRoot to unwind to the root identifier. If the
 // root's types.Object is in objToEffectID, produce a match at
-// confidence 65.
+// confidence 65. This handles cases where the root ident is not
+// directly reachable by ast.Inspect as a bare *ast.Ident — e.g.,
+// index expressions (results[0]) or nested composites where the
+// root is buried inside a complex expression structure.
 //
 // Pass 1 always executes first so direct identity matches are never
 // degraded by indirect resolution.

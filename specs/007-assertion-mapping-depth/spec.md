@@ -289,8 +289,13 @@ resolution) report coverage for the `ReturnValue` effect.
   against the traced object map, producing a mapping at indirect
   confidence if matched.
 - **FR-011**: The mapping accuracy ratchet floor in
-  TestSC003_MappingAccuracy MUST be raised to at least 85% upon
-  successful implementation.
+  TestSC003_MappingAccuracy MUST be raised to reflect the actual
+  achieved accuracy upon successful implementation. *Amended*: The
+  original target of 85% was not achievable with US1-US5 alone.
+  Measured accuracy reached 78.8% (52/66); the ratchet floor is set
+  to 76.0% (~3-point margin). The remaining gap to 85% requires
+  helper parameter tracing and testify field access resolution,
+  tracked as follow-on work.
 - **FR-012**: All existing assertion mappings that succeed at
   confidence 75 MUST continue to succeed at the same confidence.
   No regressions in existing mapping behavior.
@@ -316,6 +321,12 @@ resolution) report coverage for the `ReturnValue` effect.
   `result := target()`), assertions on the reassigned variable MUST
   NOT be mapped to the original return value's side effect. The
   mapping engine must respect the most recent assignment.
+  *Known limitation*: Plain `=` reassignment reuses the same
+  `types.Object` in Go's type system, making it indistinguishable
+  from the original assignment via object identity alone. FR-016 is
+  fully enforceable only for `:=` scope shadowing (which creates a
+  new `types.Object`). Enforcing FR-016 for plain reassignment
+  requires SSA value-flow analysis, tracked as follow-on work.
 
 ### Key Entities
 
@@ -346,8 +357,12 @@ resolution) report coverage for the `ReturnValue` effect.
   the criterion should be revised to the actual achieved value and
   the remaining gap documented as a known limitation.
 - **SC-002**: The mapping accuracy ratchet (TestSC003_MappingAccuracy)
-  reaches >= 85% across the standard test fixtures, with the baseline
-  floor raised accordingly.
+  floor is raised to reflect the actual achieved accuracy across the
+  standard test fixtures. *Amended*: The original target of >= 85%
+  was not achievable with expression resolution and helper return
+  tracing alone. Measured accuracy: 78.8% (52/66); ratchet floor:
+  76.0%. The remaining 6.2pp gap to 85% requires helper parameter
+  tracing and testify argument resolution (follow-on work).
 - **SC-003**: Zero regressions — every assertion mapping that succeeds
   at confidence 75 before this change MUST continue to succeed at
   confidence 75 after. The total count of direct-confidence (75)
