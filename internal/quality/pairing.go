@@ -211,7 +211,10 @@ func walkCalls(
 			if isTargetFunction(callee, targetPkgPath) {
 				name := qualifiedSSAName(callee)
 				candidates[name] = callee
-				continue
+				// Also recurse into this function to find deeper
+				// target calls. This handles helper functions that
+				// wrap target calls (e.g., processHelper calls Process).
+				// The maxDepth bound prevents unbounded recursion.
 			}
 
 			// Recurse into non-stdlib, non-test callees (helpers).
