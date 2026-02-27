@@ -25,6 +25,13 @@ var contractualPrefixes = []struct {
 	{"Remove", []taxonomy.SideEffectType{taxonomy.ReceiverMutation, taxonomy.ErrorReturn}},
 	{"Handle", nil},  // nil means all side effects
 	{"Process", nil}, // nil means all side effects
+	// Computational / analytical functions: return value is the primary
+	// contract by Go convention (e.g., ComputeX, AnalyzeX, ParseX).
+	{"Compute", []taxonomy.SideEffectType{taxonomy.ReturnValue, taxonomy.ErrorReturn}},
+	{"Analyze", []taxonomy.SideEffectType{taxonomy.ReturnValue, taxonomy.ErrorReturn}},
+	{"Classify", []taxonomy.SideEffectType{taxonomy.ReturnValue, taxonomy.ErrorReturn}},
+	{"Parse", []taxonomy.SideEffectType{taxonomy.ReturnValue, taxonomy.ErrorReturn}},
+	{"Build", []taxonomy.SideEffectType{taxonomy.ReturnValue, taxonomy.ErrorReturn}},
 }
 
 // incidentalPrefixes are function name prefixes that signal

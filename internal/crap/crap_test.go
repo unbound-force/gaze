@@ -1035,6 +1035,27 @@ func TestWriteText_QuadrantBreakdown(t *testing.T) {
 func ptrFloat(f float64) *float64      { return &f }
 func ptrQuadrant(q Quadrant) *Quadrant { return &q }
 
+// TestDefaultOptions_ReturnsExpectedDefaults verifies that
+// DefaultOptions returns an Options struct with the correct default
+// field values, exercising the ReturnValue contractual side effect.
+func TestDefaultOptions_ReturnsExpectedDefaults(t *testing.T) {
+	opts := DefaultOptions()
+
+	if opts.CRAPThreshold != 15 {
+		t.Errorf("CRAPThreshold = %.0f, want 15", opts.CRAPThreshold)
+	}
+	if opts.GazeCRAPThreshold != 15 {
+		t.Errorf("GazeCRAPThreshold = %.0f, want 15", opts.GazeCRAPThreshold)
+	}
+	if !opts.IgnoreGenerated {
+		t.Error("IgnoreGenerated should default to true")
+	}
+	// ContractCoverageFunc is not set by default.
+	if opts.ContractCoverageFunc != nil {
+		t.Error("ContractCoverageFunc should be nil by default")
+	}
+}
+
 // stripANSI removes ANSI escape sequences for width measurement.
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 

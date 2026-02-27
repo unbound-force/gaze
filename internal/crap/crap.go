@@ -86,6 +86,7 @@ type Report struct {
 // Formula computes CRAP(m) = comp^2 * (1 - cov/100)^3 + comp.
 // comp is cyclomatic complexity (>= 1).
 // coveragePct is line coverage as a percentage (0-100).
+// Returns the CRAP score as a float64; higher scores indicate higher risk.
 func Formula(complexity int, coveragePct float64) float64 {
 	comp := float64(complexity)
 	uncov := 1.0 - coveragePct/100.0
@@ -94,6 +95,8 @@ func Formula(complexity int, coveragePct float64) float64 {
 
 // ClassifyQuadrant determines the quadrant for a function based on
 // its CRAP and GazeCRAP scores relative to independent thresholds.
+// Returns the Quadrant constant (Q1Safe, Q2ComplexButTested,
+// Q3SimpleButUnderspecified, or Q4Dangerous).
 func ClassifyQuadrant(crap, gazeCRAP, crapThreshold, gazeCRAPThreshold float64) Quadrant {
 	highCRAP := crap >= crapThreshold
 	highGazeCRAP := gazeCRAP >= gazeCRAPThreshold
