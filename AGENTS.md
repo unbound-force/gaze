@@ -228,6 +228,8 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
+- Markdown (agent prompt file) — no compiled code changes + OpenCode agent framework (reads `.opencode/agents/*.md` as agent definitions) (010-report-voice-refinement)
+- N/A — file-based prompt, no database or persistence (010-report-voice-refinement)
 
 - Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
