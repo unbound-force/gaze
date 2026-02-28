@@ -392,6 +392,14 @@ type crapParams struct {
 	moduleDir       string
 	stdout          io.Writer
 	stderr          io.Writer
+
+	// analyzeFunc overrides crap.Analyze for testing.
+	// When nil, the production crap.Analyze is called.
+	analyzeFunc func([]string, string, crap.Options) (*crap.Report, error)
+
+	// coverageFunc overrides buildContractCoverageFunc for testing.
+	// When nil, the production buildContractCoverageFunc is called.
+	coverageFunc func([]string, string, io.Writer) func(string, string) (float64, bool)
 }
 
 func newSchemaCmd() *cobra.Command {
@@ -419,14 +427,23 @@ func runCrap(p crapParams) error {
 	// GazeCRAP scoring. This is best-effort: if quality analysis
 	// fails for any package, GazeCRAP falls back to unavailable.
 	if p.opts.ContractCoverageFunc == nil {
-		ccFunc := buildContractCoverageFunc(p.patterns, p.moduleDir, p.stderr)
+		buildCoverage := p.coverageFunc
+		if buildCoverage == nil {
+			buildCoverage = buildContractCoverageFunc
+		}
+		ccFunc := buildCoverage(p.patterns, p.moduleDir, p.stderr)
 		if ccFunc != nil {
 			p.opts.ContractCoverageFunc = ccFunc
 		}
 	}
 
 	logger.Info("computing CRAP scores", "patterns", p.patterns)
-	rpt, err := crap.Analyze(p.patterns, p.moduleDir, p.opts)
+
+	analyze := p.analyzeFunc
+	if analyze == nil {
+		analyze = crap.Analyze
+	}
+	rpt, err := analyze(p.patterns, p.moduleDir, p.opts)
 	if err != nil {
 		return err
 	}
@@ -501,6 +518,83 @@ func checkCIThresholds(rpt *crap.Report, maxCrapload, maxGazeCrapload int) error
 	return nil
 }
 
+// resolvePackagePaths resolves package patterns to individual
+// package paths, filtering out test-variant packages (those with
+// a "_test" suffix). Returns the deduplicated list of package paths
+// or an error if pattern resolution fails.
+func resolvePackagePaths(patterns []string, moduleDir string) ([]string, error) {
+	cfg := &packages.Config{
+		Mode: packages.NeedName,
+		Dir:  moduleDir,
+	}
+	pkgs, err := packages.Load(cfg, patterns...)
+	if err != nil {
+		return nil, fmt.Errorf("resolving package patterns: %w", err)
+	}
+
+	pkgPaths := make([]string, 0, len(pkgs))
+	seen := make(map[string]bool)
+	for _, pkg := range pkgs {
+		if pkg.PkgPath == "" || seen[pkg.PkgPath] || strings.HasSuffix(pkg.PkgPath, "_test") {
+			continue
+		}
+		seen[pkg.PkgPath] = true
+		pkgPaths = append(pkgPaths, pkg.PkgPath)
+	}
+	return pkgPaths, nil
+}
+
+// analyzePackageCoverage runs the 4-step quality pipeline on a single
+// package (analysis -> classify -> test-load -> quality assess) and
+// returns the quality reports. Returns nil if any step fails.
+func analyzePackageCoverage(
+	pkgPath string,
+	gazeConfig *config.GazeConfig,
+	stderr io.Writer,
+) []taxonomy.QualityReport {
+	analysisOpts := analysis.Options{
+		IncludeUnexported: false,
+		Version:           version,
+	}
+
+	// Step 1: Analyze (Spec 001).
+	results, err := analysis.LoadAndAnalyze(pkgPath, analysisOpts)
+	if err != nil {
+		logger.Debug("quality pipeline: analysis failed", "pkg", pkgPath, "err", err)
+		return nil
+	}
+	if len(results) == 0 {
+		logger.Debug("quality pipeline: no analysis results", "pkg", pkgPath)
+		return nil
+	}
+
+	// Step 2: Classify (Spec 002).
+	classified, err := runClassify(results, pkgPath, gazeConfig, false)
+	if err != nil {
+		logger.Debug("quality pipeline: classification failed", "pkg", pkgPath, "err", err)
+		return nil
+	}
+
+	// Step 3: Load test package.
+	testPkg, err := loadTestPackage(pkgPath)
+	if err != nil {
+		logger.Debug("quality pipeline: test package load failed", "pkg", pkgPath, "err", err)
+		return nil
+	}
+
+	// Step 4: Assess quality (Spec 003).
+	qualOpts := quality.Options{
+		Version: version,
+		Stderr:  stderr,
+	}
+	reports, _, err := quality.Assess(classified, testPkg, qualOpts)
+	if err != nil {
+		logger.Debug("quality pipeline: quality assessment failed", "pkg", pkgPath, "err", err)
+		return nil
+	}
+	return reports
+}
+
 // buildContractCoverageFunc runs the quality pipeline across the
 // given package patterns and returns a ContractCoverageFunc callback
 // for GazeCRAP scoring. This is best-effort: if the quality pipeline
@@ -512,26 +606,10 @@ func buildContractCoverageFunc(
 	moduleDir string,
 	stderr io.Writer,
 ) func(pkg, function string) (float64, bool) {
-	// Resolve the package patterns to individual package paths.
-	cfg := &packages.Config{
-		Mode: packages.NeedName,
-		Dir:  moduleDir,
-	}
-	pkgs, err := packages.Load(cfg, patterns...)
+	pkgPaths, err := resolvePackagePaths(patterns, moduleDir)
 	if err != nil {
 		logger.Debug("quality pipeline: failed to resolve packages", "err", err)
 		return nil
-	}
-
-	// Collect unique package paths (skip test variants).
-	pkgPaths := make([]string, 0, len(pkgs))
-	seen := make(map[string]bool)
-	for _, pkg := range pkgs {
-		if pkg.PkgPath == "" || seen[pkg.PkgPath] || strings.HasSuffix(pkg.PkgPath, "_test") {
-			continue
-		}
-		seen[pkg.PkgPath] = true
-		pkgPaths = append(pkgPaths, pkg.PkgPath)
 	}
 
 	if len(pkgPaths) == 0 {
@@ -548,43 +626,8 @@ func buildContractCoverageFunc(
 	// Build coverage map: "shortPkg:qualifiedName" -> percentage.
 	coverageMap := make(map[string]float64)
 
-	analysisOpts := analysis.Options{
-		IncludeUnexported: false,
-		Version:           version,
-	}
-
-	qualOpts := quality.Options{
-		Version: version,
-		Stderr:  stderr,
-	}
-
 	for _, pkgPath := range pkgPaths {
-		// Step 1: Analyze (Spec 001).
-		results, err := analysis.LoadAndAnalyze(pkgPath, analysisOpts)
-		if err != nil || len(results) == 0 {
-			continue
-		}
-
-		// Step 2: Classify (Spec 002).
-		classified, err := runClassify(results, pkgPath, gazeConfig, false)
-		if err != nil {
-			continue
-		}
-
-		// Step 3: Load test package.
-		testPkg, err := loadTestPackage(pkgPath)
-		if err != nil {
-			continue
-		}
-
-		// Step 4: Assess quality (Spec 003).
-		reports, _, err := quality.Assess(classified, testPkg, qualOpts)
-		if err != nil {
-			continue
-		}
-
-		// Aggregate: for each target function, take the maximum
-		// contract coverage across all test functions that exercise it.
+		reports := analyzePackageCoverage(pkgPath, gazeConfig, stderr)
 		for _, report := range reports {
 			shortPkg := extractShortPkgName(report.TargetFunction.Package)
 			key := shortPkg + ":" + report.TargetFunction.QualifiedName()
@@ -1063,6 +1106,14 @@ type selfCheckParams struct {
 	maxGazeCrapload int
 	stdout          io.Writer
 	stderr          io.Writer
+
+	// moduleRootFunc overrides findModuleRoot for testing.
+	// When nil, the production findModuleRoot is called.
+	moduleRootFunc func() (string, error)
+
+	// runCrapFunc overrides the internal call to runCrap for testing.
+	// When nil, runCrap is called directly with the constructed params.
+	runCrapFunc func(crapParams) error
 }
 
 // runSelfCheck runs the CRAP pipeline on Gaze's own source code.
@@ -1075,39 +1126,32 @@ func runSelfCheck(p selfCheckParams) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
 	}
 
-	moduleDir, err := findModuleRoot()
+	findRoot := p.moduleRootFunc
+	if findRoot == nil {
+		findRoot = findModuleRoot
+	}
+	moduleDir, err := findRoot()
 	if err != nil {
 		return fmt.Errorf("finding module root: %w", err)
 	}
 
-	patterns := []string{"./..."}
-
-	opts := crap.DefaultOptions()
-	opts.Stderr = p.stderr
-
-	// Wire the quality pipeline for GazeCRAP scoring.
-	ccFunc := buildContractCoverageFunc(patterns, moduleDir, p.stderr)
-	if ccFunc != nil {
-		opts.ContractCoverageFunc = ccFunc
+	cp := crapParams{
+		patterns:        []string{"./..."},
+		format:          p.format,
+		opts:            crap.DefaultOptions(),
+		maxCrapload:     p.maxCrapload,
+		maxGazeCrapload: p.maxGazeCrapload,
+		moduleDir:       moduleDir,
+		stdout:          p.stdout,
+		stderr:          p.stderr,
 	}
+	cp.opts.Stderr = p.stderr
 
-	logger.Info("self-check: computing CRAP scores for Gaze source")
-	rpt, err := crap.Analyze(patterns, moduleDir, opts)
-	if err != nil {
-		return fmt.Errorf("self-check analysis: %w", err)
+	doCrap := p.runCrapFunc
+	if doCrap == nil {
+		doCrap = runCrap
 	}
-
-	logger.Info("self-check complete",
-		"functions", len(rpt.Scores),
-		"crapload", rpt.Summary.CRAPload)
-
-	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
-		return err
-	}
-
-	printCISummary(p.stderr, rpt, p.maxCrapload, p.maxGazeCrapload)
-
-	return checkCIThresholds(rpt, p.maxCrapload, p.maxGazeCrapload)
+	return doCrap(cp)
 }
 
 func newSelfCheckCmd() *cobra.Command {
