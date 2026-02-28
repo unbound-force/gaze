@@ -229,12 +229,13 @@ Formatters: gofmt, goimports.
 
 ## Active Technologies
 
-- Go 1.24.2 + Cobra (CLI), Bubble Tea/Lipgloss (TUI)
+- Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
 - GoReleaser v2 (release pipeline, Homebrew cask publishing)
 
 ## Recent Changes
 
+- 009-crapload-reduction: CRAPload reduction — contract-level tests for `docscan.Filter` and `LoadModule`, dependency injection for `runCrap`/`runSelfCheck`, decomposition of `buildContractCoverageFunc` into `resolvePackagePaths`/`analyzePackageCoverage`, and decomposition of `AnalyzeP1Effects`/`AnalyzeP2Effects` into per-node-type handler functions
 - 008-contract-coverage-gaps: Contract coverage gap remediation — direct unit tests for 8 functions with zero contract coverage across `internal/classify/`, `internal/analysis/`, and `cmd/gaze/` (test-only, no production code changes)
 - 007-assertion-mapping-depth: Assertion mapping depth improvements — resolveExprRoot (selector/index/builtin unwinding), two-pass matching (direct 75/indirect 65), helper return value tracing (depth-1 SSA verification). Mapping accuracy improved from 73.8% to 78.8% (ratchet floor 76.0%)
 - 006-agent-quality-report-enhancements: Unmapped assertion reasons, gap hints, discarded return details, ambiguous effects expansion in quality reports

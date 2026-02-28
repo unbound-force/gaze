@@ -96,113 +96,150 @@ func AnalyzeP2Effects(
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.GoStmt:
-			// GoroutineSpawn: any go statement.
-			key := fmt.Sprintf("goroutine:%d", fset.Position(node.Pos()).Line)
-			if !seen[key] {
-				seen[key] = true
-				loc := fset.Position(node.Pos()).String()
-				effects = append(effects, taxonomy.SideEffect{
-					ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.GoroutineSpawn), key),
-					Type:        taxonomy.GoroutineSpawn,
-					Tier:        taxonomy.TierP2,
-					Location:    loc,
-					Description: "spawns a goroutine",
-				})
-			}
+			effects = append(effects,
+				detectGoroutineEffects(fset, node, pkg, funcName, seen)...)
 
 		case *ast.CallExpr:
-			// Panic: builtin panic() call.
-			if isPanicCall(node, info) {
-				key := fmt.Sprintf("panic:%d", fset.Position(node.Pos()).Line)
-				if !seen[key] {
-					seen[key] = true
-					loc := fset.Position(node.Pos()).String()
-					effects = append(effects, taxonomy.SideEffect{
-						ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.Panic), key),
-						Type:        taxonomy.Panic,
-						Tier:        taxonomy.TierP2,
-						Location:    loc,
-						Description: "calls panic()",
-					})
-				}
-			}
+			effects = append(effects,
+				detectP2CallEffects(fset, info, node, pkg, funcName, seen, funcParams)...)
+		}
+		return true
+	})
 
-			// Selector-based detection (pkg.Func pattern).
-			if sel, ok := node.Fun.(*ast.SelectorExpr); ok {
-				if ident, ok := sel.X.(*ast.Ident); ok {
-					// Resolve the identifier to its actual import
-					// path via types.Info, falling back to the AST
-					// name if type info is unavailable. This
-					// correctly handles import aliases (e.g.,
-					// import myos "os") and avoids false positives
-					// from user packages with the same short name.
-					pkgName := resolveImportPath(ident, info)
-					if funcs, ok := p2SelectorEffects[pkgName]; ok {
-						if effectType, ok := funcs[sel.Sel.Name]; ok {
-							key := fmt.Sprintf("%s:%s.%s:%d",
-								effectType, ident.Name, sel.Sel.Name,
-								fset.Position(node.Pos()).Line)
-							if !seen[key] {
-								seen[key] = true
-								loc := fset.Position(node.Pos()).String()
-								effects = append(effects, taxonomy.SideEffect{
-									ID:          taxonomy.GenerateID(pkg, funcName, string(effectType), key),
-									Type:        effectType,
-									Tier:        taxonomy.TierP2,
-									Location:    loc,
-									Description: fmt.Sprintf("calls %s.%s", ident.Name, sel.Sel.Name),
-									Target:      fmt.Sprintf("%s.%s", ident.Name, sel.Sel.Name),
-								})
-							}
-						}
-					}
-				}
+	return effects
+}
 
-				// Database detection: Exec/ExecContext/Begin/BeginTx on *sql.DB/Tx/Stmt.
-				if isDatabaseMethod(sel, info) {
-					effectType := databaseMethodEffect(sel.Sel.Name)
-					if effectType != "" {
-						key := fmt.Sprintf("%s:%s:%d",
-							effectType, sel.Sel.Name,
-							fset.Position(node.Pos()).Line)
-						if !seen[key] {
-							seen[key] = true
-							loc := fset.Position(node.Pos()).String()
-							effects = append(effects, taxonomy.SideEffect{
-								ID:          taxonomy.GenerateID(pkg, funcName, string(effectType), key),
-								Type:        effectType,
-								Tier:        taxonomy.TierP2,
-								Location:    loc,
-								Description: fmt.Sprintf("calls %s on database type", sel.Sel.Name),
-								Target:      sel.Sel.Name,
-							})
-						}
-					}
-				}
-			}
+// detectGoroutineEffects handles GoroutineSpawn detection from go
+// statements. It returns any new side effects found, using the shared
+// seen map for deduplication.
+func detectGoroutineEffects(
+	fset *token.FileSet,
+	node *ast.GoStmt,
+	pkg string,
+	funcName string,
+	seen map[string]bool,
+) []taxonomy.SideEffect {
+	key := fmt.Sprintf("goroutine:%d", fset.Position(node.Pos()).Line)
+	if seen[key] {
+		return nil
+	}
+	seen[key] = true
+	loc := fset.Position(node.Pos()).String()
+	return []taxonomy.SideEffect{{
+		ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.GoroutineSpawn), key),
+		Type:        taxonomy.GoroutineSpawn,
+		Tier:        taxonomy.TierP2,
+		Location:    loc,
+		Description: "spawns a goroutine",
+	}}
+}
 
-			// Callback invocation: calling a function-typed parameter.
-			if ident, ok := node.Fun.(*ast.Ident); ok {
-				if funcParams[ident.Name] {
-					key := fmt.Sprintf("callback:%s:%d",
-						ident.Name, fset.Position(node.Pos()).Line)
+// detectP2CallEffects handles all P2 side effect detection from call
+// expressions: Panic, selector-based effects (FileSystemWrite,
+// FileSystemDelete, FileSystemMeta, LogWrite, ContextCancellation),
+// DatabaseWrite, DatabaseTransaction, and CallbackInvocation. It
+// returns any new side effects found, using the shared seen map for
+// deduplication and funcParams for callback detection.
+func detectP2CallEffects(
+	fset *token.FileSet,
+	info *types.Info,
+	node *ast.CallExpr,
+	pkg string,
+	funcName string,
+	seen map[string]bool,
+	funcParams map[string]bool,
+) []taxonomy.SideEffect {
+	var effects []taxonomy.SideEffect
+
+	// Panic: builtin panic() call.
+	if isPanicCall(node, info) {
+		key := fmt.Sprintf("panic:%d", fset.Position(node.Pos()).Line)
+		if !seen[key] {
+			seen[key] = true
+			loc := fset.Position(node.Pos()).String()
+			effects = append(effects, taxonomy.SideEffect{
+				ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.Panic), key),
+				Type:        taxonomy.Panic,
+				Tier:        taxonomy.TierP2,
+				Location:    loc,
+				Description: "calls panic()",
+			})
+		}
+	}
+
+	// Selector-based detection (pkg.Func pattern).
+	if sel, ok := node.Fun.(*ast.SelectorExpr); ok {
+		if ident, ok := sel.X.(*ast.Ident); ok {
+			// Resolve the identifier to its actual import
+			// path via types.Info, falling back to the AST
+			// name if type info is unavailable. This
+			// correctly handles import aliases (e.g.,
+			// import myos "os") and avoids false positives
+			// from user packages with the same short name.
+			pkgName := resolveImportPath(ident, info)
+			if funcs, ok := p2SelectorEffects[pkgName]; ok {
+				if effectType, ok := funcs[sel.Sel.Name]; ok {
+					key := fmt.Sprintf("%s:%s.%s:%d",
+						effectType, ident.Name, sel.Sel.Name,
+						fset.Position(node.Pos()).Line)
 					if !seen[key] {
 						seen[key] = true
 						loc := fset.Position(node.Pos()).String()
 						effects = append(effects, taxonomy.SideEffect{
-							ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.CallbackInvocation), key),
-							Type:        taxonomy.CallbackInvocation,
+							ID:          taxonomy.GenerateID(pkg, funcName, string(effectType), key),
+							Type:        effectType,
 							Tier:        taxonomy.TierP2,
 							Location:    loc,
-							Description: fmt.Sprintf("invokes callback parameter '%s'", ident.Name),
-							Target:      ident.Name,
+							Description: fmt.Sprintf("calls %s.%s", ident.Name, sel.Sel.Name),
+							Target:      fmt.Sprintf("%s.%s", ident.Name, sel.Sel.Name),
 						})
 					}
 				}
 			}
 		}
-		return true
-	})
+
+		// Database detection: Exec/ExecContext/Begin/BeginTx on *sql.DB/Tx/Stmt.
+		if isDatabaseMethod(sel, info) {
+			effectType := databaseMethodEffect(sel.Sel.Name)
+			if effectType != "" {
+				key := fmt.Sprintf("%s:%s:%d",
+					effectType, sel.Sel.Name,
+					fset.Position(node.Pos()).Line)
+				if !seen[key] {
+					seen[key] = true
+					loc := fset.Position(node.Pos()).String()
+					effects = append(effects, taxonomy.SideEffect{
+						ID:          taxonomy.GenerateID(pkg, funcName, string(effectType), key),
+						Type:        effectType,
+						Tier:        taxonomy.TierP2,
+						Location:    loc,
+						Description: fmt.Sprintf("calls %s on database type", sel.Sel.Name),
+						Target:      sel.Sel.Name,
+					})
+				}
+			}
+		}
+	}
+
+	// Callback invocation: calling a function-typed parameter.
+	if ident, ok := node.Fun.(*ast.Ident); ok {
+		if funcParams[ident.Name] {
+			key := fmt.Sprintf("callback:%s:%d",
+				ident.Name, fset.Position(node.Pos()).Line)
+			if !seen[key] {
+				seen[key] = true
+				loc := fset.Position(node.Pos()).String()
+				effects = append(effects, taxonomy.SideEffect{
+					ID:          taxonomy.GenerateID(pkg, funcName, string(taxonomy.CallbackInvocation), key),
+					Type:        taxonomy.CallbackInvocation,
+					Tier:        taxonomy.TierP2,
+					Location:    loc,
+					Description: fmt.Sprintf("invokes callback parameter '%s'", ident.Name),
+					Target:      ident.Name,
+				})
+			}
+		}
+	}
 
 	return effects
 }

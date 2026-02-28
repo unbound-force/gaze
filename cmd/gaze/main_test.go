@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/unbound-force/gaze/internal/config"
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/taxonomy"
 )
@@ -413,11 +416,6 @@ func TestCheckCIThresholds_BothExceeded(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// runCrap tests (format validation only — full integration requires
-// go test -coverprofile which is slow and tested elsewhere)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // schema command tests
 // ---------------------------------------------------------------------------
 
@@ -691,6 +689,246 @@ func TestRunCrap_InvalidFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `invalid format "xml"`) {
 		t.Errorf("unexpected error message: %s", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runCrap fast unit tests (US3 — T016)
+// ---------------------------------------------------------------------------
+
+// stubReport returns a minimal canned crap.Report for testing.
+func stubReport() *crap.Report {
+	return &crap.Report{
+		Scores: []crap.Score{
+			{
+				Package:      "example.com/pkg",
+				Function:     "Foo",
+				File:         "foo.go",
+				Line:         10,
+				Complexity:   5,
+				LineCoverage: 90.0,
+				CRAP:         5.5,
+			},
+		},
+		Summary: crap.Summary{
+			TotalFunctions:  1,
+			AvgComplexity:   5.0,
+			AvgLineCoverage: 90.0,
+			AvgCRAP:         5.5,
+			CRAPload:        0,
+			CRAPThreshold:   15,
+			WorstCRAP:       nil,
+		},
+	}
+}
+
+func stubAnalyze(_ []string, _ string, _ crap.Options) (*crap.Report, error) {
+	return stubReport(), nil
+}
+
+func stubCoverageNil(_ []string, _ string, _ io.Writer) func(string, string) (float64, bool) {
+	return nil
+}
+
+func TestRunCrap_TextOutput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    ".",
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+		coverageFunc: stubCoverageNil,
+	})
+	if err != nil {
+		t.Fatalf("runCrap returned error: %v", err)
+	}
+	if stdout.Len() == 0 {
+		t.Error("expected non-empty text output")
+	}
+	if !strings.Contains(stdout.String(), "Foo") {
+		t.Errorf("expected output to contain 'Foo', got: %s", stdout.String())
+	}
+}
+
+func TestRunCrap_JSONOutput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "json",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    ".",
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+		coverageFunc: stubCoverageNil,
+	})
+	if err != nil {
+		t.Fatalf("runCrap returned error: %v", err)
+	}
+	// Verify JSON output is valid.
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Errorf("output is not valid JSON: %v", err)
+	}
+}
+
+func TestRunCrap_NoCoverageWarning(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    ".",
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+		coverageFunc: stubCoverageNil,
+	})
+	if err != nil {
+		t.Fatalf("runCrap returned error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "GazeCRAP unavailable") {
+		t.Errorf("expected GazeCRAP unavailability warning in stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunCrap_ThresholdPass(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		maxCrapload:  10, // report has CRAPload=0, well under 10
+		moduleDir:    ".",
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+		coverageFunc: stubCoverageNil,
+	})
+	if err != nil {
+		t.Fatalf("expected no error when under threshold, got: %v", err)
+	}
+}
+
+func TestRunCrap_ThresholdBreach(t *testing.T) {
+	// Create a report with CRAPload > 0 to trigger threshold breach.
+	overThreshold := func(_ []string, _ string, _ crap.Options) (*crap.Report, error) {
+		rpt := stubReport()
+		rpt.Summary.CRAPload = 5
+		return rpt, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		maxCrapload:  2, // CRAPload=5 exceeds max=2
+		moduleDir:    ".",
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  overThreshold,
+		coverageFunc: stubCoverageNil,
+	})
+	if err == nil {
+		t.Fatal("expected error when CRAPload exceeds threshold")
+	}
+	if !strings.Contains(err.Error(), "CRAPload") {
+		t.Errorf("expected error about CRAPload, got: %s", err)
+	}
+}
+
+func TestRunCrap_EmptyPatterns(t *testing.T) {
+	var capturedPatterns []string
+	capturingAnalyze := func(patterns []string, _ string, _ crap.Options) (*crap.Report, error) {
+		capturedPatterns = patterns
+		return stubReport(), nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    ".",
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  capturingAnalyze,
+		coverageFunc: stubCoverageNil,
+	})
+	if err != nil {
+		t.Fatalf("runCrap with empty patterns returned error: %v", err)
+	}
+	if len(capturedPatterns) != 0 {
+		t.Errorf("expected empty patterns to be forwarded as-is, got %v", capturedPatterns)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runSelfCheck fast unit tests (US3 — T017)
+// ---------------------------------------------------------------------------
+
+func TestRunSelfCheck_HappyPath(t *testing.T) {
+	var delegatedParams crapParams
+	var stdout, stderr bytes.Buffer
+	err := runSelfCheck(selfCheckParams{
+		format:          "text",
+		maxCrapload:     100,
+		maxGazeCrapload: 100,
+		stdout:          &stdout,
+		stderr:          &stderr,
+		moduleRootFunc: func() (string, error) {
+			return "/fake/module/root", nil
+		},
+		runCrapFunc: func(p crapParams) error {
+			delegatedParams = p
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("runSelfCheck returned error: %v", err)
+	}
+	if delegatedParams.moduleDir != "/fake/module/root" {
+		t.Errorf("expected moduleDir=/fake/module/root, got %q", delegatedParams.moduleDir)
+	}
+	if len(delegatedParams.patterns) != 1 || delegatedParams.patterns[0] != "./..." {
+		t.Errorf("expected patterns=[./...], got %v", delegatedParams.patterns)
+	}
+	if delegatedParams.format != "text" {
+		t.Errorf("expected format=text, got %q", delegatedParams.format)
+	}
+	if delegatedParams.maxCrapload != 100 {
+		t.Errorf("expected maxCrapload=100, got %d", delegatedParams.maxCrapload)
+	}
+	if delegatedParams.maxGazeCrapload != 100 {
+		t.Errorf("expected maxGazeCrapload=100, got %d", delegatedParams.maxGazeCrapload)
+	}
+	if delegatedParams.stdout != &stdout {
+		t.Error("expected stdout to be forwarded")
+	}
+	if delegatedParams.stderr != &stderr {
+		t.Error("expected stderr to be forwarded")
+	}
+}
+
+func TestRunSelfCheck_ModuleRootError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runSelfCheck(selfCheckParams{
+		format: "text",
+		stdout: &stdout,
+		stderr: &stderr,
+		moduleRootFunc: func() (string, error) {
+			return "", fmt.Errorf("no go.mod found")
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when moduleRootFunc fails")
+	}
+	if !strings.Contains(err.Error(), "module root") {
+		t.Errorf("expected error about module root, got: %s", err)
 	}
 }
 
@@ -1089,6 +1327,113 @@ func TestExtractShortPkgName_Empty(t *testing.T) {
 	got := extractShortPkgName("")
 	if got != "" {
 		t.Errorf("extractShortPkgName('') = %q, want %q", got, "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolvePackagePaths tests (US4 — T023)
+// ---------------------------------------------------------------------------
+
+func TestResolvePackagePaths_ValidPattern(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: resolves packages via go/packages")
+	}
+	paths, err := resolvePackagePaths([]string{"./internal/docscan/..."}, ".")
+	if err != nil {
+		t.Fatalf("resolvePackagePaths failed: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Error("expected non-empty package paths")
+	}
+}
+
+func TestResolvePackagePaths_FilterTestSuffix(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: resolves packages via go/packages")
+	}
+	paths, err := resolvePackagePaths([]string{"./internal/docscan/..."}, ".")
+	if err != nil {
+		t.Fatalf("resolvePackagePaths failed: %v", err)
+	}
+	for _, p := range paths {
+		if strings.HasSuffix(p, "_test") {
+			t.Errorf("test-variant package should have been filtered: %s", p)
+		}
+	}
+}
+
+func TestResolvePackagePaths_AllTestVariants(t *testing.T) {
+	// When patterns resolve to only test-variant packages, the
+	// result should be empty (not an error).
+	if testing.Short() {
+		t.Skip("skipping: resolves packages via go/packages")
+	}
+	// Use a pattern that resolves real packages; since we can't
+	// easily control which packages are resolved, just verify the
+	// filter is applied. The key invariant is that the returned
+	// slice never contains _test suffixed paths.
+	paths, err := resolvePackagePaths([]string{"./..."}, ".")
+	if err != nil {
+		t.Fatalf("resolvePackagePaths failed: %v", err)
+	}
+	for _, p := range paths {
+		if strings.HasSuffix(p, "_test") {
+			t.Errorf("expected no _test packages, found: %s", p)
+		}
+	}
+}
+
+func TestResolvePackagePaths_InvalidPattern(t *testing.T) {
+	// Use a temp dir with no go.mod. packages.Load may return the
+	// pattern as an unresolved package entry (with errors) or
+	// return an error, depending on the Go version and toolchain.
+	// The key contract: the function must not panic.
+	paths, err := resolvePackagePaths(
+		[]string{"github.com/nonexistent/does/not/exist"},
+		t.TempDir(),
+	)
+	// Log the result for diagnostic visibility, but accept any
+	// non-panic outcome. The function is a thin wrapper around
+	// packages.Load whose behavior varies by environment.
+	t.Logf("resolvePackagePaths returned paths=%v, err=%v", paths, err)
+	// Verify no _test packages leak through even for invalid patterns.
+	for _, p := range paths {
+		if strings.HasSuffix(p, "_test") {
+			t.Errorf("test-variant package should have been filtered: %s", p)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// analyzePackageCoverage tests (US4 — T023)
+// ---------------------------------------------------------------------------
+
+func TestAnalyzePackageCoverage_ValidPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: loads real packages via analysis pipeline")
+	}
+	gazeConfig := config.DefaultConfig()
+	var stderr bytes.Buffer
+	reports := analyzePackageCoverage(
+		"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		gazeConfig,
+		&stderr,
+	)
+	if len(reports) == 0 {
+		t.Error("expected non-nil quality reports for well-tested package")
+	}
+}
+
+func TestAnalyzePackageCoverage_InvalidPackage(t *testing.T) {
+	gazeConfig := config.DefaultConfig()
+	var stderr bytes.Buffer
+	reports := analyzePackageCoverage(
+		"github.com/nonexistent/does/not/exist",
+		gazeConfig,
+		&stderr,
+	)
+	if reports != nil {
+		t.Error("expected nil reports for non-existent package")
 	}
 }
 
