@@ -86,6 +86,8 @@ specs/
   006-agent-quality-report-enhancements/ # spec.md, plan.md, tasks.md
   007-assertion-mapping-depth/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   008-contract-coverage-gaps/    # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
+  009-crapload-reduction/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
+  010-report-voice-refinement/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -228,8 +230,6 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
-- Markdown (agent prompt file) — no compiled code changes + OpenCode agent framework (reads `.opencode/agents/*.md` as agent definitions) (010-report-voice-refinement)
-- N/A — file-based prompt, no database or persistence (010-report-voice-refinement)
 
 - Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
@@ -237,6 +237,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 010-report-voice-refinement: Rewrote gaze-reporter agent prompt for clinical, emoji-free output — plain-text headers, word-based grades (Poor/Fair/Good/Strong/Excellent), right-aligned numerics, risk matrix with Priority/Function/Risk/Why columns, "Bottom line:" closing paragraph, concrete example output snippet, omit-over-placeholder rule for unavailable sections
 - 009-crapload-reduction: CRAPload reduction — contract-level tests for `docscan.Filter` and `LoadModule`, dependency injection for `runCrap`/`runSelfCheck`, decomposition of `buildContractCoverageFunc` into `resolvePackagePaths`/`analyzePackageCoverage`, and decomposition of `AnalyzeP1Effects`/`AnalyzeP2Effects` into per-node-type handler functions
 - 008-contract-coverage-gaps: Contract coverage gap remediation — direct unit tests for 8 functions with zero contract coverage across `internal/classify/`, `internal/analysis/`, and `cmd/gaze/` (test-only, no production code changes)
 - 007-assertion-mapping-depth: Assertion mapping depth improvements — resolveExprRoot (selector/index/builtin unwinding), two-pass matching (direct 75/indirect 65), helper return value tracing (depth-1 SSA verification). Mapping accuracy improved from 73.8% to 78.8% (ratchet floor 76.0%)

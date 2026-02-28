@@ -2,7 +2,7 @@
 
 **Feature Branch**: `010-report-voice-refinement`
 **Created**: 2026-02-28
-**Status**: Draft
+**Status**: Complete
 **Input**: User description: "Refine gaze-reporter agent output to use clinical tone, no emojis, concise formatting with right-aligned numerics, word-based grades, flat structure, prominent risk matrix, and bottom-line summary"
 
 ## User Scenarios & Testing *(mandatory)*
