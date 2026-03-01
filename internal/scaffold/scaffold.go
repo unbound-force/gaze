@@ -3,6 +3,7 @@
 package scaffold
 
 import (
+	"bufio"
 	"embed"
 	"errors"
 	"fmt"
@@ -39,15 +40,57 @@ type Options struct {
 // Result reports what the scaffold operation did.
 type Result struct {
 	// Created lists files that were written for the first time.
-	Created []string
+	Created []string `json:"created,omitempty"`
 
-	// Skipped lists files that already existed and were not
-	// overwritten (Force was false).
-	Skipped []string
+	// Updated lists files that existed with an outdated version
+	// marker and were replaced with current content.
+	Updated []string `json:"updated,omitempty"`
 
-	// Overwritten lists files that existed and were replaced
-	// (Force was true).
-	Overwritten []string
+	// UpToDate lists files that existed with a current version
+	// marker and were left untouched.
+	UpToDate []string `json:"up_to_date,omitempty"`
+
+	// Overwritten lists files that existed and were unconditionally
+	// replaced (Force was true).
+	Overwritten []string `json:"overwritten,omitempty"`
+
+	// UpdatedFrom maps each updated file's relative path to the
+	// previous version string extracted from its on-disk marker.
+	// Empty string indicates the old file had no recognizable marker.
+	UpdatedFrom map[string]string `json:"updated_from,omitempty"`
+}
+
+// markerPrefix is the fixed prefix of the version marker comment.
+const markerPrefix = "<!-- scaffolded by gaze "
+
+// markerSuffix is the fixed suffix of the version marker comment.
+const markerSuffix = " -->"
+
+// extractVersion reads the first line of the file at path and
+// extracts the version string from the version marker comment.
+// It returns the version string (e.g., "v1.0.0", "dev") or an
+// empty string if the file is empty, unreadable, or does not
+// contain a recognizable version marker on its first line.
+func extractVersion(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		return "" // empty file or read error
+	}
+	line := scanner.Text()
+
+	if !strings.HasPrefix(line, markerPrefix) || !strings.HasSuffix(line, markerSuffix) {
+		return ""
+	}
+
+	version := strings.TrimPrefix(line, markerPrefix)
+	version = strings.TrimSuffix(version, markerSuffix)
+	return version
 }
 
 // versionMarker returns the version marker comment to prepend to
@@ -67,11 +110,21 @@ func versionMarker(version string) string {
 //
 //	<!-- scaffolded by gaze vX.Y.Z -->
 //
-// If a file already exists and opts.Force is false, the file is
-// skipped. If opts.Force is true, the file is overwritten.
+// Run uses version-aware update logic to determine each file's
+// disposition:
 //
-// Run returns a Result summarizing what was created, skipped, or
-// overwritten.
+//   - If a file does not exist, it is created.
+//   - If a file exists and opts.Force is true, it is overwritten
+//     unconditionally.
+//   - If a file exists and the running version is "dev", it is
+//     always updated (dev builds refresh all files).
+//   - If a file exists and its version marker matches the running
+//     version, it is left untouched (up to date).
+//   - If a file exists and its version marker differs (or is
+//     missing/unparseable), it is updated with current content.
+//
+// Run returns a Result summarizing what was created, updated,
+// left up to date, or overwritten.
 func Run(opts Options) (*Result, error) {
 	if opts.TargetDir == "" {
 		cwd, err := os.Getwd()
@@ -95,7 +148,9 @@ func Run(opts Options) (*Result, error) {
 		_, _ = fmt.Fprintln(opts.Stdout)
 	}
 
-	result := &Result{}
+	result := &Result{
+		UpdatedFrom: make(map[string]string),
+	}
 	marker := versionMarker(opts.Version)
 
 	// Walk the embedded assets directory and write each file.
@@ -111,18 +166,48 @@ func Run(opts Options) (*Result, error) {
 		// under .opencode/.
 		relPath := strings.TrimPrefix(path, "assets/")
 		outPath := filepath.Join(opts.TargetDir, ".opencode", relPath)
+		displayPath := filepath.Join(".opencode", relPath)
 
 		// Check if the file already exists. Return an error for
 		// stat failures other than "not exist" (e.g., permission
 		// denied) rather than silently treating them as absent.
 		_, statErr := os.Stat(outPath)
 		if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
-			return fmt.Errorf("checking %s: %w", filepath.Join(".opencode", relPath), statErr)
+			return fmt.Errorf("checking %s: %w", displayPath, statErr)
 		}
 		exists := statErr == nil
 
 		if exists && !opts.Force {
-			result.Skipped = append(result.Skipped, filepath.Join(".opencode", relPath))
+			// Version-aware update logic: compare the on-disk
+			// version marker against the running version.
+			oldVersion := extractVersion(outPath)
+
+			// Dev builds always update all files (FR-008).
+			// Otherwise, update only if the version differs.
+			if opts.Version != "dev" && oldVersion == opts.Version {
+				result.UpToDate = append(result.UpToDate, displayPath)
+				return nil
+			}
+
+			// File is outdated (or marker is missing/unparseable).
+			// Read embedded content and overwrite.
+			content, readErr := assets.ReadFile(path)
+			if readErr != nil {
+				return fmt.Errorf("reading embedded asset %s: %w", path, readErr)
+			}
+
+			dir := filepath.Dir(outPath)
+			if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
+				return fmt.Errorf("creating directory %s: %w", dir, mkErr)
+			}
+
+			out := append([]byte(marker), content...)
+			if writeErr := os.WriteFile(outPath, out, 0o644); writeErr != nil {
+				return fmt.Errorf("writing %s: %w", displayPath, writeErr)
+			}
+
+			result.Updated = append(result.Updated, displayPath)
+			result.UpdatedFrom[displayPath] = oldVersion
 			return nil
 		}
 
@@ -141,13 +226,13 @@ func Run(opts Options) (*Result, error) {
 		// Prepend version marker and write.
 		out := append([]byte(marker), content...)
 		if err := os.WriteFile(outPath, out, 0o644); err != nil {
-			return fmt.Errorf("creating %s: %w", filepath.Join(".opencode", relPath), err)
+			return fmt.Errorf("writing %s: %w", displayPath, err)
 		}
 
 		if exists {
-			result.Overwritten = append(result.Overwritten, filepath.Join(".opencode", relPath))
+			result.Overwritten = append(result.Overwritten, displayPath)
 		} else {
-			result.Created = append(result.Created, filepath.Join(".opencode", relPath))
+			result.Created = append(result.Created, displayPath)
 		}
 		return nil
 	})
@@ -156,25 +241,36 @@ func Run(opts Options) (*Result, error) {
 	}
 
 	// Print summary.
-	printSummary(opts.Stdout, result, opts.Force)
+	printSummary(opts.Stdout, result, opts.Version)
 
 	return result, nil
 }
 
 // printSummary writes a human-readable summary of the scaffold
-// operation to w.
-func printSummary(w io.Writer, r *Result, force bool) {
-	if len(r.Created) > 0 || len(r.Overwritten) > 0 {
+// operation to w. It lists each file with its disposition and
+// prints a summary count footer.
+func printSummary(w io.Writer, r *Result, version string) {
+	// Header: "initialized" if any files were changed, "already up
+	// to date" if nothing was modified.
+	if len(r.Created) > 0 || len(r.Updated) > 0 || len(r.Overwritten) > 0 {
 		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
 	} else {
 		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration already up to date:")
 	}
 
+	// Per-file listing.
 	for _, f := range r.Created {
-		_, _ = fmt.Fprintf(w, "  created: %s\n", f)
+		_, _ = fmt.Fprintf(w, "  created:     %s\n", f)
 	}
-	for _, f := range r.Skipped {
-		_, _ = fmt.Fprintf(w, "  skipped: %s (already exists)\n", f)
+	for _, f := range r.Updated {
+		oldVer := r.UpdatedFrom[f]
+		if oldVer == "" {
+			oldVer = "(unknown)"
+		}
+		_, _ = fmt.Fprintf(w, "  updated:     %s (%s -> %s)\n", f, oldVer, version)
+	}
+	for _, f := range r.UpToDate {
+		_, _ = fmt.Fprintf(w, "  up to date:  %s\n", f)
 	}
 	for _, f := range r.Overwritten {
 		_, _ = fmt.Fprintf(w, "  overwritten: %s\n", f)
@@ -183,12 +279,22 @@ func printSummary(w io.Writer, r *Result, force bool) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Run /gaze in OpenCode to generate quality reports.")
 
-	if n := len(r.Skipped); n > 0 {
-		word := "file"
-		if n > 1 {
-			word = "files"
-		}
-		_, _ = fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", n, word)
+	// Summary count footer: show non-zero categories.
+	var parts []string
+	if n := len(r.Created); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d created", n))
+	}
+	if n := len(r.Updated); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d updated", n))
+	}
+	if n := len(r.UpToDate); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d up to date", n))
+	}
+	if n := len(r.Overwritten); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d overwritten", n))
+	}
+	if len(parts) > 0 {
+		_, _ = fmt.Fprintf(w, "%s.\n", strings.Join(parts, ", "))
 	}
 }
 

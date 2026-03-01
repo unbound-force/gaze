@@ -232,6 +232,8 @@ Formatters: gofmt, goimports.
 ## Active Technologies
 - Go 1.24+ (no Go code changes; prompt is markdown) + OpenCode agent runtime (renders markdown prompt), embed.FS (scaffolds prompt copy) (011-output-voice-style)
 - Filesystem only (markdown files) (011-output-voice-style)
+- Go 1.24+ + Standard library only (`embed`, `io/fs`, `os`, `strings`, `fmt`). No new dependencies required. (012-init-update-strategy)
+- Filesystem only (`.opencode/` directory tree) (012-init-update-strategy)
 
 - Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)

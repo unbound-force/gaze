@@ -291,13 +291,13 @@ gaze docscan --config=.gaze.yaml ./internal/analysis
 
 ### `gaze init` -- OpenCode Integration Setup
 
-Scaffold OpenCode agent and command files into the current project directory for AI-assisted quality reporting.
+Scaffold OpenCode agent and command files into the current project directory for AI-assisted quality reporting. Running `gaze init` after upgrading gaze automatically updates any outdated files based on their version marker — no `--force` required.
 
 ```bash
-# Initialize OpenCode integration
+# Initialize OpenCode integration (creates or updates files)
 gaze init
 
-# Overwrite existing files
+# Unconditionally overwrite all files
 gaze init --force
 ```
 
@@ -305,7 +305,7 @@ gaze init --force
 
 | Flag | Description |
 |------|-------------|
-| `--force` | Overwrite existing OpenCode files |
+| `--force` | Unconditionally overwrite all OpenCode files regardless of version |
 
 This creates 4 files in `.opencode/`:
 

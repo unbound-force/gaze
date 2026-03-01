@@ -1268,7 +1268,7 @@ func TestRunInit_ForceFlag(t *testing.T) {
 		t.Fatalf("first runInit() returned error: %v", err)
 	}
 
-	// Second run without force: should skip.
+	// Second run with same version, no force: should show up to date.
 	var buf2 bytes.Buffer
 	if err := runInit(initParams{
 		targetDir: dir,
@@ -1278,8 +1278,8 @@ func TestRunInit_ForceFlag(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("second runInit() returned error: %v", err)
 	}
-	if !strings.Contains(buf2.String(), "skipped:") {
-		t.Errorf("expected 'skipped:' in output, got:\n%s", buf2.String())
+	if !strings.Contains(buf2.String(), "up to date:") {
+		t.Errorf("expected 'up to date:' in output, got:\n%s", buf2.String())
 	}
 
 	// Third run with force: should overwrite.
