@@ -24,13 +24,14 @@ and emoji-free.
 
 Before running any gaze command, locate the `gaze` binary:
 
-1. **Check `$PATH`**: Run `which gaze`. If found, use it.
-2. **Build from source**: If `cmd/gaze/main.go` exists in the
-   current project (i.e., you are in the Gaze repo itself), run:
+1. **Build from source** (preferred when in the Gaze repo): If
+   `cmd/gaze/main.go` exists in the current project, build from
+   source to ensure the binary reflects the latest local changes:
    ```bash
     go build -o "${TMPDIR:-/tmp}/gaze-reporter" ./cmd/gaze
    ```
     Use the built binary path as the binary.
+2. **Check `$PATH`**: Run `which gaze`. If found, use it.
 3. **Install from module**: As a last resort, run:
    ```bash
    go install github.com/unbound-force/gaze/cmd/gaze@latest
