@@ -17,7 +17,7 @@
 
 **Purpose**: Rebase branch onto current `main` to pick up spec 010 artifacts that need to be deleted
 
-- [ ] T001 Rebase branch onto current `main` by running `git fetch origin && git rebase origin/main` to pick up spec 010 artifacts
+- [x] T001 Rebase branch onto current `main` by running `git fetch origin && git rebase origin/main` to pick up spec 010 artifacts
 
 ---
 
@@ -25,9 +25,9 @@
 
 **Purpose**: Delete spec 010 artifacts and rewrite the Output Format section of the gaze-reporter prompt. MUST complete before any mode-specific work.
 
-- [ ] T002 Delete the entire `specs/010-report-voice-refinement/` directory and all 7 files within it (spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/requirements.md) per FR-014
-- [ ] T003 Rewrite the Output Format section (lines 192-235) of `.opencode/agents/gaze-reporter.md` to define the complete voice standard: emoji vocabulary table (10 emojis with semantic roles from data-model.md), section marker assignments (🔍 title, 📊 CRAP, 🧪 quality, 🏷️ classification, 🏥 health), grade-to-emoji severity mapping (🟢 B+ and above, 🟡 B through C, 🔴 C- and below, ⚪ neutral), tone anti-pattern bans (exclamation marks, slang, puns, first-person pronouns per FR-004), no-pedagogy rule (do not explain what CRAP scores, quadrants, or coverage metrics mean per FR-005), title format (`🔍 Gaze Full Quality Report`), metadata format (`Project: <path> · Branch: <branch>` + `Gaze Version: <ver> · Go: <ver> · Date: <date>` per FR-010), warning callout format (`> ⚠️ ...` per FR-013), section separator rules (`---` per FR-011), section omission rule (omit silently per FR-006), and interpretation limit (one sentence per table, max 25 words)
-- [ ] T004 Rewrite the agent description (lines 20-21) of `.opencode/agents/gaze-reporter.md` to replace "clinical diagnostic summaries — factual, terse, and emoji-free" with "fun, approachable quality summaries with emoji section markers and severity indicators"
+- [x] T002 Delete the entire `specs/010-report-voice-refinement/` directory and all 7 files within it (spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/requirements.md) per FR-014
+- [x] T003 Rewrite the Output Format section (lines 192-235) of `.opencode/agents/gaze-reporter.md` to define the complete voice standard: emoji vocabulary table (10 emojis with semantic roles from data-model.md), section marker assignments (🔍 title, 📊 CRAP, 🧪 quality, 🏷️ classification, 🏥 health), grade-to-emoji severity mapping (🟢 B+ and above, 🟡 B through C, 🔴 C- and below, ⚪ neutral), tone anti-pattern bans (exclamation marks, slang, puns, first-person pronouns per FR-004), no-pedagogy rule (do not explain what CRAP scores, quadrants, or coverage metrics mean per FR-005), title format (`🔍 Gaze Full Quality Report`), metadata format (`Project: <path> · Branch: <branch>` + `Gaze Version: <ver> · Go: <ver> · Date: <date>` per FR-010), warning callout format (`> ⚠️ ...` per FR-013), section separator rules (`---` per FR-011), section omission rule (omit silently per FR-006), and interpretation limit (one sentence per table, max 25 words)
+- [x] T004 Rewrite the agent description (lines 20-21) of `.opencode/agents/gaze-reporter.md` to replace "clinical diagnostic summaries — factual, terse, and emoji-free" with "fun, approachable quality summaries with emoji section markers and severity indicators"
 
 **Checkpoint**: Output Format section and agent description now define the complete voice standard. Mode-specific work can begin.
 
@@ -41,9 +41,9 @@
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Rewrite the Full Mode section (lines 127-191) of `.opencode/agents/gaze-reporter.md`: replace the Overall Health Assessment structure (remove Risk Matrix table and word-based Overall Grade table), replace with Summary Scorecard using letter grades (A through F) paired with colored circle emojis per the grade-to-emoji mapping in FR-002/FR-003, and replace "Bottom line:" closing paragraph with a conversational closing sentence
-- [ ] T006 [US1] Rewrite the CRAP Mode section quadrant labels (lines 81-91) of `.opencode/agents/gaze-reporter.md`: replace plain-text quadrant labels with emoji-prefixed labels (🟢 Q1 — Safe, 🟡 Q2 — Complex But Tested, ⚪ Q3 — Needs Tests, 🔴 Q4 — Dangerous) and add the GazeCRAPload conversational interpretation line per FR-012
-- [ ] T007 [US1] Rewrite the Example Output section (lines 239-306) of `.opencode/agents/gaze-reporter.md`: replace the clinical example with the canonical example from the spec (spec.md lines 17-73), adapting function names and numbers to be clearly fictional while preserving the exact structural format (emoji-prefixed headers, metadata line with centered dots, markdown tables, severity-colored grades, numbered recommendations with emoji prefixes, warning callouts with ⚠️ blockquote)
+- [x] T005 [US1] Rewrite the Full Mode section (lines 127-191) of `.opencode/agents/gaze-reporter.md`: replace the Overall Health Assessment structure (remove Risk Matrix table and word-based Overall Grade table), replace with Summary Scorecard using letter grades (A through F) paired with colored circle emojis per the grade-to-emoji mapping in FR-002/FR-003, and replace "Bottom line:" closing paragraph with a conversational closing sentence
+- [x] T006 [US1] Rewrite the CRAP Mode section quadrant labels (lines 81-91) of `.opencode/agents/gaze-reporter.md`: replace plain-text quadrant labels with emoji-prefixed labels (🟢 Q1 — Safe, 🟡 Q2 — Complex But Tested, ⚪ Q3 — Needs Tests, 🔴 Q4 — Dangerous) and add the GazeCRAPload conversational interpretation line per FR-012
+- [x] T007 [US1] Rewrite the Example Output section (lines 239-306) of `.opencode/agents/gaze-reporter.md`: replace the clinical example with the canonical example from the spec (spec.md lines 17-73), adapting function names and numbers to be clearly fictional while preserving the exact structural format (emoji-prefixed headers, metadata line with centered dots, markdown tables, severity-colored grades, numbered recommendations with emoji prefixes, warning callouts with ⚠️ blockquote)
 
 **Checkpoint**: Full-mode report should now produce output matching the canonical example structure. SC-001, SC-002, SC-005, SC-006, SC-007 verifiable.
 
@@ -57,7 +57,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] Update the CRAP Mode section of `.opencode/agents/gaze-reporter.md` to specify that the CRAP-only report title MUST be "🔍 Gaze CRAP Report" (not "🔍 Gaze Full Quality Report"), the metadata line MUST follow the same centered-dot format as the full report per FR-010, and the section header MUST be "📊 CRAP Summary" per FR-001
+- [x] T008 [US2] Update the CRAP Mode section of `.opencode/agents/gaze-reporter.md` to specify that the CRAP-only report title MUST be "🔍 Gaze CRAP Report" (not "🔍 Gaze Full Quality Report"), the metadata line MUST follow the same centered-dot format as the full report per FR-010, and the section header MUST be "📊 CRAP Summary" per FR-001
 
 **Checkpoint**: CRAP-only mode produces voice-consistent output. SC-003 partially verifiable.
 
@@ -71,7 +71,7 @@
 
 ### Implementation for User Story 4
 
-- [ ] T009 [US4] Update the Prioritized Recommendations subsection within the Full Mode section of `.opencode/agents/gaze-reporter.md` to specify that each recommendation MUST be numbered (1., 2., 3...) and prefixed with a severity emoji: 🔴 for critical issues (zero-coverage functions, Q4 Dangerous items), 🟡 for moderate issues (decomposition opportunities, coverage gaps), 🟢 for improvement opportunities (optional analysis runs). Default to 🟡 when severity is unclear per FR-007 and edge case specification
+- [x] T009 [US4] Update the Prioritized Recommendations subsection within the Full Mode section of `.opencode/agents/gaze-reporter.md` to specify that each recommendation MUST be numbered (1., 2., 3...) and prefixed with a severity emoji: 🔴 for critical issues (zero-coverage functions, Q4 Dangerous items), 🟡 for moderate issues (decomposition opportunities, coverage gaps), 🟢 for improvement opportunities (optional analysis runs). Default to 🟡 when severity is unclear per FR-007 and edge case specification
 
 **Checkpoint**: Recommendations display severity emojis. SC-002 fully verifiable for recommendations.
 
@@ -85,7 +85,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T010 [US3] Update the Quality Mode section of `.opencode/agents/gaze-reporter.md` to specify that the quality-only report title MUST be "🔍 Gaze Quality Report", the metadata line MUST follow the same centered-dot format per FR-010, and the section header MUST be "🧪 Quality Summary" per FR-001. Warning callouts MUST use the `> ⚠️ ...` blockquote format per FR-013
+- [x] T010 [US3] Update the Quality Mode section of `.opencode/agents/gaze-reporter.md` to specify that the quality-only report title MUST be "🔍 Gaze Quality Report", the metadata line MUST follow the same centered-dot format per FR-010, and the section header MUST be "🧪 Quality Summary" per FR-001. Warning callouts MUST use the `> ⚠️ ...` blockquote format per FR-013
 
 **Checkpoint**: Quality-only mode produces voice-consistent output. SC-003 fully verifiable.
 
@@ -95,11 +95,11 @@
 
 **Purpose**: Sync files, update documentation, and verify end-to-end consistency
 
-- [ ] T011 Copy the completed `.opencode/agents/gaze-reporter.md` to `internal/scaffold/assets/agents/gaze-reporter.md` to maintain byte-identity (both files MUST be identical per plan.md constraints)
-- [ ] T012 [P] Update `AGENTS.md` spec listing (around line 90): replace `010-report-voice-refinement/` entry with `011-output-voice-style/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/`
-- [ ] T013 [P] Update `AGENTS.md` Recent Changes section (around line 240): replace the spec 010 entry with `011-output-voice-style: Rewrote gaze-reporter agent prompt for fun, emoji-rich output — emoji section markers (🔍📊🧪🏷️🏥), colored circle severity indicators (🟢🟡🔴⚪), letter grades with emoji, severity-prefixed recommendations, tone anti-pattern bans, canonical example output`
-- [ ] T014 Verify the final `.opencode/agents/gaze-reporter.md` prompt contains no references to "clinical", "emoji-free", "Poor/Fair/Good/Strong/Excellent" word-based grades, or "Bottom line:" closing format from spec 010
-- [ ] T015 Run quickstart.md verification checklist: confirm the prompt satisfies all 6 verification items (emoji-prefixed headers, severity emojis, letter grades, severity-prefixed recommendations, no banned anti-patterns, silent section omission)
+- [x] T011 Copy the completed `.opencode/agents/gaze-reporter.md` to `internal/scaffold/assets/agents/gaze-reporter.md` to maintain byte-identity (both files MUST be identical per plan.md constraints)
+- [x] T012 [P] Update `AGENTS.md` spec listing (around line 90): replace `010-report-voice-refinement/` entry with `011-output-voice-style/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/`
+- [x] T013 [P] Update `AGENTS.md` Recent Changes section (around line 240): replace the spec 010 entry with `011-output-voice-style: Rewrote gaze-reporter agent prompt for fun, emoji-rich output — emoji section markers (🔍📊🧪🏷️🏥), colored circle severity indicators (🟢🟡🔴⚪), letter grades with emoji, severity-prefixed recommendations, tone anti-pattern bans, canonical example output`
+- [x] T014 Verify the final `.opencode/agents/gaze-reporter.md` prompt contains no references to "clinical", "emoji-free", "Poor/Fair/Good/Strong/Excellent" word-based grades, or "Bottom line:" closing format from spec 010
+- [x] T015 Run quickstart.md verification checklist: confirm the prompt satisfies all 6 verification items (emoji-prefixed headers, severity emojis, letter grades, severity-prefixed recommendations, no banned anti-patterns, silent section omission)
 
 ---
 

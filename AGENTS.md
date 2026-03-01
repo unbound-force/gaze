@@ -87,7 +87,7 @@ specs/
   007-assertion-mapping-depth/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   008-contract-coverage-gaps/    # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   009-crapload-reduction/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
-  010-report-voice-refinement/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
+  011-output-voice-style/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -239,7 +239,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
-- 010-report-voice-refinement: Rewrote gaze-reporter agent prompt for clinical, emoji-free output — plain-text headers, word-based grades (Poor/Fair/Good/Strong/Excellent), right-aligned numerics, risk matrix with Priority/Function/Risk/Why columns, "Bottom line:" closing paragraph, concrete example output snippet, omit-over-placeholder rule for unavailable sections
+- 011-output-voice-style: Rewrote gaze-reporter agent prompt for fun, emoji-rich output — emoji section markers (🔍📊🧪🏷️🏥), colored circle severity indicators (🟢🟡🔴⚪), letter grades with emoji, severity-prefixed recommendations, tone anti-pattern bans, canonical example output
 - 009-crapload-reduction: CRAPload reduction — contract-level tests for `docscan.Filter` and `LoadModule`, dependency injection for `runCrap`/`runSelfCheck`, decomposition of `buildContractCoverageFunc` into `resolvePackagePaths`/`analyzePackageCoverage`, and decomposition of `AnalyzeP1Effects`/`AnalyzeP2Effects` into per-node-type handler functions
 - 008-contract-coverage-gaps: Contract coverage gap remediation — direct unit tests for 8 functions with zero contract coverage across `internal/classify/`, `internal/analysis/`, and `cmd/gaze/` (test-only, no production code changes)
 - 007-assertion-mapping-depth: Assertion mapping depth improvements — resolveExprRoot (selector/index/builtin unwinding), two-pass matching (direct 75/indirect 65), helper return value tracing (depth-1 SSA verification). Mapping accuracy improved from 73.8% to 78.8% (ratchet floor 76.0%)
