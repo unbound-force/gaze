@@ -73,6 +73,14 @@ Top 5 Prioritized Recommendations
 5. 🟢 Run per-package quality analysis — ...
 ```
 
+## Clarifications
+
+### Session 2026-03-01
+
+- Q: Where do the grade-to-emoji severity boundaries fall? → A: 🟢 for B+ and above, 🟡 for B through C, 🔴 for C- and below.
+- Q: What should happen to spec 010 artifacts since spec 011 supersedes them? → A: Delete spec 010 artifacts entirely.
+- Q: Should the spec define concrete tone guardrails beyond "approachable and conversational"? → A: Ban specific anti-patterns only (excessive exclamation marks, slang/memes, puns on metric names, first-person pronouns). No required word list.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Scanning a Full Quality Report (Priority: P1)
@@ -140,7 +148,7 @@ A developer reads the prioritized recommendations section. Each recommendation i
 
 - What happens when a section has no data? The section is omitted entirely -- no header, no emoji, no placeholder text.
 - What happens when the report contains only one section (e.g., only CRAP data)? The report still uses the full title line, metadata line, and the single section with its emoji marker.
-- What happens when a grade falls on the boundary between two severity levels? The voice standard defines explicit grade-to-emoji mappings so boundary behavior is deterministic.
+- What happens when a grade falls on the boundary between two severity levels? The voice standard defines explicit grade-to-emoji mappings: 🟢 for B+ and above, 🟡 for B through C, 🔴 for C- and below. Boundary behavior is deterministic.
 - What happens when a recommendation has no clear severity? Default to 🟡 (moderate) to avoid both under-alarming and over-alarming.
 
 ## Requirements *(mandatory)*
@@ -148,9 +156,9 @@ A developer reads the prioritized recommendations section. Each recommendation i
 ### Functional Requirements
 
 - **FR-001**: Report output MUST use designated emoji prefixes for all major section headers. The mapping is: 🔍 (report title), 📊 (CRAP summary), 🧪 (quality summary), 🏷️ (classification summary), 🏥 (overall health assessment).
-- **FR-002**: Report output MUST use colored circle emojis as severity indicators throughout: 🟢 (good/safe/A-range), 🟡 (moderate/warning/B-C range), 🔴 (critical/danger/D-F range), ⚪ (neutral/no data/N/A).
+- **FR-002**: Report output MUST use colored circle emojis as severity indicators throughout: 🟢 (good/safe — grades B+ and above), 🟡 (moderate/warning — grades B through C), 🔴 (critical/danger — grades C- and below), ⚪ (neutral/no data/N/A).
 - **FR-003**: Report output MUST use letter grades (A, A-, B+, B, B-, C+, C, C-, D, F) paired with their corresponding colored circle emoji in the health assessment scorecard.
-- **FR-004**: Report tone MUST be approachable and conversational while remaining precise. Interpretive sentences are allowed (and encouraged) after data tables, limited to one concise sentence per table.
+- **FR-004**: Report tone MUST be approachable and conversational while remaining precise. Interpretive sentences are allowed (and encouraged) after data tables, limited to one concise sentence per table. The following anti-patterns are banned: excessive exclamation marks (zero or at most one per full report), slang or meme references, puns on metric names, and first-person pronouns ("I", "we").
 - **FR-005**: Report output MUST NOT include pedagogical explanations of what CRAP scores, quadrants, or coverage metrics mean. The reader is assumed to be a developer who already understands the concepts.
 - **FR-006**: Report sections with no available data MUST be silently omitted. No empty sections, no "N/A" placeholders, no headers without content.
 - **FR-007**: Recommendations MUST be numbered and prefixed with a severity emoji (🔴, 🟡, or 🟢) that corresponds to the urgency of the recommended action.
@@ -160,6 +168,7 @@ A developer reads the prioritized recommendations section. Each recommendation i
 - **FR-011**: Major sections MUST be separated by horizontal rules (---).
 - **FR-012**: The GazeCRAPload summary line MUST provide a brief, conversational interpretation of what the Q4 function count means in practical terms (e.g., whether the issue is coverage or complexity).
 - **FR-013**: Warning callouts MUST use the ⚠️ emoji prefix inside a blockquote (> ⚠️ ...) to visually distinguish advisory notices from data sections.
+- **FR-014**: The spec 010 (report-voice-refinement) directory and all its artifacts MUST be deleted as part of this feature's implementation. AGENTS.md MUST be updated to reference spec 011 as the current voice standard.
 
 ### Key Entities
 
@@ -173,8 +182,8 @@ A developer reads the prioritized recommendations section. Each recommendation i
 - The voice standard applies to the **gaze-reporter agent prompt** output only, not to the Go CLI's direct text/JSON formatters. The CLI formatters use lipgloss styling and remain unchanged.
 - Emojis render correctly in the user's terminal/editor environment. OpenCode agent output is displayed in contexts that support Unicode emoji rendering.
 - The reference output provided by the user is treated as the **canonical example** -- the voice standard is derived from it, not the other way around.
-- This spec supersedes the voice decisions made in spec 010 (report-voice-refinement). Where spec 010 prohibited emojis and mandated clinical tone, this spec replaces those directives with the fun, emoji-rich voice described here.
-- The "fun" tone means approachable and conversational, not silly or unprofessional. The report remains a diagnostic tool -- it just doesn't read like a medical chart.
+- This spec fully replaces spec 010 (report-voice-refinement). The spec 010 directory and all its artifacts will be deleted during implementation, and AGENTS.md will be updated to reference spec 011.
+- The "fun" tone means approachable and conversational, not silly or unprofessional. The report remains a diagnostic tool -- it just doesn't read like a medical chart. Concrete anti-patterns are banned in FR-004 to make tone testable without requiring an exhaustive word list.
 - The GazeCRAPload interpretive line (FR-012) is a brief sentence, not a paragraph. It distills the practical takeaway from the Q4 data.
 
 ## Success Criteria *(mandatory)*
