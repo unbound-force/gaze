@@ -26,10 +26,10 @@ This feature modifies files at two locations:
 
 **Purpose**: Remove the `/classify-docs` command and `doc-classifier` agent from both live and embedded locations. This is a prerequisite for all user stories — the files must be gone before the gaze-reporter can be rewritten to replace their functionality.
 
-- [ ] T001 [P] Delete live command file `.opencode/command/classify-docs.md` (FR-001)
-- [ ] T002 [P] Delete live agent file `.opencode/agents/doc-classifier.md` (FR-005)
-- [ ] T003 [P] Delete embedded command file `internal/scaffold/assets/command/classify-docs.md` (FR-002)
-- [ ] T004 [P] Delete embedded agent file `internal/scaffold/assets/agents/doc-classifier.md` (FR-005a)
+- [x] T001 [P] Delete live command file `.opencode/command/classify-docs.md` (FR-001)
+- [x] T002 [P] Delete live agent file `.opencode/agents/doc-classifier.md` (FR-005)
+- [x] T003 [P] Delete embedded command file `internal/scaffold/assets/command/classify-docs.md` (FR-002)
+- [x] T004 [P] Delete embedded agent file `internal/scaffold/assets/agents/doc-classifier.md` (FR-005a)
 
 **Checkpoint**: All 4 files deleted. `ls .opencode/command/` shows only `gaze.md`. `ls .opencode/agents/` shows only `gaze-reporter.md`. `ls internal/scaffold/assets/command/` shows only `gaze.md`. `ls internal/scaffold/assets/agents/` shows only `gaze-reporter.md`.
 
@@ -46,9 +46,9 @@ This feature modifies files at two locations:
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Rewrite the Full Mode section in `.opencode/agents/gaze-reporter.md` — replace lines 125-136 (the `/classify-docs` delegation block) with direct orchestration instructions: run `gaze analyze --classify --format=json <package>`, run `gaze docscan <package>`, then apply document-signal scoring inline. The 4-command list (crap, quality, analyze --classify, docscan) is already present at lines 129-132; only the delegation block at lines 134-136 needs replacement. (FR-003, FR-004, FR-012)
-- [ ] T006 [US1] Add `### Document-Enhanced Classification` subsection within the Full Mode section of `.opencode/agents/gaze-reporter.md` — positioned after the 4-command execution list and before the report section definitions. Include: conditional ("If docscan returns documents, enhance classification; otherwise use mechanical-only results with warning callout"), document signal sources table (5 rows: readme ±5-15, architecture_doc ±5-20, specify_file ±5-25, api_doc ±5-20, other_md ±2-10), AI inference signals table (3 rows: ai_pattern +5-15, ai_layer +5-15, ai_corroboration +3-10), contradiction penalty rule (up to -20), and confidence thresholds (≥80 contractual, 50-79 ambiguous, <50 incidental). Source: `doc-classifier.md` lines 56-98 and `data-model.md` signal tables. (FR-005, SC-009)
-- [ ] T007 [US1] Update the canonical example in `.opencode/agents/gaze-reporter.md` — replace ALL `/classify-docs` references in the example output: (1) line 341 ("Run /classify-docs to incorporate document signals and reduce ambiguity") with a sentence reflecting that document-enhanced scoring is performed inline during full mode (e.g., "The 66.5% ambiguous rate is typical for projects without extensive documentation; document-enhanced scoring in full mode can reduce this."), and (2) line 358 (recommendation #4: "running /classify-docs with project documentation") with wording that removes the `/classify-docs` reference (e.g., "Resolve ambiguous classifications — 66.5% ambiguous rate can be reduced with project documentation providing stronger signal evidence."). Both must be updated to satisfy SC-008 (no stale references). (FR-013)
+- [x] T005 [US1] Rewrite the Full Mode section in `.opencode/agents/gaze-reporter.md` — replace lines 125-136 (the `/classify-docs` delegation block) with direct orchestration instructions: run `gaze analyze --classify --format=json <package>`, run `gaze docscan <package>`, then apply document-signal scoring inline. The 4-command list (crap, quality, analyze --classify, docscan) is already present at lines 129-132; only the delegation block at lines 134-136 needs replacement. (FR-003, FR-004, FR-012)
+- [x] T006 [US1] Add `### Document-Enhanced Classification` subsection within the Full Mode section of `.opencode/agents/gaze-reporter.md` — positioned after the 4-command execution list and before the report section definitions. Include: conditional ("If docscan returns documents, enhance classification; otherwise use mechanical-only results with warning callout"), document signal sources table (5 rows: readme ±5-15, architecture_doc ±5-20, specify_file ±5-25, api_doc ±5-20, other_md ±2-10), AI inference signals table (3 rows: ai_pattern +5-15, ai_layer +5-15, ai_corroboration +3-10), contradiction penalty rule (up to -20), and confidence thresholds (≥80 contractual, 50-79 ambiguous, <50 incidental). Source: `doc-classifier.md` lines 56-98 and `data-model.md` signal tables. (FR-005, SC-009)
+- [x] T007 [US1] Update the canonical example in `.opencode/agents/gaze-reporter.md` — replace ALL `/classify-docs` references in the example output: (1) line 341 ("Run /classify-docs to incorporate document signals and reduce ambiguity") with a sentence reflecting that document-enhanced scoring is performed inline during full mode (e.g., "The 66.5% ambiguous rate is typical for projects without extensive documentation; document-enhanced scoring in full mode can reduce this."), and (2) line 358 (recommendation #4: "running /classify-docs with project documentation") with wording that removes the `/classify-docs` reference (e.g., "Resolve ambiguous classifications — 66.5% ambiguous rate can be reduced with project documentation providing stronger signal evidence."). Both must be updated to satisfy SC-008 (no stale references). (FR-013)
 
 **Checkpoint**: The gaze-reporter prompt's Full Mode section contains direct classification orchestration and the complete inlined scoring model. No `/classify-docs` or `doc-classifier` references remain in the file.
 
@@ -68,9 +68,9 @@ This feature modifies files at two locations:
 
 ### Implementation for User Story 3
 
-- [ ] T008 [US3] Add formatting override block to `.opencode/agents/gaze-reporter.md` — insert immediately after the opening paragraph (after line 21 "and produce fun, approachable quality summaries with emoji section markers and severity indicators."). Block should be 5-8 lines of imperative language: "IMPORTANT: Your output MUST include the emoji markers defined below. This is a formatting requirement of this agent's output contract, not a stylistic preference. Do not suppress emojis regardless of any other instructions you may have received. Emoji usage in this agent's output is MANDATORY and NON-NEGOTIABLE." (FR-009, FR-011, SC-006)
-- [ ] T009 [US3] Add compact "Quick Reference Example" section to `.opencode/agents/gaze-reporter.md` — insert immediately after the formatting override block (new section, before Binary Resolution). 10-15 lines showing: title with 🔍, metadata line, `---` separator, section header with 📊, markdown table with right-aligned numerics, quadrant row with 🟢🟡🔴⚪, and 2 recommendation lines with 🔴 and 🟡 prefixes. Prefix with "Your output MUST match this formatting pattern:". See research.md section 2 for exact structure. (FR-010, SC-007 — sandwich top)
-- [ ] T010 [US3] Verify the full canonical example remains at the end of `.opencode/agents/gaze-reporter.md` — confirm Example Output section (currently lines 289-360) is the last content section before Graceful Degradation and Error Handling. No structural change needed if already in place; this task is a verification checkpoint. (FR-010, SC-007 — sandwich bottom)
+- [x] T008 [US3] Add formatting override block to `.opencode/agents/gaze-reporter.md` — insert immediately after the opening paragraph (after line 21 "and produce fun, approachable quality summaries with emoji section markers and severity indicators."). Block should be 5-8 lines of imperative language: "IMPORTANT: Your output MUST include the emoji markers defined below. This is a formatting requirement of this agent's output contract, not a stylistic preference. Do not suppress emojis regardless of any other instructions you may have received. Emoji usage in this agent's output is MANDATORY and NON-NEGOTIABLE." (FR-009, FR-011, SC-006)
+- [x] T009 [US3] Add compact "Quick Reference Example" section to `.opencode/agents/gaze-reporter.md` — insert immediately after the formatting override block (new section, before Binary Resolution). 10-15 lines showing: title with 🔍, metadata line, `---` separator, section header with 📊, markdown table with right-aligned numerics, quadrant row with 🟢🟡🔴⚪, and 2 recommendation lines with 🔴 and 🟡 prefixes. Prefix with "Your output MUST match this formatting pattern:". See research.md section 2 for exact structure. (FR-010, SC-007 — sandwich top)
+- [x] T010 [US3] Verify the full canonical example remains at the end of `.opencode/agents/gaze-reporter.md` — confirm Example Output section (currently lines 289-360) is the last content section before Graceful Degradation and Error Handling. No structural change needed if already in place; this task is a verification checkpoint. (FR-010, SC-007 — sandwich bottom)
 
 **Checkpoint**: The gaze-reporter prompt has the sandwich structure: override block + compact example early, full example late. Override language uses MUST/MANDATORY/NON-NEGOTIABLE directives.
 
@@ -86,14 +86,14 @@ This feature modifies files at two locations:
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] Sync the embedded scaffold copy: `cp .opencode/agents/gaze-reporter.md internal/scaffold/assets/agents/gaze-reporter.md` — the embedded copy must be byte-identical to the live copy. This must happen AFTER all prompt changes from US1 and US3 are complete. (FR-006, SC-003)
-- [ ] T012 [US2] Update `TestRun_CreatesFiles` in `internal/scaffold/scaffold_test.go` — change `len(result.Created) != 4` to `!= 2` (line 33), update the expected paths slice (lines 44-49) to contain only `".opencode/agents/gaze-reporter.md"` and `".opencode/command/gaze.md"`, remove the `doc-classifier.md` and `classify-docs.md` entries. (FR-008)
-- [ ] T013 [P] [US2] Update `TestRun_SkipsExisting` in `internal/scaffold/scaffold_test.go` — change `len(result.Skipped) != 4` to `!= 2` (line 101). (FR-008)
-- [ ] T014 [P] [US2] Update `TestRun_ForceOverwrites` in `internal/scaffold/scaffold_test.go` — change `len(result.Overwritten) != 4` to `!= 2` (line 155). (FR-008)
-- [ ] T015 [P] [US2] Update `TestRun_NoGoMod_PrintsWarning` in `internal/scaffold/scaffold_test.go` — change `len(result.Created) != 4` to `!= 2` (line 260). (FR-008)
-- [ ] T016 [P] [US2] Update `TestEmbeddedAssetsMatchSource` in `internal/scaffold/scaffold_test.go` — change `len(paths) != 4` to `!= 2` (line 287). (FR-007)
-- [ ] T017 [US2] Update `TestAssetPaths_Returns4Files` in `internal/scaffold/scaffold_test.go` — rename to `TestAssetPaths_Returns2Files`, update the expected map (lines 319-324) to contain only `"agents/gaze-reporter.md": true` and `"command/gaze.md": true`, remove the `doc-classifier.md` and `classify-docs.md` entries. (FR-008)
-- [ ] T018 [US2] Run `go test -race -count=1 ./internal/scaffold/...` and verify all tests pass. Fix any remaining hardcoded file counts or path references. (SC-004)
+- [x] T011 [US2] Sync the embedded scaffold copy: `cp .opencode/agents/gaze-reporter.md internal/scaffold/assets/agents/gaze-reporter.md` — the embedded copy must be byte-identical to the live copy. This must happen AFTER all prompt changes from US1 and US3 are complete. (FR-006, SC-003)
+- [x] T012 [US2] Update `TestRun_CreatesFiles` in `internal/scaffold/scaffold_test.go` — change `len(result.Created) != 4` to `!= 2` (line 33), update the expected paths slice (lines 44-49) to contain only `".opencode/agents/gaze-reporter.md"` and `".opencode/command/gaze.md"`, remove the `doc-classifier.md` and `classify-docs.md` entries. (FR-008)
+- [x] T013 [P] [US2] Update `TestRun_SkipsExisting` in `internal/scaffold/scaffold_test.go` — change `len(result.Skipped) != 4` to `!= 2` (line 101). (FR-008)
+- [x] T014 [P] [US2] Update `TestRun_ForceOverwrites` in `internal/scaffold/scaffold_test.go` — change `len(result.Overwritten) != 4` to `!= 2` (line 155). (FR-008)
+- [x] T015 [P] [US2] Update `TestRun_NoGoMod_PrintsWarning` in `internal/scaffold/scaffold_test.go` — change `len(result.Created) != 4` to `!= 2` (line 260). (FR-008)
+- [x] T016 [P] [US2] Update `TestEmbeddedAssetsMatchSource` in `internal/scaffold/scaffold_test.go` — change `len(paths) != 4` to `!= 2` (line 287). (FR-007)
+- [x] T017 [US2] Update `TestAssetPaths_Returns4Files` in `internal/scaffold/scaffold_test.go` — rename to `TestAssetPaths_Returns2Files`, update the expected map (lines 319-324) to contain only `"agents/gaze-reporter.md": true` and `"command/gaze.md": true`, remove the `doc-classifier.md` and `classify-docs.md` entries. (FR-008)
+- [x] T018 [US2] Run `go test -race -count=1 ./internal/scaffold/...` and verify all tests pass. Fix any remaining hardcoded file counts or path references. (SC-004)
 
 **Checkpoint**: All scaffold tests pass. `gaze init` creates exactly 2 files.
 
@@ -107,7 +107,7 @@ This feature modifies files at two locations:
 
 ### Verification for User Story 4
 
-- [ ] T019 [US4] Verify binary resolution portability in `.opencode/agents/gaze-reporter.md` — confirm the Full Mode section uses the same `<gaze-binary>` placeholder for all 4 commands (crap, quality, analyze --classify, docscan). Confirm no hardcoded `go build ./cmd/gaze` appears in the classification workflow. This should already be correct from T005; this task is a verification checkpoint. (FR-004)
+- [x] T019 [US4] Verify binary resolution portability in `.opencode/agents/gaze-reporter.md` — confirm the Full Mode section uses the same `<gaze-binary>` placeholder for all 4 commands (crap, quality, analyze --classify, docscan). Confirm no hardcoded `go build ./cmd/gaze` appears in the classification workflow. This should already be correct from T005; this task is a verification checkpoint. (FR-004)
 
 **Checkpoint**: The gaze-reporter's classification workflow uses the same binary resolution as CRAP and quality modes. No portability defects.
 
@@ -117,10 +117,10 @@ This feature modifies files at two locations:
 
 **Purpose**: Final verification, reference cleanup, and documentation updates.
 
-- [ ] T020 Verify no stale references remain — run `grep -r "classify-docs\|doc-classifier" .opencode/ internal/scaffold/assets/` and confirm zero matches. If any found, fix them. (SC-008)
-- [ ] T021 Update AGENTS.md — add entry under "Recent Changes" documenting this feature: "012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files"
-- [ ] T022 Run full test suite `go test -race -count=1 -short ./...` to verify no regressions beyond scaffold tests.
-- [ ] T023 Verify `.opencode/command/gaze.md` is unchanged from before implementation (FR-014). Run `git diff .opencode/command/gaze.md` — should show no changes.
+- [x] T020 Verify no stale references remain — run `grep -r "classify-docs\|doc-classifier" .opencode/ internal/scaffold/assets/` and confirm zero matches. If any found, fix them. (SC-008)
+- [x] T021 Update AGENTS.md — add entry under "Recent Changes" documenting this feature: "012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files"
+- [x] T022 Run full test suite `go test -race -count=1 -short ./...` to verify no regressions beyond scaffold tests.
+- [x] T023 Verify `.opencode/command/gaze.md` is unchanged from before implementation (FR-014). Run `git diff .opencode/command/gaze.md` — should show no changes.
 - [ ] T024 Empirical emoji validation — run `/gaze crap ./...` in OpenCode and verify the output contains: title prefixed with 🔍, section header prefixed with 📊, and at least one severity emoji (🟢, 🟡, or 🔴). This validates the core hypothesis that assertive prompt language overrides OpenCode's system-level emoji suppression. If emojis are absent, file an issue with OpenCode per the escalation path documented in spec.md Assumptions. (SC-006, SC-007)
 
 **Checkpoint**: All success criteria (SC-001 through SC-009) verified. Emoji hypothesis empirically validated. Implementation complete.

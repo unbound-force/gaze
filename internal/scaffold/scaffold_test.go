@@ -11,7 +11,7 @@ import (
 )
 
 // TestRun_CreatesFiles verifies SC-001: gaze init creates exactly
-// 4 files in the correct directories when run in an empty project.
+// 2 files in the correct directories when run in an empty project.
 func TestRun_CreatesFiles(t *testing.T) {
 	dir := t.TempDir()
 
@@ -30,8 +30,8 @@ func TestRun_CreatesFiles(t *testing.T) {
 		t.Fatalf("Run() returned error: %v", err)
 	}
 
-	if len(result.Created) != 4 {
-		t.Errorf("expected 4 created files, got %d: %v", len(result.Created), result.Created)
+	if len(result.Created) != 2 {
+		t.Errorf("expected 2 created files, got %d: %v", len(result.Created), result.Created)
 	}
 	if len(result.Skipped) != 0 {
 		t.Errorf("expected 0 skipped files, got %d: %v", len(result.Skipped), result.Skipped)
@@ -40,12 +40,10 @@ func TestRun_CreatesFiles(t *testing.T) {
 		t.Errorf("expected 0 overwritten files, got %d: %v", len(result.Overwritten), result.Overwritten)
 	}
 
-	// Verify all 4 expected files exist on disk.
+	// Verify all 2 expected files exist on disk.
 	expected := []string{
 		".opencode/agents/gaze-reporter.md",
-		".opencode/agents/doc-classifier.md",
 		".opencode/command/gaze.md",
-		".opencode/command/classify-docs.md",
 	}
 	for _, rel := range expected {
 		path := filepath.Join(dir, rel)
@@ -98,8 +96,8 @@ func TestRun_SkipsExisting(t *testing.T) {
 	if len(result.Created) != 0 {
 		t.Errorf("expected 0 created, got %d: %v", len(result.Created), result.Created)
 	}
-	if len(result.Skipped) != 4 {
-		t.Errorf("expected 4 skipped, got %d: %v", len(result.Skipped), result.Skipped)
+	if len(result.Skipped) != 2 {
+		t.Errorf("expected 2 skipped, got %d: %v", len(result.Skipped), result.Skipped)
 	}
 	if len(result.Overwritten) != 0 {
 		t.Errorf("expected 0 overwritten, got %d: %v", len(result.Overwritten), result.Overwritten)
@@ -152,8 +150,8 @@ func TestRun_ForceOverwrites(t *testing.T) {
 	if len(result.Skipped) != 0 {
 		t.Errorf("expected 0 skipped, got %d: %v", len(result.Skipped), result.Skipped)
 	}
-	if len(result.Overwritten) != 4 {
-		t.Errorf("expected 4 overwritten, got %d: %v", len(result.Overwritten), result.Overwritten)
+	if len(result.Overwritten) != 2 {
+		t.Errorf("expected 2 overwritten, got %d: %v", len(result.Overwritten), result.Overwritten)
 	}
 
 	output := buf2.String()
@@ -257,8 +255,8 @@ func TestRun_NoGoMod_PrintsWarning(t *testing.T) {
 	}
 
 	// Files should still be created.
-	if len(result.Created) != 4 {
-		t.Errorf("expected 4 created files, got %d", len(result.Created))
+	if len(result.Created) != 2 {
+		t.Errorf("expected 2 created files, got %d", len(result.Created))
 	}
 
 	// Warning should be printed.
@@ -284,8 +282,8 @@ func TestEmbeddedAssetsMatchSource(t *testing.T) {
 		t.Fatalf("assetPaths() returned error: %v", err)
 	}
 
-	if len(paths) != 4 {
-		t.Fatalf("expected 4 embedded assets, got %d: %v", len(paths), paths)
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 embedded assets, got %d: %v", len(paths), paths)
 	}
 
 	for _, relPath := range paths {
@@ -308,19 +306,17 @@ func TestEmbeddedAssetsMatchSource(t *testing.T) {
 	}
 }
 
-// TestAssetPaths_Returns4Files verifies the embedded asset manifest
-// contains exactly 4 files.
-func TestAssetPaths_Returns4Files(t *testing.T) {
+// TestAssetPaths_Returns2Files verifies the embedded asset manifest
+// contains exactly 2 files.
+func TestAssetPaths_Returns2Files(t *testing.T) {
 	paths, err := assetPaths()
 	if err != nil {
 		t.Fatalf("assetPaths() returned error: %v", err)
 	}
 
 	expected := map[string]bool{
-		"agents/gaze-reporter.md":  true,
-		"agents/doc-classifier.md": true,
-		"command/gaze.md":          true,
-		"command/classify-docs.md": true,
+		"agents/gaze-reporter.md": true,
+		"command/gaze.md":         true,
 	}
 
 	if len(paths) != len(expected) {

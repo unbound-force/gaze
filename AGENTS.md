@@ -241,6 +241,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files
 - 011-output-voice-style: Rewrote gaze-reporter agent prompt for fun, emoji-rich output — emoji section markers (🔍📊🧪🏷️🏥), colored circle severity indicators (🟢🟡🔴⚪), letter grades with emoji, severity-prefixed recommendations, tone anti-pattern bans, canonical example output
 - 009-crapload-reduction: CRAPload reduction — contract-level tests for `docscan.Filter` and `LoadModule`, dependency injection for `runCrap`/`runSelfCheck`, decomposition of `buildContractCoverageFunc` into `resolvePackagePaths`/`analyzePackageCoverage`, and decomposition of `AnalyzeP1Effects`/`AnalyzeP2Effects` into per-node-type handler functions
 - 008-contract-coverage-gaps: Contract coverage gap remediation — direct unit tests for 8 functions with zero contract coverage across `internal/classify/`, `internal/analysis/`, and `cmd/gaze/` (test-only, no production code changes)
