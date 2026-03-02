@@ -243,6 +243,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 014-macos-notarization: Added macOS code signing and notarization to GoReleaser release pipeline via built-in `notarize.macos` (quill), conditional on `MACOS_SIGN_P12` secret presence, 20m notarization timeout, 45m job timeout, no runner change (stays ubuntu-latest)
 - 012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files
 - 011-output-voice-style: Rewrote gaze-reporter agent prompt for fun, emoji-rich output — emoji section markers (🔍📊🧪🏷️🏥), colored circle severity indicators (🟢🟡🔴⚪), letter grades with emoji, severity-prefixed recommendations, tone anti-pattern bans, canonical example output
 - 009-crapload-reduction: CRAPload reduction — contract-level tests for `docscan.Filter` and `LoadModule`, dependency injection for `runCrap`/`runSelfCheck`, decomposition of `buildContractCoverageFunc` into `resolvePackagePaths`/`analyzePackageCoverage`, and decomposition of `AnalyzeP1Effects`/`AnalyzeP2Effects` into per-node-type handler functions

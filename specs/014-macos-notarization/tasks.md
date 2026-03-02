@@ -34,7 +34,7 @@
 
 **Purpose**: The maintainer must configure Apple credentials as GitHub secrets before signing can be exercised. This is a manual prerequisite, not an automatable task.
 
-- [ ] T001 Document the 5 required GitHub secrets in the repository wiki or README, referencing specs/014-macos-notarization/quickstart.md for step-by-step credential setup instructions
+- [x] T001 Document the 5 required GitHub secrets in the repository wiki or README, referencing specs/014-macos-notarization/quickstart.md for step-by-step credential setup instructions
 
 **Checkpoint**: GitHub secrets documentation is available for the maintainer to follow when ready.
 
@@ -48,8 +48,8 @@
 
 ### Implementation for User Story 1
 
-- [ ] T002 [P] [US1] Add `notarize.macos` section to .goreleaser.yaml after the `checksum` section. Include `sign.certificate` and `sign.password` fields referencing `MACOS_SIGN_P12` and `MACOS_SIGN_PASSWORD` env vars via GoReleaser template syntax. Include `notarize.issuer_id`, `notarize.key_id`, and `notarize.key` fields referencing `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`, and `MACOS_NOTARY_KEY` env vars. Use exact YAML from research.md "Exact Configuration" section.
-- [ ] T003 [P] [US1] Add 5 Apple credential environment variables (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID`) to the `Run GoReleaser` step's `env` block in .github/workflows/release.yml, mapping each to its corresponding `${{ secrets.* }}` value. Preserve existing `GITHUB_TOKEN` and `HOMEBREW_TAP_GITHUB_TOKEN` env vars.
+- [x] T002 [P] [US1] Add `notarize.macos` section to .goreleaser.yaml after the `checksum` section. Include `sign.certificate` and `sign.password` fields referencing `MACOS_SIGN_P12` and `MACOS_SIGN_PASSWORD` env vars via GoReleaser template syntax. Include `notarize.issuer_id`, `notarize.key_id`, and `notarize.key` fields referencing `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`, and `MACOS_NOTARY_KEY` env vars. Use exact YAML from research.md "Exact Configuration" section.
+- [x] T003 [P] [US1] Add 5 Apple credential environment variables (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID`) to the `Run GoReleaser` step's `env` block in .github/workflows/release.yml, mapping each to its corresponding `${{ secrets.* }}` value. Preserve existing `GITHUB_TOKEN` and `HOMEBREW_TAP_GITHUB_TOKEN` env vars.
 
 **Checkpoint**: Both configuration files updated. The release pipeline will sign and notarize darwin binaries when Apple secrets are configured.
 
@@ -63,7 +63,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T004 [US2] Verify the `enabled` field in the `notarize.macos` section of .goreleaser.yaml uses the template guard `'{{ isEnvSet "MACOS_SIGN_P12" }}'` (this should already be set by T002). Confirm by reading the file and validating the exact template string. If not present, add it.
+- [x] T004 [US2] Verify the `enabled` field in the `notarize.macos` section of .goreleaser.yaml uses the template guard `'{{ isEnvSet "MACOS_SIGN_P12" }}'` (this should already be set by T002). Confirm by reading the file and validating the exact template string. If not present, add it.
 
 **Checkpoint**: The `isEnvSet` guard ensures signing is skipped when secrets are absent. No additional configuration needed — graceful degradation is built into the GoReleaser template syntax chosen in T002.
 
@@ -77,8 +77,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T005 [US3] Verify the `notarize` subsection in .goreleaser.yaml includes `wait: true` and `timeout: 20m` (this should already be set by T002). Confirm by reading the file. If not present, add both fields.
-- [ ] T006 [US3] Verify the release job in .github/workflows/release.yml has a `timeout-minutes` value that exceeds the notarization timeout (20m) plus build time. If no job-level timeout exists, add `timeout-minutes: 45` to the `release` job to provide adequate headroom.
+- [x] T005 [US3] Verify the `notarize` subsection in .goreleaser.yaml includes `wait: true` and `timeout: 20m` (this should already be set by T002). Confirm by reading the file. If not present, add both fields.
+- [x] T006 [US3] Verify the release job in .github/workflows/release.yml has a `timeout-minutes` value that exceeds the notarization timeout (20m) plus build time. If no job-level timeout exists, add `timeout-minutes: 45` to the `release` job to provide adequate headroom.
 
 **Checkpoint**: Notarization will timeout after 20 minutes, and the overall job timeout prevents indefinite CI billing.
 
@@ -88,10 +88,10 @@
 
 **Purpose**: Documentation updates and dry-run validation
 
-- [ ] T007 [P] Update AGENTS.md "Active Technologies" section to include the GoReleaser v2 notarization technology entry if not already present (check for existing `014-macos-notarization` entry added by `update-agent-context.sh`)
-- [ ] T008 [P] Update README.md to document that macOS binaries are code-signed and notarized, under the installation or distribution section (if such a section exists)
-- [ ] T009 Run `goreleaser release --snapshot --clean` locally to validate YAML syntax and confirm no errors when secrets are absent (dry-run verification of US2)
-- [ ] T010 Run `goreleaser check` to validate .goreleaser.yaml schema compliance
+- [x] T007 [P] Update AGENTS.md "Active Technologies" section to include the GoReleaser v2 notarization technology entry if not already present (check for existing `014-macos-notarization` entry added by `update-agent-context.sh`)
+- [x] T008 [P] Update README.md to document that macOS binaries are code-signed and notarized, under the installation or distribution section (if such a section exists)
+- [x] T009 Run `goreleaser release --snapshot --clean` locally to validate YAML syntax and confirm no errors when secrets are absent (dry-run verification of US2)
+- [x] T010 Run `goreleaser check` to validate .goreleaser.yaml schema compliance
 
 **Checkpoint**: Documentation updated, YAML validated. Feature is ready for the maintainer to configure Apple secrets and perform a test release.
 
