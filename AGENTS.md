@@ -88,6 +88,7 @@ specs/
   008-contract-coverage-gaps/    # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   009-crapload-reduction/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   011-output-voice-style/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
+  012-consolidate-classify-docs/ # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).

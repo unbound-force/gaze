@@ -268,7 +268,7 @@ func runAnalyze(p analyzeParams) error {
 // runClassify runs the mechanical classification pipeline on
 // analysis results and returns classified results. It adds a
 // metadata warning noting that document-enhanced classification
-// is not applied (that requires the /classify-docs command).
+// is not applied (the gaze-reporter agent handles that in full mode).
 func runClassify(
 	results []taxonomy.AnalysisResult,
 	pkgPath string,
@@ -313,7 +313,7 @@ func runClassify(
 		classified[i].Metadata.Warnings = append(
 			classified[i].Metadata.Warnings,
 			"classification: mechanical signals only; "+
-				"run /classify-docs for document-enhanced results",
+				"run /gaze in full mode for document-enhanced results",
 		)
 	}
 
@@ -340,7 +340,7 @@ func newAnalyzeCmd() *cobra.Command {
 observable side effects each function produces.
 
 Use --classify to attach contractual classification (mechanical signals).
-Use /classify-docs in OpenCode for document-enhanced classification.`,
+Use /gaze in OpenCode (full mode) for document-enhanced classification.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runAnalyze(analyzeParams{
@@ -776,7 +776,7 @@ func newDocscanCmd() *cobra.Command {
 		Short: "Scan project documentation for classification signals",
 		Long: `Scan the repository for Markdown documentation files and
 output a prioritized list of documents as JSON. Useful as input
-to the /classify-docs OpenCode command for document-enhanced
+to the gaze-reporter agent's full mode for document-enhanced
 classification.
 
 Priority:

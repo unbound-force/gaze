@@ -358,6 +358,65 @@ func TestAssetPaths_Returns2Files(t *testing.T) {
 	}
 }
 
+// TestInsertMarkerAfterFrontmatter exercises the frontmatter-aware
+// marker insertion function with edge cases.
+func TestInsertMarkerAfterFrontmatter(t *testing.T) {
+	marker := "<!-- marker -->\n"
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "empty input",
+			input: "",
+			want:  marker,
+		},
+		{
+			name:  "no frontmatter",
+			input: "# Hello\nWorld\n",
+			want:  "# Hello\nWorld\n" + marker,
+		},
+		{
+			name:  "unclosed frontmatter",
+			input: "---\nkey: val\n",
+			want:  "---\nkey: val\n" + marker,
+		},
+		{
+			name:  "well-formed frontmatter",
+			input: "---\nkey: val\n---\n# Body\n",
+			want:  "---\nkey: val\n---\n" + marker + "# Body\n",
+		},
+		{
+			name:  "body contains dashes",
+			input: "---\nk: v\n---\n# H\n---\nmore\n",
+			want:  "---\nk: v\n---\n" + marker + "# H\n---\nmore\n",
+		},
+		{
+			name:  "frontmatter only no body",
+			input: "---\nk: v\n---\n",
+			want:  "---\nk: v\n---\n" + marker,
+		},
+		{
+			name:  "empty marker",
+			input: "---\nk: v\n---\n# Body\n",
+			want:  "---\nk: v\n---\n# Body\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := marker
+			if tc.name == "empty marker" {
+				m = ""
+			}
+			got := string(insertMarkerAfterFrontmatter([]byte(tc.input), m))
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // findProjectRoot walks up the directory tree from the current
 // working directory to find the project root (directory containing
 // go.mod).

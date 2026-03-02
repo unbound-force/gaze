@@ -68,6 +68,11 @@ func versionMarker(version string) string {
 // "---" breaks frontmatter parsing in tools like OpenCode, which
 // causes agent tool configurations and command delegation to be
 // silently ignored.
+//
+// Constraint: YAML frontmatter content MUST NOT contain a line
+// that is exactly "---". If it does, the first such line will be
+// incorrectly treated as the closing delimiter. All current
+// embedded assets satisfy this constraint.
 func insertMarkerAfterFrontmatter(content []byte, marker string) []byte {
 	s := string(content)
 
@@ -193,14 +198,14 @@ func Run(opts Options) (*Result, error) {
 	}
 
 	// Print summary.
-	printSummary(opts.Stdout, result, opts.Force)
+	printSummary(opts.Stdout, result)
 
 	return result, nil
 }
 
 // printSummary writes a human-readable summary of the scaffold
 // operation to w.
-func printSummary(w io.Writer, r *Result, force bool) {
+func printSummary(w io.Writer, r *Result) {
 	if len(r.Created) > 0 || len(r.Overwritten) > 0 {
 		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
 	} else {

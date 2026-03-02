@@ -121,7 +121,7 @@ This feature modifies files at two locations:
 - [x] T021 Update AGENTS.md — add entry under "Recent Changes" documenting this feature: "012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files"
 - [x] T022 Run full test suite `go test -race -count=1 -short ./...` to verify no regressions beyond scaffold tests.
 - [x] T023 Verify `.opencode/command/gaze.md` is unchanged from before implementation (FR-014). Run `git diff .opencode/command/gaze.md` — should show no changes.
-- [ ] T024 Empirical emoji validation — run `/gaze crap ./...` in OpenCode and verify the output contains: title prefixed with 🔍, section header prefixed with 📊, and at least one severity emoji (🟢, 🟡, or 🔴). This validates the core hypothesis that assertive prompt language overrides OpenCode's system-level emoji suppression. If emojis are absent, file an issue with OpenCode per the escalation path documented in spec.md Assumptions. (SC-006, SC-007)
+- [x] T024 Empirical emoji validation — run `/gaze crap ./...` in OpenCode and verify the output contains: title prefixed with 🔍, section header prefixed with 📊, and at least one severity emoji (🟢, 🟡, or 🔴). This validates the core hypothesis that assertive prompt language overrides OpenCode's system-level emoji suppression. If emojis are absent, file an issue with OpenCode per the escalation path documented in spec.md Assumptions. (SC-006, SC-007)
 
 **Checkpoint**: All success criteria (SC-001 through SC-009) verified. Emoji hypothesis empirically validated. Implementation complete.
 

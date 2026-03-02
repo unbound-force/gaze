@@ -270,7 +270,7 @@ gaze schema
 
 ### `gaze docscan` -- Documentation Scanner
 
-Scan the repository for Markdown documentation files and output a prioritized list as JSON. Useful as input to the `/classify-docs` OpenCode command for document-enhanced classification.
+Scan the repository for Markdown documentation files and output a prioritized list as JSON. Useful as input to the gaze-reporter agent's full mode for document-enhanced classification.
 
 Files are prioritized by proximity to the target package:
 
@@ -307,12 +307,10 @@ gaze init --force
 |------|-------------|
 | `--force` | Overwrite existing OpenCode files |
 
-This creates 4 files in `.opencode/`:
+This creates 2 files in `.opencode/`:
 
 - `.opencode/agents/gaze-reporter.md` -- Quality report agent
-- `.opencode/agents/doc-classifier.md` -- Document-enhanced classifier
 - `.opencode/command/gaze.md` -- `/gaze` command
-- `.opencode/command/classify-docs.md` -- `/classify-docs` command
 
 ### `gaze self-check` -- Self-Analysis
 
