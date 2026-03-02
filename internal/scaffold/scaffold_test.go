@@ -161,7 +161,9 @@ func TestRun_ForceOverwrites(t *testing.T) {
 }
 
 // TestRun_VersionMarker verifies SC-004: every scaffolded file
-// contains the version marker as the first line.
+// contains the version marker after the YAML frontmatter, not
+// before it (prepending before frontmatter breaks OpenCode's
+// YAML parsing).
 func TestRun_VersionMarker(t *testing.T) {
 	dir := t.TempDir()
 
@@ -192,9 +194,29 @@ func TestRun_VersionMarker(t *testing.T) {
 			t.Fatalf("reading %s: %v", relPath, err)
 		}
 
-		firstLine := strings.SplitN(string(content), "\n", 2)[0]
-		if firstLine != expected {
-			t.Errorf("file %s: expected first line %q, got %q", relPath, expected, firstLine)
+		s := string(content)
+
+		// Marker must be present in the file.
+		if !strings.Contains(s, expected) {
+			t.Errorf("file %s: marker %q not found in content", relPath, expected)
+		}
+
+		// Frontmatter must start on the first line (not the marker).
+		firstLine := strings.SplitN(s, "\n", 2)[0]
+		if firstLine != "---" {
+			t.Errorf("file %s: expected first line %q (frontmatter), got %q", relPath, "---", firstLine)
+		}
+
+		// Marker must appear after the closing frontmatter delimiter.
+		closingIdx := strings.Index(s[4:], "\n---\n")
+		if closingIdx < 0 {
+			t.Fatalf("file %s: no closing frontmatter delimiter found", relPath)
+		}
+		markerIdx := strings.Index(s, expected)
+		frontmatterEnd := closingIdx + 4 + len("\n---\n")
+		if markerIdx < frontmatterEnd {
+			t.Errorf("file %s: marker appears before frontmatter end (marker at %d, frontmatter ends at %d)",
+				relPath, markerIdx, frontmatterEnd)
 		}
 	}
 }
@@ -231,9 +253,15 @@ func TestRun_VersionMarker_Dev(t *testing.T) {
 			t.Fatalf("reading %s: %v", relPath, err)
 		}
 
-		firstLine := strings.SplitN(string(content), "\n", 2)[0]
-		if firstLine != expected {
-			t.Errorf("file %s: expected first line %q, got %q", relPath, expected, firstLine)
+		s := string(content)
+		if !strings.Contains(s, expected) {
+			t.Errorf("file %s: marker %q not found in content", relPath, expected)
+		}
+
+		// Frontmatter must start on the first line.
+		firstLine := strings.SplitN(s, "\n", 2)[0]
+		if firstLine != "---" {
+			t.Errorf("file %s: expected first line %q (frontmatter), got %q", relPath, "---", firstLine)
 		}
 	}
 }

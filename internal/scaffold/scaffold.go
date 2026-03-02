@@ -50,13 +50,50 @@ type Result struct {
 	Overwritten []string
 }
 
-// versionMarker returns the version marker comment to prepend to
+// versionMarker returns the version marker comment to embed in
 // each scaffolded file.
 func versionMarker(version string) string {
 	if version == "" {
 		version = "dev"
 	}
 	return fmt.Sprintf("<!-- scaffolded by gaze %s -->\n", version)
+}
+
+// insertMarkerAfterFrontmatter inserts the version marker after
+// the YAML frontmatter closing delimiter (---). If no frontmatter
+// is found, the marker is appended to the end of the content.
+//
+// YAML frontmatter must start with "---\n" on the very first line
+// and end with "\n---\n". Prepending a marker before the opening
+// "---" breaks frontmatter parsing in tools like OpenCode, which
+// causes agent tool configurations and command delegation to be
+// silently ignored.
+func insertMarkerAfterFrontmatter(content []byte, marker string) []byte {
+	s := string(content)
+
+	// Check for YAML frontmatter: must start with "---\n".
+	if !strings.HasPrefix(s, "---\n") {
+		// No frontmatter — append marker at the end.
+		return append(content, []byte(marker)...)
+	}
+
+	// Find the closing "---" delimiter (skip the opening one).
+	closeIdx := strings.Index(s[4:], "\n---\n")
+	if closeIdx < 0 {
+		// Malformed frontmatter — append marker at the end.
+		return append(content, []byte(marker)...)
+	}
+
+	// Insert marker after the closing "---\n".
+	// closeIdx is relative to s[4:], so the absolute position of
+	// the closing "\n---\n" is closeIdx+4. The line ends at
+	// closeIdx+4+len("\n---\n") = closeIdx+8.
+	insertAt := closeIdx + 4 + len("\n---\n")
+	out := make([]byte, 0, len(content)+len(marker))
+	out = append(out, content[:insertAt]...)
+	out = append(out, []byte(marker)...)
+	out = append(out, content[insertAt:]...)
+	return out
 }
 
 // Run scaffolds OpenCode agent and command files into the target
@@ -138,8 +175,8 @@ func Run(opts Options) (*Result, error) {
 			return fmt.Errorf("creating directory %s: %w", dir, err)
 		}
 
-		// Prepend version marker and write.
-		out := append([]byte(marker), content...)
+		// Insert version marker after YAML frontmatter.
+		out := insertMarkerAfterFrontmatter(content, marker)
 		if err := os.WriteFile(outPath, out, 0o644); err != nil {
 			return fmt.Errorf("creating %s: %w", filepath.Join(".opencode", relPath), err)
 		}
