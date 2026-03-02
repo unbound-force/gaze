@@ -12,7 +12,20 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      has_signing_secrets: ${{ steps.check-secrets.outputs.has_secrets }}
     steps:
+      - name: Check signing secrets
+        id: check-secrets
+        run: |
+          if [ -n "$MACOS_SIGN_P12" ]; then
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
@@ -32,8 +45,97 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+  sign-macos:
+    runs-on: macos-latest
+    needs: release
+    if: ${{ needs.release.outputs.has_signing_secrets == 'true' }}
+    timeout-minutes: 30
+    steps:
+      - name: Import certificate into Keychain
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          echo -n "$MACOS_SIGN_P12" | base64 --decode -o $RUNNER_TEMP/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $RUNNER_TEMP/cert.p12 -P "$MACOS_SIGN_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+        env:
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
           MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+
+      - name: Prepare notary key
+        run: |
+          echo -n "$MACOS_NOTARY_KEY" | base64 --decode -o $RUNNER_TEMP/notary_key.p8
+        env:
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+
+      - name: Download darwin archives
+        run: |
+          gh release download "${GITHUB_REF_NAME}" --pattern "gaze_*_darwin_*.tar.gz" --dir ./artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign and notarize
+        run: |
+          mkdir -p ./signed
+          for archive in ./artifacts/gaze_*_darwin_*.tar.gz; do
+            echo "==> Processing $(basename "$archive")"
+            workdir=$(mktemp -d)
+
+            # Extract binary
+            tar -xzf "$archive" -C "$workdir"
+
+            # Sign with codesign
+            codesign --force --timestamp --options runtime \
+              --sign "Developer ID Application: John Flowers (PGFWLVZX55)" \
+              "$workdir/gaze"
+
+            # Verify signature
+            codesign --verify --verbose=2 "$workdir/gaze"
+
+            # Zip for notarytool (requires .zip, not .tar.gz)
+            ditto -c -k "$workdir/gaze" "$workdir/gaze.zip"
+
+            # Submit for notarization and wait
+            xcrun notarytool submit "$workdir/gaze.zip" \
+              --key "$RUNNER_TEMP/notary_key.p8" \
+              --key-id "$MACOS_NOTARY_KEY_ID" \
+              --issuer "$MACOS_NOTARY_ISSUER_ID" \
+              --wait --timeout 20m
+
+            # Re-archive signed binary with original archive name
+            tar -czf "./signed/$(basename "$archive")" -C "$workdir" gaze
+
+            rm -rf "$workdir"
+            echo "==> Done: $(basename "$archive")"
+          done
+        env:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+
+      - name: Replace release assets and update checksums
+        run: |
+          # Upload signed darwin archives (replaces unsigned)
+          gh release upload "${GITHUB_REF_NAME}" ./signed/*.tar.gz --clobber
+
+          # Download existing checksums
+          gh release download "${GITHUB_REF_NAME}" --pattern "checksums.txt" --dir ./
+
+          # Remove darwin lines from checksums (keep linux and other lines)
+          grep -v darwin checksums.txt > checksums_updated.txt || true
+
+          # Compute SHA256 for each signed darwin archive
+          for archive in ./signed/*.tar.gz; do
+            shasum -a 256 "$archive" | sed 's|./signed/||' >> checksums_updated.txt
+          done
+
+          # Replace checksums file
+          mv checksums_updated.txt checksums.txt
+          gh release upload "${GITHUB_REF_NAME}" checksums.txt --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

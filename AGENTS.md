@@ -89,6 +89,8 @@ specs/
   009-crapload-reduction/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   011-output-voice-style/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
   012-consolidate-classify-docs/ # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
+  014-macos-notarization/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
+  015-native-macos-signing/      # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -236,6 +238,7 @@ Formatters: gofmt, goimports.
 - Go 1.24+ (scaffold Go code); Markdown (agent/command prompts) + `embed.FS` (Go standard library), OpenCode agent runtime (012-consolidate-classify-docs)
 - Filesystem only (embedded assets via `embed.FS`, `.opencode/` directory) (012-consolidate-classify-docs)
 - Go 1.24+ (no Go code changes; YAML/workflow configuration only) + GoReleaser v2 (OSS), quill (embedded in GoReleaser as a Go library) (014-macos-notarization)
+- Go 1.24+ (no Go code changes; YAML/workflow configuration only) + GitHub Actions, `codesign` (macOS native), `xcrun notarytool` (macOS native), `security` (macOS Keychain), `gh` CLI (GitHub) (015-native-macos-signing)
 
 - Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
@@ -243,6 +246,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 015-native-macos-signing: Replaced broken quill-based cross-platform signing with native `codesign`/`notarytool` on `macos-latest` runner. Removed `notarize.macos` from `.goreleaser.yaml`. Added `sign-macos` job to release workflow (Keychain import, codesign with hardened runtime, notarytool submit --wait, asset replacement with --clobber, checksum update). Conditional on `MACOS_SIGN_P12` secret via job output gate.
 - 014-macos-notarization: Added macOS code signing and notarization to GoReleaser release pipeline via built-in `notarize.macos` (quill), conditional on `MACOS_SIGN_P12` secret presence, 20m notarization timeout, 45m job timeout, no runner change (stays ubuntu-latest)
 - 012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files
 - 011-output-voice-style: Rewrote gaze-reporter agent prompt for fun, emoji-rich output — emoji section markers (🔍📊🧪🏷️🏥), colored circle severity indicators (🟢🟡🔴⚪), letter grades with emoji, severity-prefixed recommendations, tone anti-pattern bans, canonical example output
