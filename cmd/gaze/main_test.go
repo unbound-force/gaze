@@ -1241,6 +1241,8 @@ func TestRunInit_CreatesFiles(t *testing.T) {
 	expected := []string{
 		".opencode/agents/gaze-reporter.md",
 		".opencode/command/gaze.md",
+		".opencode/references/doc-scoring-model.md",
+		".opencode/references/example-report.md",
 	}
 	for _, rel := range expected {
 		path := filepath.Join(dir, rel)

@@ -120,11 +120,9 @@ Produce a summary containing:
 3. One concise sentence after the table stating the key pattern.
 4. **GazeCRAP Quadrant Distribution** (if `gaze_crap` data is
    present) — table with columns Quadrant, Count, Meaning.
-   Use emoji-prefixed labels:
-   - 🟢 Q1 — Safe
-   - 🟡 Q2 — Complex But Tested
-   - 🔴 Q4 — Dangerous
-   - ⚪ Q3 — Needs Tests
+   Use the quadrant labels shown in the Quick Reference Example
+   above (🟢 Q1 — Safe, 🟡 Q2 — Complex But Tested, 🔴 Q4 —
+   Dangerous, ⚪ Q3 — Needs Tests).
 5. Include all quadrant rows (even zero-count) for completeness.
 6. If GazeCRAP data is NOT present, omit the quadrant section
    entirely — do not render any header or placeholder.
@@ -200,49 +198,12 @@ GazeCRAPload interpretation line)
 
 ### Document-Enhanced Classification
 
-If `gaze docscan` returns documentation files, enhance the mechanical
-classification by applying document-signal scoring. Start from the
-mechanical confidence score for each side effect, add document and AI
-inference signal weights, detect contradictions, clamp to 0–100, and
-re-apply thresholds.
-
-**Document Signal Sources**
-
-Extract signals from the documentation content and assign weights:
-
-| Source | Weight Range | Evidence |
-|--------|-------------|---------|
-| `readme` | ±5 to ±15 | Module README explicitly names the function or its behavior (positive) or describes it as internal (negative) |
-| `architecture_doc` | ±5 to ±20 | Architecture/design doc declares this function's contract (positive) or marks it as implementation detail (negative) |
-| `specify_file` | ±5 to ±25 | `specs/` files document this as required behavior (positive) or mark it as optional (negative) |
-| `api_doc` | ±5 to ±20 | API reference doc lists this function's return values or mutations (positive) or marks as non-public (negative) |
-| `other_md` | ±2 to ±10 | Other markdown files reference this function (positive) or describe it as debug/internal (negative) |
-
-**AI Inference Signals**
-
-In addition to extracting explicit mentions, infer signals from patterns:
-
-| Source | Weight Range | Evidence |
-|--------|-------------|---------|
-| `ai_pattern` | +5 to +15 | Recognizable design pattern (Repository, Factory, etc.) whose contract implies this side effect |
-| `ai_layer` | +5 to +15 | Architectural layer analysis (e.g., service layer functions that mutate state are usually contractual) |
-| `ai_corroboration` | +3 to +10 | Multiple independent document signals agree |
-
-**Contradiction Penalty**
-
-If document signals and mechanical signals point in opposite directions
-(e.g., mechanical says contractual, docs say incidental), apply a
-contradiction penalty of up to -20 to the confidence score.
-
-**Classification Thresholds**
-
-After recalculation, re-derive labels from updated confidence scores:
-
-| Confidence | Label |
-|-----------|-------|
-| ≥ 80 | contractual |
-| 50–79 | ambiguous |
-| < 50 | incidental |
+If `gaze docscan` returns documentation files, read the
+document-enhanced classification scoring model from
+`.opencode/references/doc-scoring-model.md` using the Read tool.
+Apply the signal weights, thresholds, and contradiction penalties
+defined there. If the file cannot be read, skip document-enhanced
+scoring and use mechanical-only classification.
 
 If docscan returns no documents or fails, skip document-enhanced
 scoring entirely and use the mechanical-only results. Include a
@@ -379,78 +340,14 @@ data sections).
 Always include count and context:
 "24 (functions ≥ threshold 15)"
 
-## Example Output
+## Reference Files
 
-Below is a concrete example of the expected report format. Use
-this as the definitive formatting reference. Adapt the data to the
-actual project — do not copy these specific numbers or function
-names. The recommendations and function names below are fictional.
-
-```markdown
-🔍 Gaze Full Quality Report
-Project: github.com/example/project · Branch: main
-Gaze Version: v1.0.0 · Go: 1.24.6 · Date: 2026-02-28
----
-📊 CRAP Summary
-| Metric | Value |
-|--------|-------|
-| Total functions analyzed | 216 |
-| Average complexity | 6.2 |
-| Average line coverage | 79.0% |
-| Average CRAP score | 7.7 |
-| CRAPload | 24 (functions ≥ threshold 15) |
-
-Top 5 Worst CRAP Scores
-| Function | CRAP | Complexity | Coverage | File |
-|----------|------|-----------|----------|------|
-| (*Handler).ServeHTTP | 42.0 | 6 | 0.0% | internal/api/handler.go:163 |
-| processQueue | 38.5 | 8 | 12.0% | internal/worker/queue.go:89 |
-| parseConfig | 31.2 | 5 | 0.0% | cmd/app/config.go:42 |
-| (*Store).Migrate | 28.0 | 7 | 15.0% | internal/db/store.go:201 |
-| validateInput | 22.4 | 4 | 0.0% | internal/api/validate.go:55 |
-
-Three of the five have 0% test coverage; the other two have minimal coverage with high complexity.
-
-GazeCRAP Quadrant Distribution
-| Quadrant | Count | Meaning |
-|----------|-------|---------|
-| 🟢 Q1 — Safe | 29 | Low complexity, high contract coverage |
-| 🟡 Q2 — Complex But Tested | 1 | High complexity, contracts verified |
-| 🔴 Q4 — Dangerous | 4 | Complex AND contracts not adequately verified |
-| ⚪ Q3 — Needs Tests | 0 | Simple but underspecified |
-
-GazeCRAPload: 4 — All 4 Q4 functions have adequate line coverage but high cyclomatic complexity (15–18), meaning they need decomposition, not more tests.
----
-🧪 Quality Summary
-> ⚠️ Module-level quality analysis returned 0 tests — run per-package analysis for detailed results.
----
-🏷️ Classification Summary
-| Classification | Count | % |
-|---------------|-------|---|
-| Contractual | 73 | 31.3% |
-| Ambiguous | 155 | 66.5% |
-| Incidental | 8 | 3.4% |
-
-The 66.5% ambiguous rate is typical for projects without extensive documentation; document-enhanced scoring in full mode can reduce this.
----
-🏥 Overall Health Assessment
-
-Summary Scorecard
-| Dimension | Grade | Details |
-|-----------|-------|---------|
-| CRAPload | 🟡 C+ | 24/216 functions (11%) above threshold |
-| GazeCRAPload | 🟢 A | Only 4 functions above threshold |
-| Avg Line Coverage | 🟢 B+ | 79.0% — solid foundation |
-| Contract Coverage | 🟡 C | 31.3% contractual, 66.5% ambiguous |
-| Complexity | 🟡 B- | Average 6.2, but 24 functions exceed threshold |
-
-Top 5 Prioritized Recommendations
-1. 🔴 Add tests for zero-coverage functions — ServeHTTP, parseConfig, and validateInput have 0% coverage with moderate-to-high complexity.
-2. 🔴 Increase coverage for processQueue — 12% coverage on complexity-8 function handling critical work queue logic.
-3. 🟡 Decompose high-complexity functions — 4 Q4 functions have complexity 15–18 and need to be broken into smaller units.
-4. 🟡 Resolve ambiguous classifications — 66.5% ambiguous rate can be reduced with project documentation providing stronger signal evidence.
-5. 🟢 Run per-package quality analysis — module-level returned 0 tests; per-package analysis provides granular contract coverage data.
-```
+Before producing your first report, read the formatting reference
+from `.opencode/references/example-report.md` using the Read tool.
+This file contains the definitive example of the expected output
+format. If the file cannot be read, use the Quick Reference Example
+above as your formatting guide and include:
+`> ⚠️ Could not load full formatting reference.`
 
 ## Graceful Degradation
 

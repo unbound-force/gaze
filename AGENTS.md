@@ -91,6 +91,7 @@ specs/
   012-consolidate-classify-docs/ # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   014-macos-notarization/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   015-native-macos-signing/      # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
+  016-agent-context-reduction/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -239,6 +240,7 @@ Formatters: gofmt, goimports.
 - Filesystem only (embedded assets via `embed.FS`, `.opencode/` directory) (012-consolidate-classify-docs)
 - Go 1.24+ (no Go code changes; YAML/workflow configuration only) + GoReleaser v2 (OSS), quill (embedded in GoReleaser as a Go library) (014-macos-notarization)
 - Go 1.24+ (no Go code changes; YAML/workflow configuration only) + GitHub Actions, `codesign` (macOS native), `xcrun notarytool` (macOS native), `security` (macOS Keychain), `gh` CLI (GitHub) (015-native-macos-signing)
+- Go 1.24+ (scaffold Go code changes); Markdown (agent prompt and reference files) + `embed.FS` (Go standard library), OpenCode agent runtime (016-agent-context-reduction)
 
 - Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)
@@ -246,6 +248,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 016-agent-context-reduction: Reduced gaze-reporter agent prompt from 17,775 to 13,050 bytes (26.6% reduction) by externalizing canonical example output and document-enhanced classification scoring model into `.opencode/references/` files loaded on demand via Read tool. Added scaffold overwrite-on-diff behavior for tool-owned reference files (`references/` directory) while preserving skip-if-present for user-owned files (`agents/`, `command/`). Scaffold now manages 4 files (up from 2). Added `Updated` field to scaffold `Result` struct and `isToolOwned` helper. Quadrant labels deduplicated to 2 locations (Quick Reference Example + Emoji Vocabulary table).
 - 015-native-macos-signing: Replaced broken quill-based cross-platform signing with native `codesign`/`notarytool` on `macos-latest` runner. Removed `notarize.macos` from `.goreleaser.yaml`. Added `sign-macos` job to release workflow (Keychain import, codesign with hardened runtime, notarytool submit --wait, asset replacement with --clobber, checksum update). Conditional on `MACOS_SIGN_P12` secret via job output gate.
 - 014-macos-notarization: Added macOS code signing and notarization to GoReleaser release pipeline via built-in `notarize.macos` (quill), conditional on `MACOS_SIGN_P12` secret presence, 20m notarization timeout, 45m job timeout, no runner change (stays ubuntu-latest)
 - 012-consolidate-classify-docs: Removed /classify-docs command and doc-classifier agent, inlined document-signal scoring model into gaze-reporter, added emoji formatting override block and sandwich prompt structure, reduced scaffold from 4 to 2 files

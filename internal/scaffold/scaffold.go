@@ -3,6 +3,7 @@
 package scaffold
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"fmt"
@@ -48,6 +49,21 @@ type Result struct {
 	// Overwritten lists files that existed and were replaced
 	// (Force was true).
 	Overwritten []string
+
+	// Updated lists tool-owned files that existed with different
+	// content and were overwritten via overwrite-on-diff (Force
+	// was false, but content differed from the embedded version).
+	Updated []string
+}
+
+// isToolOwned reports whether the given relative path (under
+// .opencode/) belongs to a tool-owned directory. Tool-owned files
+// use overwrite-on-diff behavior: they are replaced when their
+// content differs from the embedded version, even without --force.
+// User-owned files (agents/, command/) retain skip-if-present
+// behavior.
+func isToolOwned(relPath string) bool {
+	return strings.HasPrefix(relPath, "references/")
 }
 
 // versionMarker returns the version marker comment to embed in
@@ -101,19 +117,25 @@ func insertMarkerAfterFrontmatter(content []byte, marker string) []byte {
 	return out
 }
 
-// Run scaffolds OpenCode agent and command files into the target
-// directory. It creates .opencode/agents/ and .opencode/command/
-// subdirectories and writes the embedded quality-reporting files.
+// Run scaffolds OpenCode agent, command, and reference files into
+// the target directory. It creates .opencode/agents/,
+// .opencode/command/, and .opencode/references/ subdirectories
+// and writes the embedded quality-reporting files.
 //
 // Each file is prepended with a version marker comment:
 //
 //	<!-- scaffolded by gaze vX.Y.Z -->
 //
-// If a file already exists and opts.Force is false, the file is
-// skipped. If opts.Force is true, the file is overwritten.
+// Files are classified as user-owned (agents/, command/) or
+// tool-owned (references/). If a user-owned file already exists
+// and opts.Force is false, the file is skipped. Tool-owned files
+// use overwrite-on-diff: they are replaced when their content
+// differs from the embedded version, even without --force. If
+// opts.Force is true, all files are overwritten regardless of
+// ownership.
 //
-// Run returns a Result summarizing what was created, skipped, or
-// overwritten.
+// Run returns a Result summarizing what was created, skipped,
+// overwritten, or updated.
 func Run(opts Options) (*Result, error) {
 	if opts.TargetDir == "" {
 		cwd, err := os.Getwd()
@@ -163,15 +185,43 @@ func Run(opts Options) (*Result, error) {
 		}
 		exists := statErr == nil
 
-		if exists && !opts.Force {
-			result.Skipped = append(result.Skipped, filepath.Join(".opencode", relPath))
-			return nil
-		}
-
 		// Read the embedded file content.
 		content, err := assets.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("reading embedded asset %s: %w", path, err)
+		}
+
+		// Insert version marker after YAML frontmatter.
+		out := insertMarkerAfterFrontmatter(content, marker)
+
+		if exists && !opts.Force {
+			// Tool-owned files (references/) use overwrite-on-diff:
+			// compare content and overwrite if different, skip if
+			// identical. User-owned files (agents/, command/) retain
+			// the existing skip-if-present behavior.
+			if isToolOwned(relPath) {
+				existing, readErr := os.ReadFile(outPath)
+				if readErr != nil {
+					return fmt.Errorf("reading existing %s: %w", filepath.Join(".opencode", relPath), readErr)
+				}
+				if bytes.Equal(existing, out) {
+					result.Skipped = append(result.Skipped, filepath.Join(".opencode", relPath))
+					return nil
+				}
+				// Content differs — overwrite the tool-owned file.
+				// Ensure parent directory exists (guards against edge
+				// cases like broken symlinks or deleted directories).
+				if mkErr := os.MkdirAll(filepath.Dir(outPath), 0o755); mkErr != nil {
+					return fmt.Errorf("creating directory for %s: %w", filepath.Join(".opencode", relPath), mkErr)
+				}
+				if writeErr := os.WriteFile(outPath, out, 0o644); writeErr != nil {
+					return fmt.Errorf("updating %s: %w", filepath.Join(".opencode", relPath), writeErr)
+				}
+				result.Updated = append(result.Updated, filepath.Join(".opencode", relPath))
+				return nil
+			}
+			result.Skipped = append(result.Skipped, filepath.Join(".opencode", relPath))
+			return nil
 		}
 
 		// Create parent directories.
@@ -180,8 +230,6 @@ func Run(opts Options) (*Result, error) {
 			return fmt.Errorf("creating directory %s: %w", dir, err)
 		}
 
-		// Insert version marker after YAML frontmatter.
-		out := insertMarkerAfterFrontmatter(content, marker)
 		if err := os.WriteFile(outPath, out, 0o644); err != nil {
 			return fmt.Errorf("creating %s: %w", filepath.Join(".opencode", relPath), err)
 		}
@@ -206,7 +254,7 @@ func Run(opts Options) (*Result, error) {
 // printSummary writes a human-readable summary of the scaffold
 // operation to w.
 func printSummary(w io.Writer, r *Result) {
-	if len(r.Created) > 0 || len(r.Overwritten) > 0 {
+	if len(r.Created) > 0 || len(r.Overwritten) > 0 || len(r.Updated) > 0 {
 		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration initialized:")
 	} else {
 		_, _ = fmt.Fprintln(w, "Gaze OpenCode integration already up to date:")
@@ -221,16 +269,29 @@ func printSummary(w io.Writer, r *Result) {
 	for _, f := range r.Overwritten {
 		_, _ = fmt.Fprintf(w, "  overwritten: %s\n", f)
 	}
+	for _, f := range r.Updated {
+		_, _ = fmt.Fprintf(w, "  updated: %s (content changed)\n", f)
+	}
 
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Run /gaze in OpenCode to generate quality reports.")
 
-	if n := len(r.Skipped); n > 0 {
+	// Count only user-owned skipped files for the --force hint.
+	// Tool-owned reference files that are skipped (identical content)
+	// do not need --force — they auto-update when content changes.
+	var userSkipped int
+	for _, f := range r.Skipped {
+		rel := strings.TrimPrefix(f, filepath.Join(".opencode")+string(filepath.Separator))
+		if !isToolOwned(rel) {
+			userSkipped++
+		}
+	}
+	if userSkipped > 0 {
 		word := "file"
-		if n > 1 {
+		if userSkipped > 1 {
 			word = "files"
 		}
-		_, _ = fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", n, word)
+		_, _ = fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", userSkipped, word)
 	}
 }
 
