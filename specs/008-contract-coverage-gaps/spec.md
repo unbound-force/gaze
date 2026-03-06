@@ -2,7 +2,7 @@
 
 **Feature Branch**: `008-contract-coverage-gaps`
 **Created**: 2026-02-27
-**Status**: Draft
+**Status**: Complete
 **Input**: User description: "Spec 008: Contract Coverage Gap Remediation"
 
 ## User Scenarios & Testing *(mandatory)*

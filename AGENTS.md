@@ -241,6 +241,7 @@ Formatters: gofmt, goimports.
 - Go 1.24+ (no Go code changes; YAML/workflow configuration only) + GoReleaser v2 (OSS), quill (embedded in GoReleaser as a Go library) (014-macos-notarization)
 - Go 1.24+ (no Go code changes; YAML/workflow configuration only) + GitHub Actions, `codesign` (macOS native), `xcrun notarytool` (macOS native), `security` (macOS Keychain), `gh` CLI (GitHub) (015-native-macos-signing)
 - Go 1.24+ (scaffold Go code changes); Markdown (agent prompt and reference files) + `embed.FS` (Go standard library), OpenCode agent runtime (016-agent-context-reduction)
+- Go 1.24+ (scaffold Go code changes); Markdown (agent/command prompts) + `embed.FS` (Go standard library), OpenCode agent runtime (017-testing-persona)
 
 - Go 1.24+ + `golang.org/x/tools` (go/packages, go/ssa), Cobra (CLI), Bubble Tea/Lipgloss (TUI)
 - Filesystem only (embedded assets via `embed.FS`)

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `014-macos-notarization`  
 **Created**: 2026-03-01  
-**Status**: Draft  
+**Status**: Superseded (replaced by Spec 015 — native macOS signing)  
 **Input**: User description: "macOS code signing and notarization for Homebrew-distributed binary via GoReleaser v2 built-in notarization using quill"
 
 ## User Scenarios & Testing *(mandatory)*
