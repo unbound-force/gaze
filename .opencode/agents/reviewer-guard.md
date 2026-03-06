@@ -134,7 +134,7 @@ Do NOT use `git diff` or review code files. Your scope is exclusively the specif
 
 #### 6. Constitution Alignment
 
-- Do all specs comply with the constitution's Core Principles (Accuracy, Minimal Assumptions, Actionable Output)?
+- Do all specs comply with the constitution's Core Principles (Accuracy, Minimal Assumptions, Actionable Output, Testability)?
 - Do plans respect the constitution's Technical Constraints (Go 1.24+, standard library preference, no external test assertion libraries)?
 - Do specs follow the constitution's Documentation Requirements?
 - Are there any specs that implicitly weaken a constitutional principle without acknowledging the trade-off?

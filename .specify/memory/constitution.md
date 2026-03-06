@@ -1,26 +1,26 @@
 <!--
   SYNC IMPACT REPORT
   ==================
-  Version change: (none) → 1.0.0 (initial ratification)
+  Version change: 1.0.0 → 1.1.0 (MINOR: new principle added)
+  Amendment date: 2026-03-05
+  Feature: 017-testing-persona
 
-  Modified principles:
-    - [PRINCIPLE_1_NAME] → I. Accuracy
-    - [PRINCIPLE_2_NAME] → II. Minimal Assumptions
-    - [PRINCIPLE_3_NAME] → III. Actionable Output
-    - [PRINCIPLE_4_NAME] → (removed, not needed)
-    - [PRINCIPLE_5_NAME] → (removed, not needed)
+  Added principles:
+    - IV. Testability (dual scope: Gaze internals + user codebase analysis)
 
-  Added sections:
-    - Development Workflow (Section 3)
-    - Governance (filled from template)
+  Unchanged principles:
+    - I. Accuracy
+    - II. Minimal Assumptions
+    - III. Actionable Output
 
-  Removed sections:
-    - [SECTION_2_NAME] (user elected to skip)
-    - Principles 4 and 5 (user chose 3 principles)
+  Unchanged sections:
+    - Development Workflow
+    - Governance
 
   Templates requiring updates:
     ✅ .specify/templates/plan-template.md — no changes needed;
-       Constitution Check section is generic and will align at plan time.
+       Constitution Check section is generic and evaluates all active
+       principles dynamically.
     ✅ .specify/templates/spec-template.md — no changes needed;
        requirements format already uses MUST/SHOULD language.
     ✅ .specify/templates/tasks-template.md — no changes needed;
@@ -30,9 +30,8 @@
     ✅ No command files in .specify/templates/commands/ (directory absent).
     ✅ README.md — single-line placeholder; no principle refs to update.
 
-  Deferred TODOs:
-    - RATIFICATION_DATE set to today (first adoption). Update if a
-      different ceremonial date is preferred.
+  Previous version history:
+    - 1.0.0 (2026-02-20): Initial ratification with 3 principles
 -->
 
 # Gaze Constitution
@@ -93,6 +92,27 @@ concrete improvement in their test suite.
 Gaze exists to help developers write better tests, and that requires
 telling them exactly what to fix.
 
+### IV. Testability
+
+Every function Gaze analyzes, and every function within Gaze itself,
+MUST be testable in isolation without requiring external services or
+shared mutable state.
+
+- Test contracts MUST verify observable side effects (return values,
+  state mutations, I/O operations), not implementation details.
+- Coverage strategy (unit vs. integration vs. e2e, with targets) MUST
+  be specified in the implementation plan for all new code.
+- Coverage ratchets MUST be enforced by automated tests; coverage
+  regression MUST be treated as a test failure.
+- Missing coverage strategy in a spec or plan is a CRITICAL-severity
+  finding and MUST be resolved before implementation begins.
+
+**Rationale**: Gaze is a test-quality tool. If Gaze's own tests are
+poorly structured, it undermines the credibility of its assessments.
+Testability is a first-class governance concern because untestable
+code cannot be reliably verified, and unverified code cannot be
+trusted — by users or by Gaze itself.
+
 ## Development Workflow
 
 - **Branching**: All work MUST occur on feature branches. Direct
@@ -127,4 +147,4 @@ above.
   the Constitution Check gate MUST verify that the proposed work
   aligns with all active principles.
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-20 | **Last Amended**: 2026-02-20
+**Version**: 1.1.0 | **Ratified**: 2026-02-20 | **Last Amended**: 2026-03-05

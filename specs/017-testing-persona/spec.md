@@ -2,7 +2,7 @@
 
 **Feature Branch**: `017-testing-persona`  
 **Created**: 2026-03-05  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Integrate a testing persona (The Tester) into the Speckit and review council workflows, deployed via gaze init scaffold. Includes constitution amendment (Principle IV: Testability), reviewer-testing agent, /speckit.testreview command, review-council scaffolding, and scaffold system updates."
 
 ## User Scenarios & Testing *(mandatory)*

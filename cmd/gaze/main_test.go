@@ -1233,14 +1233,17 @@ func TestRunInit_CreatesFiles(t *testing.T) {
 	if !strings.Contains(output, "created:") {
 		t.Errorf("expected 'created:' in output, got:\n%s", output)
 	}
-	if !strings.Contains(output, "Run /gaze in OpenCode") {
+	if !strings.Contains(output, "Run /gaze") {
 		t.Errorf("expected hint in output, got:\n%s", output)
 	}
 
 	// Verify files exist.
 	expected := []string{
 		".opencode/agents/gaze-reporter.md",
+		".opencode/agents/reviewer-testing.md",
 		".opencode/command/gaze.md",
+		".opencode/command/review-council.md",
+		".opencode/command/speckit.testreview.md",
 		".opencode/references/doc-scoring-model.md",
 		".opencode/references/example-report.md",
 	}

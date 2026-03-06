@@ -30,8 +30,9 @@ Gaze is a static analysis tool for Go that detects observable side effects in fu
 - **The Architect**: Must verify that "Intent Driving Implementation" is maintained.
 - **The Adversary**: Acts as the primary "Automated Governance" gate for security.
 - **The Guard**: Detects "Intent Drift" to ensure the business value remains intact.
+- **The Tester**: Must verify that test quality, coverage strategy, and testability are maintained.
 
-**Rule**: A Pull Request is only "Ready for Human" once the `/review-council` command returns an **APPROVE** status.
+**Rule**: A Pull Request is only "Ready for Human" once the `/review-council` command returns an **APPROVE** status from all four reviewers.
 
 ## Speckit Workflow (Mandatory)
 
@@ -56,6 +57,7 @@ constitution → specify → clarify → plan → tasks → analyze → checklis
 | `/speckit.checklist` | Generate requirement quality validation checklists |
 | `/speckit.implement` | Execute the implementation plan task by task |
 | `/speckit.taskstoissues` | Convert tasks.md into GitHub Issues |
+| `/speckit.testreview` | Analyze spec artifacts for testability gaps (read-only) |
 
 ### Ordering Constraints
 
@@ -92,6 +94,7 @@ specs/
   014-macos-notarization/        # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md
   015-native-macos-signing/      # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
   016-agent-context-reduction/   # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
+  017-testing-persona/           # spec.md, plan.md, tasks.md, research.md, data-model.md, quickstart.md, checklists/
 ```
 
 Branch names follow the same numbering pattern (e.g., `001-side-effect-detection`).
@@ -117,7 +120,7 @@ All spec artifacts (`spec.md`, `plan.md`, `tasks.md`, and any other files under 
 
 ### Constitution Check
 
-A mandatory gate at the planning phase. The constitution's three core principles — Accuracy, Minimal Assumptions, and Actionable Output — must each receive a PASS before proceeding. Constitution violations are automatically CRITICAL severity and non-negotiable.
+A mandatory gate at the planning phase. The constitution's four core principles — Accuracy, Minimal Assumptions, Actionable Output, and Testability — must each receive a PASS before proceeding. Constitution violations are automatically CRITICAL severity and non-negotiable.
 
 ## Build & Test Commands
 
@@ -209,6 +212,7 @@ These principles (from the project constitution) guide all development:
 1. **Accuracy**: Gaze MUST correctly identify all observable side effects. False positives erode trust and MUST be treated as bugs. False negatives MUST be tracked, measured, and driven toward zero. Accuracy claims MUST be backed by automated regression tests.
 2. **Minimal Assumptions**: Gaze MUST operate with the fewest possible assumptions about the host project's language, test framework, or coding style. No source annotation or restructuring required. When assumptions are unavoidable, they MUST be explicit and enforced.
 3. **Actionable Output**: Every piece of output MUST guide the user toward a concrete improvement. Reports MUST identify specific test, target, and unasserted change. Output formats MUST support human-readable and machine-readable (JSON). Metrics MUST be comparable across runs.
+4. **Testability**: Every function Gaze analyzes, and every function within Gaze itself, MUST be testable in isolation. Test contracts MUST verify observable side effects, not implementation details. Coverage strategy MUST be specified in plans for new code. Coverage ratchets MUST be enforced; regression MUST be treated as test failure.
 
 ## Git & Workflow
 
@@ -249,6 +253,7 @@ Formatters: gofmt, goimports.
 
 ## Recent Changes
 
+- 017-testing-persona: Added The Tester (reviewer-testing agent) as 4th review council member for test quality and testability auditing. Added `/speckit.testreview` command for read-only spec testability analysis. Amended constitution with Principle IV: Testability (v1.0.0 → v1.1.0). Scaffold expanded from 4 to 7 files with mixed ownership model — `isToolOwned` now uses explicit file list (prefix for `references/`, exact match for `command/speckit.testreview.md` and `command/review-council.md`). Review council scaffolded as tool-owned for deployment via `gaze init`.
 - 016-agent-context-reduction: Reduced gaze-reporter agent prompt from 17,775 to 13,050 bytes (26.6% reduction) by externalizing canonical example output and document-enhanced classification scoring model into `.opencode/references/` files loaded on demand via Read tool. Added scaffold overwrite-on-diff behavior for tool-owned reference files (`references/` directory) while preserving skip-if-present for user-owned files (`agents/`, `command/`). Scaffold now manages 4 files (up from 2). Added `Updated` field to scaffold `Result` struct and `isToolOwned` helper. Quadrant labels deduplicated to 2 locations (Quick Reference Example + Emoji Vocabulary table).
 - 015-native-macos-signing: Replaced broken quill-based cross-platform signing with native `codesign`/`notarytool` on `macos-latest` runner. Removed `notarize.macos` from `.goreleaser.yaml`. Added `sign-macos` job to release workflow (Keychain import, codesign with hardened runtime, notarytool submit --wait, asset replacement with --clobber, checksum update). Conditional on `MACOS_SIGN_P12` secret via job output gate.
 - 014-macos-notarization: Added macOS code signing and notarization to GoReleaser release pipeline via built-in `notarize.macos` (quill), conditional on `MACOS_SIGN_P12` secret presence, 20m notarization timeout, 45m job timeout, no runner change (stays ubuntu-latest)

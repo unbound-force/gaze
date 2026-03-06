@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -57,13 +58,27 @@ type Result struct {
 }
 
 // isToolOwned reports whether the given relative path (under
-// .opencode/) belongs to a tool-owned directory. Tool-owned files
-// use overwrite-on-diff behavior: they are replaced when their
+// .opencode/) is a tool-owned file. Tool-owned files use
+// overwrite-on-diff behavior: they are replaced when their
 // content differs from the embedded version, even without --force.
-// User-owned files (agents/, command/) retain skip-if-present
-// behavior.
+// User-owned files (agents/, most of command/) retain
+// skip-if-present behavior.
+//
+// Ownership is determined by an explicit list: all files under
+// references/ are tool-owned by directory convention, and specific
+// command files are tool-owned by exact match. This approach is
+// necessary because the command/ directory contains both
+// user-owned files (gaze.md) and tool-owned files
+// (speckit.testreview.md, review-council.md).
 func isToolOwned(relPath string) bool {
-	return strings.HasPrefix(relPath, "references/")
+	if strings.HasPrefix(relPath, "references/") {
+		return true
+	}
+	switch relPath {
+	case "command/speckit.testreview.md", "command/review-council.md":
+		return true
+	}
+	return false
 }
 
 // versionMarker returns the version marker comment to embed in
@@ -126,8 +141,8 @@ func insertMarkerAfterFrontmatter(content []byte, marker string) []byte {
 //
 //	<!-- scaffolded by gaze vX.Y.Z -->
 //
-// Files are classified as user-owned (agents/, command/) or
-// tool-owned (references/). If a user-owned file already exists
+// Files are classified as user-owned or tool-owned via
+// isToolOwned(). If a user-owned file already exists
 // and opts.Force is false, the file is skipped. Tool-owned files
 // use overwrite-on-diff: they are replaced when their content
 // differs from the embedded version, even without --force. If
@@ -274,7 +289,7 @@ func printSummary(w io.Writer, r *Result) {
 	}
 
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Run /gaze in OpenCode to generate quality reports.")
+	_, _ = fmt.Fprintln(w, "Run /gaze for quality reports, /speckit.testreview for testability analysis, /review-council for governance reviews.")
 
 	// Count only user-owned skipped files for the --force hint.
 	// Tool-owned reference files that are skipped (identical content)
@@ -316,5 +331,5 @@ func assetPaths() ([]string, error) {
 // assetContent returns the raw content of an embedded asset by
 // its relative path (e.g., "agents/gaze-reporter.md").
 func assetContent(relPath string) ([]byte, error) {
-	return assets.ReadFile("assets/" + relPath)
+	return assets.ReadFile(path.Join("assets", relPath))
 }

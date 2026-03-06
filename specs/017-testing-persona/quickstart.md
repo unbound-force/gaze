@@ -107,9 +107,8 @@ gaze init
 
 # Second init (same version): all 7 skipped
 gaze init
-# Expected: 7 "skipped:" lines, "2 files skipped (use --force to overwrite)" hint
-# (only 2 user-owned agent files + 1 user-owned command = 3 user-owned, but
-# tool-owned with identical content are also skipped — hint counts only user-owned)
+# Expected: 7 "skipped:" lines, "3 files skipped (use --force to overwrite)" hint
+# (3 user-owned files: 2 agent files + 1 command — hint counts only user-owned)
 
 # Modify a tool-owned command
 echo "modified" >> .opencode/command/speckit.testreview.md
