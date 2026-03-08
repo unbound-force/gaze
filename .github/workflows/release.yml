@@ -139,3 +139,52 @@ jobs:
           gh release upload "${GITHUB_REF_NAME}" --repo "$GITHUB_REPOSITORY" checksums.txt --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew cask checksums
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Compute signed checksums
+          ARM64_SHA=$(shasum -a 256 "./signed/gaze_${VERSION}_darwin_arm64.tar.gz" | awk '{print $1}')
+          AMD64_SHA=$(shasum -a 256 "./signed/gaze_${VERSION}_darwin_amd64.tar.gz" | awk '{print $1}')
+
+          echo "darwin_arm64 SHA256: $ARM64_SHA"
+          echo "darwin_amd64 SHA256: $AMD64_SHA"
+
+          # Clone the Homebrew tap
+          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/unbound-force/homebrew-tap.git" tap
+          cd tap
+
+          CASK_FILE="Casks/gaze.rb"
+          if [ ! -f "$CASK_FILE" ]; then
+            echo "::error::Cask file not found: $CASK_FILE"
+            exit 1
+          fi
+
+          # Update darwin checksums in the cask file
+          # The cask has on_intel (amd64) then on_arm (arm64) blocks under on_macos
+          # Use awk to replace the correct sha256 values based on URL context
+          awk -v amd64="$AMD64_SHA" -v arm64="$ARM64_SHA" '
+            /darwin_amd64/ { found_amd64=1 }
+            /darwin_arm64/ { found_arm64=1 }
+            /sha256/ && found_amd64 {
+              sub(/sha256 "[^"]*"/, "sha256 \"" amd64 "\"")
+              found_amd64=0
+            }
+            /sha256/ && found_arm64 {
+              sub(/sha256 "[^"]*"/, "sha256 \"" arm64 "\"")
+              found_arm64=0
+            }
+            { print }
+          ' "$CASK_FILE" > "${CASK_FILE}.tmp"
+          mv "${CASK_FILE}.tmp" "$CASK_FILE"
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$CASK_FILE"
+          git diff --cached --quiet && { echo "No checksum changes needed"; exit 0; }
+          git commit -m "Update macOS checksums for gaze v${VERSION} (post-signing)"
+          git push
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
