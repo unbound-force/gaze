@@ -134,6 +134,15 @@ func Analyze(patterns []string, moduleDir string, opts Options) (*Report, error)
 	// Step 5: Join complexity with coverage and compute CRAP.
 	scores := computeScores(complexityStats, coverMap, opts)
 
+	// Step 5b: Relativize file paths for portable JSON output.
+	// computeScores uses absolute paths for coverage lookups, but the
+	// final report should contain paths relative to the module root.
+	for i := range scores {
+		if rel, err := filepath.Rel(moduleDir, scores[i].File); err == nil {
+			scores[i].File = rel
+		}
+	}
+
 	// Step 6: Build summary.
 	summary := buildSummary(scores, opts)
 

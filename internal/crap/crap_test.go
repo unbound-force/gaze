@@ -1494,3 +1494,39 @@ func TestWriteText_RemediationBreakdown(t *testing.T) {
 		t.Errorf("expected '[decompose]' label on worst offender, got:\n%s", out)
 	}
 }
+
+func TestAnalyze_RelativizesFilePaths(t *testing.T) {
+	modRoot := moduleRoot(t)
+
+	// Build a minimal coverage profile so Analyze can run.
+	profileContent := "mode: set\n" +
+		"github.com/unbound-force/gaze/internal/crap/crap.go:152.55,156.2 2 1\n"
+
+	profileFile := filepath.Join(t.TempDir(), "cover.out")
+	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("writing cover profile: %v", err)
+	}
+
+	opts := DefaultOptions()
+	opts.CoverProfile = profileFile
+
+	report, err := Analyze([]string{"./internal/crap"}, modRoot, opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	// All Score.File paths must be relative (no leading /).
+	for _, s := range report.Scores {
+		if filepath.IsAbs(s.File) {
+			t.Errorf("Score.File is absolute, want relative: %q (function %s)", s.File, s.Function)
+		}
+	}
+
+	// RecommendedActions (if any) must also have relative paths.
+	for _, a := range report.Summary.RecommendedActions {
+		if filepath.IsAbs(a.File) {
+			t.Errorf("RecommendedAction.File is absolute, want relative: %q (function %s)",
+				a.File, a.Function)
+		}
+	}
+}
