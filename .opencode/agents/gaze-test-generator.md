@@ -5,6 +5,7 @@ description: >
   complete, compilable Go test functions, improve documentation for
   classifier visibility, and restructure assertions for mapper
   accuracy. Works on any Go project gaze can analyze.
+mode: subagent
 tools:
   read: true
   bash: true
