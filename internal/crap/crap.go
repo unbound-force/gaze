@@ -145,6 +145,99 @@ type Report struct {
 	Summary Summary `json:"summary"`
 }
 
+// FunctionStatus classifies a function's change status when
+// comparing baseline and current CRAP results.
+type FunctionStatus string
+
+const (
+	// StatusRegression indicates CRAP or GazeCRAP increased
+	// beyond the epsilon tolerance.
+	StatusRegression FunctionStatus = "regression"
+
+	// StatusImprovement indicates CRAP or GazeCRAP decreased
+	// beyond the epsilon tolerance.
+	StatusImprovement FunctionStatus = "improvement"
+
+	// StatusUnchanged indicates the score delta is within the
+	// epsilon tolerance.
+	StatusUnchanged FunctionStatus = "unchanged"
+
+	// StatusNew indicates the function was not present in the
+	// baseline and its CRAP score is below the new-function
+	// threshold.
+	StatusNew FunctionStatus = "new"
+
+	// StatusNewViolation indicates the function was not present
+	// in the baseline and its CRAP score exceeds the new-function
+	// threshold.
+	StatusNewViolation FunctionStatus = "new_violation"
+
+	// StatusRemoved indicates the function was present in the
+	// baseline but absent from the current results.
+	StatusRemoved FunctionStatus = "removed"
+)
+
+// FunctionDelta holds the comparison between a baseline and current
+// score for a single function. The Status field classifies the
+// change direction.
+type FunctionDelta struct {
+	// Baseline is the function's score from the baseline report.
+	Baseline Score `json:"baseline"`
+
+	// Current is the function's score from the current report.
+	Current Score `json:"current"`
+
+	// CRAPDelta is current.CRAP - baseline.CRAP.
+	CRAPDelta float64 `json:"crap_delta"`
+
+	// GazeCRAPDelta is current.GazeCRAP - baseline.GazeCRAP.
+	// Nil when the baseline had no GazeCRAP data (D5: skip when
+	// baseline GazeCRAP is nil or zero).
+	GazeCRAPDelta *float64 `json:"gaze_crap_delta,omitempty"`
+
+	// Status classifies this function's change direction.
+	Status FunctionStatus `json:"status"`
+}
+
+// ComparisonSummary holds aggregate counts for a baseline comparison.
+type ComparisonSummary struct {
+	Regressions          int     `json:"regressions"`
+	Improvements         int     `json:"improvements"`
+	NewFunctions         int     `json:"new_functions"`
+	NewViolations        int     `json:"new_violations"`
+	RemovedFunctions     int     `json:"removed_functions"`
+	Unchanged            int     `json:"unchanged"`
+	Epsilon              float64 `json:"epsilon"`
+	NewFunctionThreshold float64 `json:"new_function_threshold"`
+	Passed               bool    `json:"passed"`
+}
+
+// ComparisonResult is the envelope for a baseline-vs-current
+// comparison. It wraps the current Report (for the normal output
+// path) and adds comparison-specific data.
+type ComparisonResult struct {
+	// Report is the current analysis report. Excluded from JSON
+	// because the comparison JSON format inlines scores with
+	// delta annotations.
+	Report *Report `json:"-"`
+
+	// Deltas holds per-function comparisons for functions found
+	// in both baseline and current results.
+	Deltas []FunctionDelta `json:"deltas"`
+
+	// NewFunctions holds scores for functions present in the
+	// current results but absent from the baseline.
+	NewFunctions []Score `json:"new_functions"`
+
+	// RemovedFunctions holds scores for functions present in the
+	// baseline but absent from the current results.
+	RemovedFunctions []Score `json:"removed_functions"`
+
+	// Summary holds aggregate comparison counts and the pass/fail
+	// determination.
+	Summary ComparisonSummary `json:"comparison"`
+}
+
 // Formula computes CRAP(m) = comp^2 * (1 - cov/100)^3 + comp.
 // comp is cyclomatic complexity (>= 1).
 // coveragePct is line coverage as a percentage (0-100).

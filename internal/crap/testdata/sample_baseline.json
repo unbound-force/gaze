@@ -1,0 +1,102 @@
+{
+  "scores": [
+    {
+      "package": "crap",
+      "function": "Analyze",
+      "file": "internal/crap/analyze.go",
+      "line": 91,
+      "complexity": 8,
+      "line_coverage": 72.5,
+      "crap": 12.4,
+      "contract_coverage": 55.0,
+      "gaze_crap": 16.2,
+      "quadrant": "Q3_SimpleButUnderspecified",
+      "fix_strategy": "add_assertions"
+    },
+    {
+      "package": "crap",
+      "function": "Formula",
+      "file": "internal/crap/crap.go",
+      "line": 245,
+      "complexity": 1,
+      "line_coverage": 100.0,
+      "crap": 1.0,
+      "contract_coverage": 100.0,
+      "gaze_crap": 1.0,
+      "quadrant": "Q1_Safe"
+    },
+    {
+      "package": "crap",
+      "function": "WriteText",
+      "file": "internal/crap/report.go",
+      "line": 172,
+      "complexity": 5,
+      "line_coverage": 85.0,
+      "crap": 5.5,
+      "contract_coverage": 60.0,
+      "gaze_crap": 8.1,
+      "quadrant": "Q1_Safe"
+    },
+    {
+      "package": "classify",
+      "function": "ComputeScore",
+      "file": "internal/classify/score.go",
+      "line": 30,
+      "complexity": 9,
+      "line_coverage": 90.0,
+      "crap": 9.4,
+      "contract_coverage": 75.0,
+      "gaze_crap": 11.3,
+      "quadrant": "Q1_Safe"
+    },
+    {
+      "package": "analysis",
+      "function": "AnalyzeP1Effects",
+      "file": "internal/analysis/p1.go",
+      "line": 15,
+      "complexity": 12,
+      "line_coverage": 40.0,
+      "crap": 28.7,
+      "contract_coverage": 20.0,
+      "gaze_crap": 42.1,
+      "quadrant": "Q4_Dangerous",
+      "fix_strategy": "decompose_and_test"
+    }
+  ],
+  "summary": {
+    "total_functions": 5,
+    "avg_complexity": 7.0,
+    "avg_line_coverage": 77.5,
+    "avg_crap": 11.4,
+    "crapload": 1,
+    "crap_threshold": 15,
+    "gaze_crapload": 2,
+    "gaze_crap_threshold": 15.0,
+    "avg_gaze_crap": 15.74,
+    "avg_contract_coverage": 62.0,
+    "quadrant_counts": {
+      "Q1_Safe": 3,
+      "Q3_SimpleButUnderspecified": 1,
+      "Q4_Dangerous": 1
+    },
+    "fix_strategy_counts": {
+      "add_assertions": 1,
+      "decompose_and_test": 1
+    },
+    "worst_crap": [
+      {
+        "package": "analysis",
+        "function": "AnalyzeP1Effects",
+        "file": "internal/analysis/p1.go",
+        "line": 15,
+        "complexity": 12,
+        "line_coverage": 40.0,
+        "crap": 28.7,
+        "contract_coverage": 20.0,
+        "gaze_crap": 42.1,
+        "quadrant": "Q4_Dangerous",
+        "fix_strategy": "decompose_and_test"
+      }
+    ]
+  }
+}

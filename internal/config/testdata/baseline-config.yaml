@@ -1,0 +1,4 @@
+baseline:
+  file: custom/baseline.json
+  epsilon: 1.0
+  new_function_threshold: 20

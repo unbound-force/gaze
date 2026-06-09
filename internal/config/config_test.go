@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -131,5 +132,70 @@ func TestLoad_IncludeOverride(t *testing.T) {
 	}
 	if includes[1] != "README.md" {
 		t.Errorf("include[1] = %q, want %q", includes[1], "README.md")
+	}
+}
+
+func TestBaselineConfig_Defaults(t *testing.T) {
+	// Loading a nonexistent file should return defaults.
+	cfg, err := Load("testdata/nonexistent.yaml")
+	if err != nil {
+		t.Fatalf("Load(nonexistent) error: %v", err)
+	}
+
+	if cfg.Baseline.File != ".gaze/baseline.json" {
+		t.Errorf("default baseline.file = %q, want %q",
+			cfg.Baseline.File, ".gaze/baseline.json")
+	}
+	if cfg.Baseline.Epsilon != 0.5 {
+		t.Errorf("default baseline.epsilon = %g, want 0.5",
+			cfg.Baseline.Epsilon)
+	}
+	if cfg.Baseline.NewFunctionThreshold != 30 {
+		t.Errorf("default baseline.new_function_threshold = %g, want 30",
+			cfg.Baseline.NewFunctionThreshold)
+	}
+}
+
+func TestBaselineConfig_Override(t *testing.T) {
+	cfg, err := Load(filepath.Join("testdata", "baseline-config.yaml"))
+	if err != nil {
+		t.Fatalf("Load(baseline-config) error: %v", err)
+	}
+
+	if cfg.Baseline.File != "custom/baseline.json" {
+		t.Errorf("baseline.file = %q, want %q",
+			cfg.Baseline.File, "custom/baseline.json")
+	}
+	if cfg.Baseline.Epsilon != 1.0 {
+		t.Errorf("baseline.epsilon = %g, want 1.0",
+			cfg.Baseline.Epsilon)
+	}
+	if cfg.Baseline.NewFunctionThreshold != 20 {
+		t.Errorf("baseline.new_function_threshold = %g, want 20",
+			cfg.Baseline.NewFunctionThreshold)
+	}
+}
+
+func TestBaselineConfig_InvalidEpsilon(t *testing.T) {
+	_, err := Load(filepath.Join("testdata", "invalid-baseline.yaml"))
+	if err == nil {
+		t.Fatal("expected error for negative epsilon, got nil")
+	}
+
+	want := "baseline.epsilon must be >= 0"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want to contain %q", err, want)
+	}
+}
+
+func TestBaselineConfig_InvalidThreshold(t *testing.T) {
+	_, err := Load(filepath.Join("testdata", "invalid-baseline-threshold.yaml"))
+	if err == nil {
+		t.Fatal("expected error for zero threshold, got nil")
+	}
+
+	want := "baseline.new_function_threshold must be > 0"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want to contain %q", err, want)
 	}
 }

@@ -1118,6 +1118,25 @@ func TestAnalyze_CoverProfileIsDirectory(t *testing.T) {
 	}
 }
 
+// findFuncLines returns the start and end lines of a named function
+// in the given Go source file. Uses the existing findFunctions
+// helper from coverage.go, avoiding hardcoded line numbers that
+// break whenever the file is edited.
+func findFuncLines(t *testing.T, filePath, funcName string) (startLine, endLine int) {
+	t.Helper()
+	funcs, err := findFunctions(filePath)
+	if err != nil {
+		t.Fatalf("parsing %s: %v", filePath, err)
+	}
+	for _, f := range funcs {
+		if f.name == funcName {
+			return f.startLine, f.endLine
+		}
+	}
+	t.Fatalf("function %s not found in %s", funcName, filePath)
+	return 0, 0
+}
+
 // TestAnalyze_WithPrebuiltProfile runs the full Analyze pipeline
 // using a pre-built coverage profile, bypassing the go test
 // subprocess. This tests steps 2-6 of Analyze and also exercises
@@ -1125,13 +1144,18 @@ func TestAnalyze_CoverProfileIsDirectory(t *testing.T) {
 func TestAnalyze_WithPrebuiltProfile(t *testing.T) {
 	modRoot := moduleRoot(t)
 
-	// Build a minimal coverage profile that references crap.go.
-	// Formula (lines 152-156) and ClassifyQuadrant (lines 162-176)
-	// are marked as covered (Count=1); everything else is absent
-	// and defaults to 0% coverage.
-	profileContent := "mode: set\n" +
-		"github.com/unbound-force/gaze/internal/crap/crap.go:152.55,156.2 2 1\n" +
-		"github.com/unbound-force/gaze/internal/crap/crap.go:162.86,176.2 3 1\n"
+	// Dynamically discover function positions to avoid hardcoded
+	// line numbers that break when crap.go is edited.
+	crapGoPath := filepath.Join(modRoot, "internal", "crap", "crap.go")
+	fStart, fEnd := findFuncLines(t, crapGoPath, "Formula")
+	cStart, cEnd := findFuncLines(t, crapGoPath, "ClassifyQuadrant")
+
+	// Build a minimal coverage profile referencing the actual
+	// positions of Formula and ClassifyQuadrant in crap.go.
+	profileContent := fmt.Sprintf("mode: set\n"+
+		"github.com/unbound-force/gaze/internal/crap/crap.go:%d.1,%d.2 2 1\n"+
+		"github.com/unbound-force/gaze/internal/crap/crap.go:%d.1,%d.2 3 1\n",
+		fStart, fEnd, cStart, cEnd)
 
 	profileFile := filepath.Join(t.TempDir(), "cover.out")
 	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
@@ -1197,8 +1221,13 @@ func TestAnalyze_WithPrebuiltProfile(t *testing.T) {
 func TestAnalyze_ContractCoverageFunc(t *testing.T) {
 	modRoot := moduleRoot(t)
 
-	profileContent := "mode: set\n" +
-		"github.com/unbound-force/gaze/internal/crap/crap.go:140.39,144.2 2 1\n"
+	// Dynamically discover Formula's position.
+	crapGoPath := filepath.Join(modRoot, "internal", "crap", "crap.go")
+	fStart, fEnd := findFuncLines(t, crapGoPath, "Formula")
+
+	profileContent := fmt.Sprintf("mode: set\n"+
+		"github.com/unbound-force/gaze/internal/crap/crap.go:%d.1,%d.2 2 1\n",
+		fStart, fEnd)
 	profileFile := filepath.Join(t.TempDir(), "cover.out")
 	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
 		t.Fatalf("writing cover profile: %v", err)

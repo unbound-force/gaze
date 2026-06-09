@@ -49,16 +49,41 @@ type ClassificationConfig struct {
 	DocScan DocScan `yaml:"doc_scan"`
 }
 
+// BaselineConfig defines settings for CRAP score baseline comparison.
+type BaselineConfig struct {
+	// File is the path to the baseline JSON file.
+	// Default: ".gaze/baseline.json"
+	File string `yaml:"file"`
+
+	// Epsilon is the minimum score delta to trigger a
+	// regression or improvement classification. Must be >= 0.
+	// Default: 0.5
+	Epsilon float64 `yaml:"epsilon"`
+
+	// NewFunctionThreshold is the CRAP score above which a new
+	// function (not in the baseline) is classified as a
+	// violation. Must be > 0. Default: 30.
+	NewFunctionThreshold float64 `yaml:"new_function_threshold"`
+}
+
 // GazeConfig is the top-level configuration loaded from .gaze.yaml.
 type GazeConfig struct {
 	// Classification holds classification-related settings.
 	Classification ClassificationConfig `yaml:"classification"`
+
+	// Baseline holds baseline comparison settings.
+	Baseline BaselineConfig `yaml:"baseline"`
 }
 
 // DefaultConfig returns a GazeConfig with sensible defaults.
 // The default exclude list matches FR-009.
 func DefaultConfig() *GazeConfig {
 	return &GazeConfig{
+		Baseline: BaselineConfig{
+			File:                 ".gaze/baseline.json",
+			Epsilon:              0.5,
+			NewFunctionThreshold: 30,
+		},
 		Classification: ClassificationConfig{
 			Thresholds: Thresholds{
 				Contractual: 80,
@@ -99,6 +124,15 @@ func Load(path string) (*GazeConfig, error) {
 	cfg := DefaultConfig()
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %q: %w", path, err)
+	}
+
+	// Validate baseline configuration.
+	if cfg.Baseline.Epsilon < 0 {
+		return nil, fmt.Errorf("baseline.epsilon must be >= 0, got %g", cfg.Baseline.Epsilon)
+	}
+	if cfg.Baseline.NewFunctionThreshold <= 0 {
+		return nil, fmt.Errorf("baseline.new_function_threshold must be > 0, got %g",
+			cfg.Baseline.NewFunctionThreshold)
 	}
 
 	// Parse timeout string if provided.

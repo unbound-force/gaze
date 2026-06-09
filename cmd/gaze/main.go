@@ -396,6 +396,7 @@ type crapParams struct {
 	moduleDir       string
 	aiMapper        string
 	aiMapperModel   string
+	baselinePath    string
 	stdout          io.Writer
 	stderr          io.Writer
 
@@ -483,11 +484,41 @@ func runCrap(p crapParams) error {
 			"note: GazeCRAP unavailable — run 'gaze quality' to compute contract coverage")
 	}
 
-	if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
-		return err
+	// Resolve baseline path for comparison (D4).
+	var comparisonResult *crap.ComparisonResult
+	baselinePath, baselineExplicit := resolveBaselinePath(p.baselinePath, p.moduleDir)
+	if baselinePath != "" {
+		cr, baselineErr := loadAndCompare(baselinePath, baselineExplicit, rpt, p.moduleDir)
+		if baselineErr != nil {
+			return baselineErr
+		}
+		comparisonResult = cr
+	}
+
+	// Write output: comparison path or normal path.
+	if comparisonResult != nil {
+		if err := writeCrapComparisonReport(p.stdout, p.format, comparisonResult); err != nil {
+			return err
+		}
+	} else {
+		if err := writeCrapReport(p.stdout, p.format, rpt); err != nil {
+			return err
+		}
 	}
 
 	printCISummary(p.stderr, rpt, p.maxCrapload, p.maxGazeCrapload)
+
+	// Evaluate baseline comparison gate before threshold gate
+	// so comparison output is always visible (D7).
+	if comparisonResult != nil && !comparisonResult.Summary.Passed {
+		// Print comparison failure to stderr for visibility.
+		_, _ = fmt.Fprintf(p.stderr, "baseline comparison: FAIL (%d regressions, %d new violations)\n",
+			comparisonResult.Summary.Regressions,
+			comparisonResult.Summary.NewViolations)
+		return fmt.Errorf("baseline comparison failed: %d regressions, %d new-function violations",
+			comparisonResult.Summary.Regressions,
+			comparisonResult.Summary.NewViolations)
+	}
 
 	return checkCIThresholds(rpt, p.maxCrapload, p.maxGazeCrapload)
 }
@@ -500,6 +531,108 @@ func writeCrapReport(w io.Writer, format string, rpt *crap.Report) error {
 	default:
 		return crap.WriteText(w, rpt)
 	}
+}
+
+// writeCrapComparisonReport outputs the comparison report in the
+// requested format.
+func writeCrapComparisonReport(w io.Writer, format string, result *crap.ComparisonResult) error {
+	switch format {
+	case "json":
+		return crap.WriteComparisonJSON(w, result)
+	default:
+		return crap.WriteComparisonText(w, result)
+	}
+}
+
+// resolveBaselinePath determines the baseline file path using the
+// D4 detection order: explicit flag → config file → default path.
+// Returns the path and whether it was explicitly specified (via
+// --baseline flag). Empty path means no baseline available.
+func resolveBaselinePath(flagPath, moduleDir string) (string, bool) {
+	// 1. Explicit --baseline flag.
+	if flagPath != "" {
+		return flagPath, true
+	}
+
+	// 2. Config file baseline.file setting.
+	cfg := loadGazeConfigBestEffort(moduleDir)
+	if cfg.Baseline.File != "" && cfg.Baseline.File != ".gaze/baseline.json" {
+		// Non-default config path — check if it exists and is
+		// non-empty, skip silently if not found (D4: config path
+		// is not explicit).
+		configPath := cfg.Baseline.File
+		if !filepath.IsAbs(configPath) {
+			configPath = filepath.Join(moduleDir, configPath)
+		}
+		if info, err := os.Stat(configPath); err == nil && info.Size() > 0 {
+			return configPath, false
+		}
+		return "", false
+	}
+
+	// 3. Default .gaze/baseline.json — skip silently if not found
+	// or empty (an empty file is not a valid baseline; this
+	// handles the shell redirect race where the output file is
+	// truncated before gaze writes to it).
+	defaultPath := filepath.Join(moduleDir, ".gaze", "baseline.json")
+	if info, err := os.Stat(defaultPath); err == nil && info.Size() > 0 {
+		return defaultPath, false
+	}
+
+	return "", false
+}
+
+// loadAndCompare loads a baseline file and runs comparison against
+// the current report. If baselineExplicit is true (--baseline flag),
+// a missing file is an error. Otherwise, a missing file is silently
+// skipped.
+func loadAndCompare(
+	baselinePath string,
+	baselineExplicit bool,
+	current *crap.Report,
+	moduleDir string,
+) (*crap.ComparisonResult, error) {
+	f, err := os.Open(baselinePath)
+	if err != nil {
+		if baselineExplicit {
+			return nil, fmt.Errorf("--baseline %q: %w", baselinePath, err)
+		}
+		// Auto-detected path not found — silently skip.
+		return nil, nil
+	}
+	defer f.Close()
+
+	baseline, err := crap.LoadBaseline(f)
+	if err != nil {
+		if baselineExplicit {
+			return nil, fmt.Errorf("loading baseline %q: %w", baselinePath, err)
+		}
+		// Auto-detected baseline is malformed or empty — skip
+		// silently. The user didn't explicitly request comparison,
+		// so a broken auto-detected file shouldn't block analysis.
+		return nil, nil
+	}
+
+	// Load config for comparison options (epsilon, threshold).
+	cfg := loadGazeConfigBestEffort(moduleDir)
+
+	opts := crap.CompareOptions{
+		Epsilon:              cfg.Baseline.Epsilon,
+		NewFunctionThreshold: cfg.Baseline.NewFunctionThreshold,
+	}
+
+	return crap.Compare(baseline, current, opts), nil
+}
+
+// loadGazeConfigBestEffort loads the GazeConfig from the given
+// module directory, falling back to default config on any error.
+func loadGazeConfigBestEffort(moduleDir string) *config.GazeConfig {
+	cfgPath := filepath.Join(moduleDir, ".gaze.yaml")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return config.DefaultConfig()
+	}
+	return cfg
 }
 
 // printCISummary prints a one-line CI summary to stderr when
@@ -553,6 +686,7 @@ func newCrapCmd() *cobra.Command {
 		maxGazeCrapload   int
 		aiMapper          string
 		aiMapperModel     string
+		baselinePath      string
 	)
 
 	cmd := &cobra.Command{
@@ -585,6 +719,7 @@ automatically.`,
 				moduleDir:       moduleDir,
 				aiMapper:        aiMapper,
 				aiMapperModel:   aiMapperModel,
+				baselinePath:    baselinePath,
 				stdout:          os.Stdout,
 				stderr:          os.Stderr,
 			})
@@ -607,6 +742,8 @@ automatically.`,
 		"AI backend for assertion mapping fallback: claude, gemini, ollama, or opencode")
 	cmd.Flags().StringVar(&aiMapperModel, "ai-mapper-model", "",
 		"model name for AI mapper (required for ollama)")
+	cmd.Flags().StringVar(&baselinePath, "baseline", "",
+		"path to baseline file for comparison")
 
 	return cmd
 }
