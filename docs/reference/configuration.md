@@ -30,6 +30,11 @@ classification:
       - "LICENSE.md"
     include: []        # Empty = scan all non-excluded files
     timeout: "30s"
+
+baseline:
+  file: .gaze/baseline.json   # Path to baseline file
+  epsilon: 0.5                 # Minimum score delta for regression/improvement
+  new_function_threshold: 30   # CRAP score above which a new function is a violation
 ```
 
 ## Configuration Keys
@@ -101,6 +106,26 @@ When `include` is set, only files matching at least one include pattern (and not
 |-----|------|---------|-------------|
 | `timeout` | `string` | `"30s"` | Maximum duration for document scanning. Uses Go duration format (e.g., `"30s"`, `"1m"`, `"2m30s"`). |
 
+### `baseline`
+
+Top-level section for [baseline comparison](../../README.md#baseline-comparison) settings. Controls how `gaze crap` detects regressions by comparing current CRAP/GazeCRAP scores against a saved baseline.
+
+All fields are optional — when omitted, sensible defaults are used.
+
+| Key | Type | Default | Valid Range | Description |
+|-----|------|---------|-------------|-------------|
+| `file` | `string` | `.gaze/baseline.json` | Any valid file path | Path to the baseline JSON file. This is the auto-detection path — `gaze crap` loads this file automatically when it exists. |
+| `epsilon` | `float64` | `0.5` | >= 0 | Minimum score delta to trigger a regression or improvement. Score changes within epsilon are classified as `unchanged`. The default (0.5) absorbs platform/toolchain noise without masking real regressions. |
+| `new_function_threshold` | `float64` | `30` | > 0 | CRAP score above which a new function (not present in the baseline) is flagged as a violation. New functions below this threshold are reported as informational. |
+
+**Validation rules**:
+- `epsilon` must be >= 0. A negative epsilon produces an error.
+- `new_function_threshold` must be > 0. A zero or negative value produces an error.
+
+**Interaction with CLI flags**: The `--baseline` flag overrides the `file` path. There are no CLI flags for `epsilon` or `new_function_threshold` — these are configured only via `.gaze.yaml` since they rarely change.
+
+---
+
 ## CLI Flag Overrides
 
 Several CLI flags override config file values. The CLI flag always takes precedence when explicitly set.
@@ -110,6 +135,8 @@ Several CLI flags override config file values. The CLI flag always takes precede
 | `--contractual-threshold` | `classification.thresholds.contractual` | [`analyze`](cli/analyze.md), [`quality`](cli/quality.md) |
 | `--incidental-threshold` | `classification.thresholds.incidental` | [`analyze`](cli/analyze.md), [`quality`](cli/quality.md) |
 | `--config` | — (specifies file path) | [`analyze`](cli/analyze.md), [`quality`](cli/quality.md), [`docscan`](cli/docscan.md) |
+| `--baseline` | `baseline.file` | [`crap`](cli/crap.md) |
+
 
 **Override semantics**: A CLI flag value of `-1` (the default) means "use the config file value." Any other value in the valid range (1–99) overrides the config. The threshold coherence constraint (`contractual > incidental`) is validated after merging CLI and config values.
 
@@ -120,6 +147,8 @@ Several CLI flags override config file values. The CLI flag always takes precede
 3. **Timeout format**: Must be a valid Go duration string (parsed by `time.ParseDuration`).
 4. **Glob patterns**: Must be valid glob patterns (parsed by Go's `filepath.Match`).
 5. **YAML syntax**: The file must be valid YAML. Parse errors produce a descriptive error message with the file path.
+6. **Baseline epsilon**: Must be >= 0.
+7. **Baseline new_function_threshold**: Must be > 0.
 
 ## Error Messages
 
@@ -134,12 +163,19 @@ contractual threshold (40) must be greater than incidental threshold (50); check
 
 # Conflict between CLI flag and config
 contractual threshold (50) must be greater than incidental threshold (50); check --contractual-threshold flag
+
+# Invalid baseline config
+baseline epsilon (-1) must be >= 0; check config file .gaze.yaml
+
+# Invalid baseline threshold
+baseline new_function_threshold (0) must be > 0; check config file .gaze.yaml
 ```
 
 ## See Also
 
 - [Classification](../concepts/classification.md) — how thresholds affect classification labels
 - [`gaze analyze`](cli/analyze.md) — uses config for classification
+- [`gaze crap`](cli/crap.md) — uses config for baseline comparison settings
 - [`gaze quality`](cli/quality.md) — uses config for classification and contract coverage
 - [`gaze docscan`](cli/docscan.md) — uses config for document scanning settings
 - [Glossary](glossary.md) — definitions of contractual, incidental, and ambiguous

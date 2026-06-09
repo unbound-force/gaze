@@ -30,12 +30,21 @@ At least one package pattern is required. Use `./...` to analyze the entire modu
 | `--max-gaze-crapload` | `int` | `0` (no limit) | CI gate: fail with non-zero exit code if GazeCRAPload exceeds this value. |
 | `--ai-mapper` | `string` | `""` | AI backend for assertion mapping fallback: `claude`, `gemini`, `ollama`, or `opencode`. When set, unmapped assertions are sent to the AI for semantic matching. |
 | `--ai-mapper-model` | `string` | `""` | Model name for the AI mapper. Required when `--ai-mapper=ollama`. |
+| `--baseline` | `string` | `""` | Path to a baseline JSON file for comparison. Overrides auto-detection of `.gaze/baseline.json` and the `baseline.file` config value. Errors if the specified file does not exist. |
+
 
 ## Configuration Interaction
 
-The `gaze crap` command does not directly read `.gaze.yaml`. However, the integrated quality pipeline (which provides contract coverage for GazeCRAP) uses classification thresholds from the config file internally.
+The `gaze crap` command reads the `baseline` section from `.gaze.yaml` for baseline comparison settings (`file`, `epsilon`, `new_function_threshold`). The integrated quality pipeline (which provides contract coverage for GazeCRAP) also uses classification thresholds from the config file internally.
 
 The `--coverprofile` flag is the primary configuration point — providing a pre-generated profile avoids running `go test` again (useful in CI where tests have already run).
+
+Baseline detection order:
+1. `--baseline FILE` → use specified path (error if not found or empty)
+3. `.gaze.yaml` `baseline.file` → use configured path (skip silently if not found)
+4. Default `.gaze/baseline.json` → use if exists (skip silently if not found)
+
+See [Configuration Reference](../configuration.md) for full details on the `baseline` config section.
 
 ## Examples
 
@@ -91,6 +100,52 @@ gaze crap ./... --format=json | jq '.summary.crapload'
 ```
 
 See [JSON Schemas](../json-schemas.md) for the full output structure.
+
+### Baseline comparison
+
+```bash
+# Create a baseline (first time)
+mkdir -p .gaze
+gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json
+
+# Compare against baseline (auto-detected)
+gaze crap --coverprofile=coverage.out ./...
+```
+
+When a baseline is loaded, the text output appends comparison sections:
+
+```
+Baseline Comparison
+═══════════════════════════════════════════════════════════════
+
+  Result: FAIL (1 regression, 0 new violations)
+
+  Regressions
+  Function                     Baseline  Current   Delta
+  ────────────────────────────  ────────  ────────  ──────
+  internal/crap/analyze.go:    9.2       12.5      +3.3
+    Analyze
+
+  Improvements
+  Function                     Baseline  Current   Delta
+  ────────────────────────────  ────────  ────────  ──────
+  internal/config/config.go:   18.3      8.0       -10.3
+    LoadConfig
+
+  New Functions: 2 (0 violations)
+  Removed Functions: 1
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Analysis succeeds with no regressions, no new-function violations, and no threshold failures |
+| `1` | At least one regression detected, a new-function violation found, or a `--max-crapload` / `--max-gaze-crapload` threshold exceeded |
+
+The baseline comparison gate and the threshold gate (`--max-crapload`, `--max-gaze-crapload`) are evaluated independently — exit code is 1 if either gate fails. Comparison output is always written regardless of threshold results.
+
+When no baseline is loaded, exit code depends only on threshold flags (exit 0 if no thresholds are set).
 
 ## See Also
 

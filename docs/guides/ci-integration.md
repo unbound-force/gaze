@@ -202,6 +202,80 @@ If you only need CRAP scores without the full analysis pipeline (no quality asse
 
 The [`gaze crap`](../reference/cli/crap.md) command supports the same `--max-crapload` and `--max-gaze-crapload` threshold flags. It does not support `--min-contract-coverage` (that requires the full quality pipeline via [`gaze report`](../reference/cli/report.md)).
 
+## Baseline Comparison
+
+Baseline comparison detects per-function CRAP and GazeCRAP regressions by comparing the current analysis against a saved baseline. When `.gaze/baseline.json` exists and is non-empty, [`gaze crap`](../reference/cli/crap.md) auto-detects it and activates comparison mode. No flags required.
+
+### Creating a Baseline
+
+```bash
+mkdir -p .gaze
+go test -coverprofile=coverage.out -count=1 ./...
+gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json
+git add .gaze/baseline.json && git commit -m "chore: add CRAP baseline"
+```
+
+Commit the baseline to version control so CI can compare every PR against it.
+
+### How Comparison Works
+
+Each function is matched between baseline and current results by its `file:function` key. For each matched function, CRAP and GazeCRAP deltas are computed:
+
+| Status | Condition |
+|--------|-----------|
+| `regression` | CRAP or GazeCRAP delta exceeds epsilon (default 0.5) |
+| `improvement` | CRAP or GazeCRAP delta exceeds negative epsilon |
+| `unchanged` | Delta within epsilon tolerance |
+| `new` | Function not in baseline, CRAP below threshold |
+| `new_violation` | Function not in baseline, CRAP above threshold (default 30) |
+| `removed` | Function in baseline but not in current results |
+
+The comparison passes when there are zero regressions and zero new-function violations. `gaze crap` exits with code 1 when the comparison fails -- independently of any threshold flags (`--max-crapload`, etc.).
+
+### CI Workflow with Baseline
+
+```yaml
+- name: Test with coverage
+  run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+- name: Check for regressions
+  run: gaze crap --coverprofile=coverage.out ./...
+```
+
+That's it. If `.gaze/baseline.json` is committed, the comparison runs automatically. If the file doesn't exist, `gaze crap` behaves as normal.
+
+### Overriding the Baseline Path
+
+Use `--baseline` to point to a baseline file at a non-default location:
+
+```bash
+gaze crap --baseline path/to/other-baseline.json --coverprofile=coverage.out ./...
+```
+
+When `--baseline` is specified explicitly, a missing or empty file is an error.
+
+### Tuning Comparison Sensitivity
+
+Add a `baseline` section to `.gaze.yaml`:
+
+```yaml
+baseline:
+  epsilon: 0.5               # score change tolerance (default)
+  new_function_threshold: 30  # max CRAP for new functions (default)
+```
+
+These defaults are production-validated. Increase epsilon if platform-induced score jitter causes false regressions. Lower the new-function threshold to enforce stricter standards on new code.
+
+### Refreshing the Baseline
+
+The baseline is a snapshot that drifts over time. Refresh it periodically:
+
+```bash
+gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json
+```
+
+A good cadence is after each release or when you intentionally accept score changes. Functions added to main after the baseline was created appear as "new" until the baseline is refreshed -- this is informational, not a failure (unless they exceed the new-function threshold).
+
 ## Troubleshooting
 
 ### Tests run twice

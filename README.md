@@ -128,6 +128,59 @@ gaze crap --max-crapload=5 --max-gaze-crapload=3 ./...
 
 For complete GitHub Actions workflow examples, coverage profile reuse, and threshold selection guidance, see the [CI Integration guide](docs/guides/ci-integration.md).
 
+## Baseline Comparison
+
+Gaze supports per-function CRAP and GazeCRAP regression detection by comparing current scores against a saved baseline. This fulfills the constitutional mandate that "Metrics MUST be comparable across runs so users can measure progress over time."
+
+### Creating a Baseline
+
+Save the current CRAP scores as a baseline:
+
+```bash
+mkdir -p .gaze
+go test -coverprofile=coverage.out ./...
+gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json
+git add .gaze/baseline.json && git commit -m "chore: add CRAP baseline"
+```
+
+### How It Works
+
+When `.gaze/baseline.json` exists, `gaze crap` auto-detects it and activates comparison mode. Each function is matched by `file:function` key, and CRAP/GazeCRAP deltas are computed. Functions are classified as `regression`, `improvement`, `unchanged`, `new`, `new_violation`, or `removed`.
+
+The comparison produces a pass/fail gate: exit code 1 when any regression or new-function violation (CRAP above threshold) is detected. This gate is independent of the `--max-crapload` / `--max-gaze-crapload` threshold gates.
+
+### Overriding and Opting Out
+
+```bash
+gaze crap --baseline path/to/other-baseline.json ./...   # Use a custom baseline path
+```
+
+### CI Integration with Baseline
+
+Commit `.gaze/baseline.json` to version control so CI can detect regressions on every PR:
+
+```yaml
+- name: Run tests with coverage
+  run: go test -coverprofile=coverage.out ./...
+- name: Check for regressions
+  run: gaze crap --coverprofile=coverage.out ./...
+```
+
+When no baseline file exists, `gaze crap` behaves identically to before — no comparison, no error, exit 0.
+
+### Configuration
+
+Baseline settings can be customized in `.gaze.yaml`:
+
+```yaml
+baseline:
+  file: .gaze/baseline.json   # default
+  epsilon: 0.5                 # score change tolerance
+  new_function_threshold: 30   # max CRAP for new functions
+```
+
+For full configuration details, see [Configuration Reference](docs/reference/configuration.md).
+
 ## Output Formats
 
 The `analyze`, `crap`, `quality`, and `self-check` commands support `--format=text` (default) and `--format=json`.

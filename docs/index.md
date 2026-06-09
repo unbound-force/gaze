@@ -52,7 +52,7 @@ These docs cover everything from first-time setup to language porting contracts.
 
 ### Guides
 
-- [CI Integration](guides/ci-integration.md) — GitHub Actions workflow, coverage profile reuse, threshold enforcement
+- [CI Integration](guides/ci-integration.md) — GitHub Actions workflow, coverage profile reuse, threshold enforcement, baseline comparison
 - [AI Reports](guides/ai-reports.md) — Adapter setup for Claude, Gemini, Ollama, and OpenCode
 - [OpenCode Integration](guides/opencode-integration.md) — `gaze init`, scaffolded files, and the `/gaze` command
 - [Improving Scores](guides/improving-scores.md) — Fix strategies with before/after examples: decompose, add tests, add assertions
