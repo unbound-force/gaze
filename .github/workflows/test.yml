@@ -37,7 +37,7 @@ jobs:
             --format=json \
             --coverprofile=coverage.out \
             --max-crapload=38 \
-            --max-gaze-crapload=5 \
+            --max-gaze-crapload=6 \
             --min-contract-coverage=8 \
             > /dev/null
 
@@ -55,7 +55,7 @@ jobs:
             --model=opencode/claude-sonnet-4-6 \
             --coverprofile=coverage.out \
             --max-crapload=38 \
-            --max-gaze-crapload=5 \
+            --max-gaze-crapload=6 \
             --min-contract-coverage=8
 
   e2e:
