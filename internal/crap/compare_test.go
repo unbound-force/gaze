@@ -729,7 +729,7 @@ func TestSC003_RegressionDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening sample baseline: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	baseline, err := LoadBaseline(f)
 	if err != nil {
@@ -977,7 +977,7 @@ func TestSC006_ComparisonPasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening sample baseline: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	baseline, err := LoadBaseline(f)
 	if err != nil {

@@ -545,83 +545,83 @@ func writeCrapComparisonReport(w io.Writer, format string, result *crap.Comparis
 }
 
 // resolveBaselinePath determines the baseline file path using the
+// resolveBaselinePath determines the baseline file path using the
 // D4 detection order: explicit flag → config file → default path.
 // Returns the path and whether it was explicitly specified (via
 // --baseline flag). Empty path means no baseline available.
 func resolveBaselinePath(flagPath, moduleDir string) (string, bool) {
-	// 1. Explicit --baseline flag.
 	if flagPath != "" {
 		return flagPath, true
 	}
 
-	// 2. Config file baseline.file setting.
+	// Config file baseline.file setting (non-default only).
 	cfg := loadGazeConfigBestEffort(moduleDir)
 	if cfg.Baseline.File != "" && cfg.Baseline.File != ".gaze/baseline.json" {
-		// Non-default config path — check if it exists and is
-		// non-empty, skip silently if not found (D4: config path
-		// is not explicit).
-		configPath := cfg.Baseline.File
-		if !filepath.IsAbs(configPath) {
-			configPath = filepath.Join(moduleDir, configPath)
-		}
-		if info, err := os.Stat(configPath); err == nil && info.Size() > 0 {
-			return configPath, false
-		}
-		return "", false
+		return resolveConfigBaselinePath(cfg.Baseline.File, moduleDir), false
 	}
 
-	// 3. Default .gaze/baseline.json — skip silently if not found
-	// or empty (an empty file is not a valid baseline; this
-	// handles the shell redirect race where the output file is
-	// truncated before gaze writes to it).
+	// Default .gaze/baseline.json.
 	defaultPath := filepath.Join(moduleDir, ".gaze", "baseline.json")
-	if info, err := os.Stat(defaultPath); err == nil && info.Size() > 0 {
+	if isNonEmptyFile(defaultPath) {
 		return defaultPath, false
 	}
-
 	return "", false
+}
+
+// resolveConfigBaselinePath resolves a non-default baseline path from
+// .gaze.yaml. Returns empty string if the file doesn't exist or is empty.
+func resolveConfigBaselinePath(cfgFile, moduleDir string) string {
+	p := cfgFile
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(moduleDir, p)
+	}
+	if isNonEmptyFile(p) {
+		return p
+	}
+	return ""
+}
+
+// isNonEmptyFile returns true if the path exists and has size > 0.
+// Empty files are skipped to handle the shell redirect race where
+// the output file is truncated before gaze writes to it.
+func isNonEmptyFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Size() > 0
 }
 
 // loadAndCompare loads a baseline file and runs comparison against
 // the current report. If baselineExplicit is true (--baseline flag),
-// a missing file is an error. Otherwise, a missing file is silently
-// skipped.
+// errors are fatal. Otherwise, errors are silently skipped.
 func loadAndCompare(
 	baselinePath string,
 	baselineExplicit bool,
 	current *crap.Report,
 	moduleDir string,
 ) (*crap.ComparisonResult, error) {
-	f, err := os.Open(baselinePath)
-	if err != nil {
-		if baselineExplicit {
-			return nil, fmt.Errorf("--baseline %q: %w", baselinePath, err)
-		}
-		// Auto-detected path not found — silently skip.
-		return nil, nil
-	}
-	defer f.Close()
-
-	baseline, err := crap.LoadBaseline(f)
+	baseline, err := openAndLoadBaseline(baselinePath)
 	if err != nil {
 		if baselineExplicit {
 			return nil, fmt.Errorf("loading baseline %q: %w", baselinePath, err)
 		}
-		// Auto-detected baseline is malformed or empty — skip
-		// silently. The user didn't explicitly request comparison,
-		// so a broken auto-detected file shouldn't block analysis.
 		return nil, nil
 	}
 
-	// Load config for comparison options (epsilon, threshold).
 	cfg := loadGazeConfigBestEffort(moduleDir)
-
 	opts := crap.CompareOptions{
 		Epsilon:              cfg.Baseline.Epsilon,
 		NewFunctionThreshold: cfg.Baseline.NewFunctionThreshold,
 	}
-
 	return crap.Compare(baseline, current, opts), nil
+}
+
+// openAndLoadBaseline opens a baseline file and deserializes it.
+func openAndLoadBaseline(path string) (*crap.Report, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return crap.LoadBaseline(f)
 }
 
 // loadGazeConfigBestEffort loads the GazeConfig from the given
