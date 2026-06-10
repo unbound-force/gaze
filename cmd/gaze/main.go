@@ -545,7 +545,6 @@ func writeCrapComparisonReport(w io.Writer, format string, result *crap.Comparis
 }
 
 // resolveBaselinePath determines the baseline file path using the
-// resolveBaselinePath determines the baseline file path using the
 // D4 detection order: explicit flag → config file → default path.
 // Returns the path and whether it was explicitly specified (via
 // --baseline flag). Empty path means no baseline available.

@@ -41,8 +41,8 @@ The `--coverprofile` flag is the primary configuration point — providing a pre
 
 Baseline detection order:
 1. `--baseline FILE` → use specified path (error if not found or empty)
-3. `.gaze.yaml` `baseline.file` → use configured path (skip silently if not found)
-4. Default `.gaze/baseline.json` → use if exists (skip silently if not found)
+2. `.gaze.yaml` `baseline.file` → use configured path (skip silently if not found)
+3. Default `.gaze/baseline.json` → use if exists (skip silently if not found)
 
 See [Configuration Reference](../configuration.md) for full details on the `baseline` config section.
 
