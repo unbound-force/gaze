@@ -6,14 +6,26 @@ on:
   pull_request:
     branches: [main]
 
+permissions: {}
+
 jobs:
   unit-and-integration:
     name: Unit + Integration Tests (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         go-version: ["1.24", "1.25"]
+    env:
+      GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      CLAUDE_CODE_USE_VERTEX: "1"
+      CLOUD_ML_REGION: "global"
+      VERTEX_LOCATION: "global"
+      ANTHROPIC_VERTEX_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      HAS_GCP_SECRETS: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -41,18 +53,27 @@ jobs:
             --min-contract-coverage=8 \
             > /dev/null
 
+      - name: Authenticate to Google Cloud (ITPC WIF)
+        id: auth
+        if: matrix.go-version == '1.24' && env.HAS_GCP_SECRETS == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f  # v2.2.1
+        if: matrix.go-version == '1.24' && env.HAS_GCP_SECRETS == 'true'
+
       - name: Install OpenCode
-        if: matrix.go-version == '1.24' && github.event_name == 'push'
+        if: matrix.go-version == '1.24' && env.HAS_GCP_SECRETS == 'true'
         run: npm install -g opencode-ai@1.2.26
 
       - name: Gaze quality report
-        if: matrix.go-version == '1.24' && github.event_name == 'push'
-        env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        if: matrix.go-version == '1.24' && env.HAS_GCP_SECRETS == 'true'
         run: |
           ./gaze report ./... \
             --ai=opencode \
-            --model=opencode/claude-sonnet-4-6 \
+            --model=google-vertex/claude-opus-4-6@default \
             --coverprofile=coverage.out \
             --max-crapload=38 \
             --max-gaze-crapload=6 \
@@ -61,6 +82,8 @@ jobs:
   e2e:
     name: E2E Tests (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         go-version: ["1.24", "1.25"]
