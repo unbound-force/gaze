@@ -92,65 +92,6 @@ func ReadFromSlice(s []int) int {
 	return s[0]
 }
 
-// --- Local Variable False Positive Tests ---
-
-// LocalMapWrite creates a local map, writes to it, and returns it.
-// Should NOT produce any P1 effects — the map is body-local.
-func LocalMapWrite() map[string]int {
-	m := make(map[string]int)
-	m["key"] = 42
-	return m
-}
-
-// LocalSliceWrite creates a local slice, writes to it, and returns it.
-// Should NOT produce any P1 effects — the slice is body-local.
-func LocalSliceWrite() []int {
-	s := make([]int, 3)
-	s[0] = 42
-	return s
-}
-
-// LocalChannelSend creates a local buffered channel, sends on it,
-// and receives from it. Should NOT produce any P1 effects — the
-// channel is body-local.
-func LocalChannelSend() int {
-	ch := make(chan int, 1)
-	ch <- 42
-	return <-ch
-}
-
-// LocalChannelClose creates a local channel and closes it.
-// Should NOT produce any P1 effects — the channel is body-local.
-func LocalChannelClose() {
-	ch := make(chan int)
-	close(ch)
-}
-
-// NamedReturnMapWrite uses a named return value of map type, creates
-// it with make, writes to it, and returns. SHOULD produce MapMutation
-// because named returns are externally observable (part of the function
-// signature).
-func NamedReturnMapWrite() (result map[string]int) {
-	result = make(map[string]int)
-	result["key"] = 42
-	return result
-}
-
-// --- Struct with Map Field (SelectorExpr test) ---
-
-// Container is a struct with a map field, used to test SelectorExpr
-// unwrapping in isExternallyObservable.
-type Container struct {
-	M map[string]int
-}
-
-// WriteToStructMap writes to a map field on the receiver. SHOULD
-// produce MapMutation because the receiver is externally observable
-// and unwrapToIdent resolves c.M to c (the receiver).
-func (c *Container) WriteToStructMap() {
-	c.M["key"] = 42
-}
-
 // --- Pure function (no P1 effects) ---
 
 // PureP1 has no P1 side effects.

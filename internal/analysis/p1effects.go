@@ -42,24 +42,20 @@ func AnalyzeP1Effects(
 	// Build set of parameter and local names to distinguish globals.
 	locals := collectLocals(fd)
 
-	// Build set of signature-level variable objects (params, named
-	// returns, receiver) for scope-aware effect filtering.
-	sigVars := collectSignatureVars(info, fd)
-
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.AssignStmt:
 			effects = append(effects,
-				detectAssignEffects(fset, info, node, pkg, funcName, seen, locals, sigVars)...)
+				detectAssignEffects(fset, info, node, pkg, funcName, seen, locals)...)
 		case *ast.IncDecStmt:
 			effects = append(effects,
 				detectIncDecEffects(fset, info, node, pkg, funcName, seen, locals)...)
 		case *ast.SendStmt:
 			effects = append(effects,
-				detectSendEffects(fset, info, node, pkg, funcName, seen, sigVars)...)
+				detectSendEffects(fset, node, pkg, funcName, seen)...)
 		case *ast.CallExpr:
 			effects = append(effects,
-				detectP1CallEffects(fset, info, node, pkg, funcName, seen, sigVars)...)
+				detectP1CallEffects(fset, info, node, pkg, funcName, seen)...)
 		}
 		return true
 	})
@@ -78,7 +74,6 @@ func detectAssignEffects(
 	funcName string,
 	seen map[string]bool,
 	locals map[string]bool,
-	sigVars map[types.Object]bool,
 ) []taxonomy.SideEffect {
 	var effects []taxonomy.SideEffect
 
@@ -102,11 +97,8 @@ func detectAssignEffects(
 			}
 		}
 		// Map or slice mutation: m[key] = value or s[i] = value.
-		// Only emit when the variable is externally observable (parameter,
-		// receiver, named return, or package-level). Body-local variables
-		// are not side effects — they are internal state.
 		if idx, ok := lhs.(*ast.IndexExpr); ok {
-			if isMapType(info, idx.X) && isExternallyObservable(info, idx.X, sigVars) {
+			if isMapType(info, idx.X) {
 				name := exprName(idx.X)
 				key := "map:" + name
 				if !seen[key] {
@@ -121,7 +113,7 @@ func detectAssignEffects(
 						Target:      name,
 					})
 				}
-			} else if isSliceType(info, idx.X) && isExternallyObservable(info, idx.X, sigVars) {
+			} else if isSliceType(info, idx.X) {
 				name := exprName(idx.X)
 				key := "slice:" + name
 				if !seen[key] {
@@ -179,22 +171,14 @@ func detectIncDecEffects(
 }
 
 // detectSendEffects handles *ast.SendStmt nodes, detecting
-// ChannelSend effects (ch <- value). Only emits when the channel
-// variable is externally observable (parameter, receiver, named
-// return, or package-level).
+// ChannelSend effects (ch <- value).
 func detectSendEffects(
 	fset *token.FileSet,
-	info *types.Info,
 	node *ast.SendStmt,
 	pkg string,
 	funcName string,
 	seen map[string]bool,
-	sigVars map[types.Object]bool,
 ) []taxonomy.SideEffect {
-	// Skip sends on body-local channels — not externally observable.
-	if !isExternallyObservable(info, node.Chan, sigVars) {
-		return nil
-	}
 	name := exprName(node.Chan)
 	key := "chsend:" + name
 	if seen[key] {
@@ -223,15 +207,11 @@ func detectP1CallEffects(
 	pkg string,
 	funcName string,
 	seen map[string]bool,
-	sigVars map[types.Object]bool,
 ) []taxonomy.SideEffect {
 	var effects []taxonomy.SideEffect
 
-	// Channel close: close(ch). Only emit when the channel variable
-	// is externally observable (parameter, receiver, named return,
-	// or package-level).
-	if isCloseCall(node, info) && len(node.Args) == 1 &&
-		isExternallyObservable(info, node.Args[0], sigVars) {
+	// Channel close: close(ch).
+	if isCloseCall(node, info) && len(node.Args) == 1 {
 		name := exprName(node.Args[0])
 		key := "chclose:" + name
 		if !seen[key] {
@@ -446,145 +426,6 @@ func isHTTPResponseWriter(info *types.Info, expr ast.Expr) bool {
 		return false
 	}
 	return tv.Type.String() == "net/http.ResponseWriter"
-}
-
-// unwrapToIdent unwraps selector expressions, index expressions,
-// star expressions, and parenthesized expressions to find the base
-// *ast.Ident. Returns nil if the expression cannot be unwrapped to
-// an identifier (e.g., a function call result or composite literal).
-//
-// Examples:
-//   - m           → m (*ast.Ident)
-//   - s.field     → s (*ast.SelectorExpr → *ast.Ident)
-//   - m[key]      → m (*ast.IndexExpr → *ast.Ident)
-//   - s.field[key] → s (*ast.IndexExpr → *ast.SelectorExpr → *ast.Ident)
-//   - *ptr        → ptr (*ast.StarExpr → *ast.Ident)
-//   - (expr)      → unwrap inner (*ast.ParenExpr → recurse)
-func unwrapToIdent(expr ast.Expr) *ast.Ident {
-	for {
-		switch e := expr.(type) {
-		case *ast.Ident:
-			return e
-		case *ast.SelectorExpr:
-			expr = e.X
-		case *ast.IndexExpr:
-			expr = e.X
-		case *ast.StarExpr:
-			expr = e.X
-		case *ast.ParenExpr:
-			expr = e.X
-		default:
-			return nil
-		}
-	}
-}
-
-// collectSignatureVars builds a set of types.Object pointers for all
-// variables declared in the function signature: parameters, named
-// returns, and receivers. These are the variables that are externally
-// observable — mutations to them are visible to the caller.
-//
-// Uses types.Info.Defs to resolve AST identifiers to their types.Object,
-// then uses pointer identity to match against variables found via
-// info.Uses during effect detection. This is more reliable than scope
-// depth counting because the Go type checker's scope hierarchy includes
-// a file scope between the package scope and function scope, making
-// depth-based approaches fragile.
-func collectSignatureVars(info *types.Info, fd *ast.FuncDecl) map[types.Object]bool {
-	sigVars := make(map[types.Object]bool)
-	if info == nil {
-		return sigVars
-	}
-
-	// Parameters.
-	if fd.Type.Params != nil {
-		for _, p := range fd.Type.Params.List {
-			for _, n := range p.Names {
-				if obj := info.Defs[n]; obj != nil {
-					sigVars[obj] = true
-				}
-			}
-		}
-	}
-
-	// Named returns.
-	if fd.Type.Results != nil {
-		for _, r := range fd.Type.Results.List {
-			for _, n := range r.Names {
-				if obj := info.Defs[n]; obj != nil {
-					sigVars[obj] = true
-				}
-			}
-		}
-	}
-
-	// Receiver.
-	if fd.Recv != nil {
-		for _, r := range fd.Recv.List {
-			for _, n := range r.Names {
-				if obj := info.Defs[n]; obj != nil {
-					sigVars[obj] = true
-				}
-			}
-		}
-	}
-
-	return sigVars
-}
-
-// isExternallyObservable returns true if expr refers to a variable
-// that is observable from outside the function: a parameter, receiver,
-// named return, or package-level variable. Returns false for body-local
-// variables (make, var, :=). Returns true (conservative) when the
-// expression cannot be resolved — a false negative (missing a real
-// side effect) is worse than a false positive per the constitution's
-// Accuracy principle.
-//
-// The function uses two checks:
-//  1. Package-level variable: v.Parent().Parent() == types.Universe
-//     (the variable's scope is the package scope, whose parent is Universe).
-//  2. Signature-level variable: the variable's types.Object pointer
-//     matches one in the sigVars set (built from the function's
-//     parameters, named returns, and receiver via collectSignatureVars).
-//
-// Known limitations:
-//   - Slice aliasing: a locally-created slice that is sub-sliced and
-//     returned shares the backing array. Mutations to the original are
-//     observable through the returned sub-slice, but this function
-//     classifies the local slice as not externally observable.
-//   - Closure capture: a locally-created variable captured by a returned
-//     closure is observable from outside the function, but this function
-//     classifies it as not externally observable. Detecting this requires
-//     escape analysis (tracking whether the variable is captured by a
-//     returned closure).
-func isExternallyObservable(info *types.Info, expr ast.Expr, sigVars map[types.Object]bool) bool {
-	ident := unwrapToIdent(expr)
-	if ident == nil {
-		return true // can't resolve expression — conservative
-	}
-	if info == nil {
-		return true // no type info — conservative
-	}
-	obj := info.Uses[ident]
-	if obj == nil {
-		return true // unresolved identifier — conservative
-	}
-	v, ok := obj.(*types.Var)
-	if !ok {
-		return true // not a variable (e.g., constant, function) — conservative
-	}
-	// Package-level variable: parent scope is the package scope,
-	// whose parent is Universe.
-	if v.Parent() != nil && v.Parent().Parent() == types.Universe {
-		return true
-	}
-	// Signature-level variable (parameter, receiver, named return):
-	// check by types.Object pointer identity against the pre-built set.
-	if sigVars[obj] {
-		return true
-	}
-	// Body-local variable: not externally observable.
-	return false
 }
 
 // exprName returns a short readable name for an expression.

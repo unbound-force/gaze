@@ -24,29 +24,29 @@ func buildTestComparisonResult() *ComparisonResult {
 				makeScore("internal/crap/complex.go", "complexFunc", 42.0, nil),
 			},
 			Summary: Summary{
-				TotalFunctions:  5,
-				AvgComplexity:   4.0,
+				TotalFunctions: 5,
+				AvgComplexity:  4.0,
 				AvgLineCoverage: 70.0,
-				AvgCRAP:         15.3,
-				CRAPload:        1,
-				CRAPThreshold:   15,
-				WorstCRAP:       nil,
+				AvgCRAP:        15.3,
+				CRAPload:       1,
+				CRAPThreshold:  15,
+				WorstCRAP:      nil,
 			},
 		},
 		Deltas: []FunctionDelta{
 			{
-				Baseline:      makeScore("internal/crap/analyze.go", "Analyze", 9.2, float64Ptr(14.1)),
-				Current:       makeScore("internal/crap/analyze.go", "Analyze", 12.5, float64Ptr(18.3)),
-				CRAPDelta:     3.3,
+				Baseline:  makeScore("internal/crap/analyze.go", "Analyze", 9.2, float64Ptr(14.1)),
+				Current:   makeScore("internal/crap/analyze.go", "Analyze", 12.5, float64Ptr(18.3)),
+				CRAPDelta: 3.3,
 				GazeCRAPDelta: float64Ptr(4.2),
-				Status:        StatusRegression,
+				Status:    StatusRegression,
 			},
 			{
-				Baseline:      makeScore("internal/crap/report.go", "WriteText", 12.0, float64Ptr(15.0)),
-				Current:       makeScore("internal/crap/report.go", "WriteText", 8.0, float64Ptr(10.0)),
-				CRAPDelta:     -4.0,
+				Baseline:  makeScore("internal/crap/report.go", "WriteText", 12.0, float64Ptr(15.0)),
+				Current:   makeScore("internal/crap/report.go", "WriteText", 8.0, float64Ptr(10.0)),
+				CRAPDelta: -4.0,
 				GazeCRAPDelta: float64Ptr(-5.0),
-				Status:        StatusImprovement,
+				Status:    StatusImprovement,
 			},
 			{
 				Baseline:  makeScore("internal/crap/crap.go", "Formula", 2.0, float64Ptr(2.0)),
@@ -182,9 +182,9 @@ func TestSC007_WriteComparisonJSON_ComparisonPassed(t *testing.T) {
 			},
 		},
 		Summary: ComparisonSummary{
-			Improvements:         1,
-			Passed:               true,
-			Epsilon:              0.5,
+			Improvements: 1,
+			Passed:       true,
+			Epsilon:      0.5,
 			NewFunctionThreshold: 30,
 		},
 	}
@@ -218,12 +218,12 @@ func TestSC007_BackwardCompat_NoComparisonFields(t *testing.T) {
 			makeScore("a.go", "Func", 5.0, nil),
 		},
 		Summary: Summary{
-			TotalFunctions:  1,
-			AvgComplexity:   3.0,
+			TotalFunctions: 1,
+			AvgComplexity:  3.0,
 			AvgLineCoverage: 80.0,
-			AvgCRAP:         5.0,
-			CRAPload:        0,
-			CRAPThreshold:   15,
+			AvgCRAP:        5.0,
+			CRAPload:       0,
+			CRAPThreshold:  15,
 		},
 	}
 
@@ -274,9 +274,9 @@ func TestSC008_WriteComparisonText_PassHeader(t *testing.T) {
 			},
 		},
 		Summary: ComparisonSummary{
-			Improvements:         1,
-			Passed:               true,
-			Epsilon:              0.5,
+			Improvements: 1,
+			Passed:       true,
+			Epsilon:      0.5,
 			NewFunctionThreshold: 30,
 		},
 	}
@@ -311,9 +311,9 @@ func TestSC008_WriteComparisonText_FailHeader(t *testing.T) {
 			},
 		},
 		Summary: ComparisonSummary{
-			Regressions:          1,
-			Passed:               false,
-			Epsilon:              0.5,
+			Regressions: 1,
+			Passed:      false,
+			Epsilon:     0.5,
 			NewFunctionThreshold: 30,
 		},
 	}
@@ -350,9 +350,9 @@ func TestSC008_WriteComparisonText_EmptySections(t *testing.T) {
 			},
 		},
 		Summary: ComparisonSummary{
-			Unchanged:            1,
-			Passed:               true,
-			Epsilon:              0.5,
+			Unchanged: 1,
+			Passed:    true,
+			Epsilon:   0.5,
 			NewFunctionThreshold: 30,
 		},
 	}
