@@ -46,38 +46,57 @@ scope check), so a single helper avoids duplicating resolution logic.
 
 **Design**:
 
+The original design used scope-depth counting
+(`v.Parent().Parent().Parent() == types.Universe`) to identify signature-level
+variables. During implementation, empirical testing revealed that Go's type
+checker inserts a **file scope** between the package scope and function scope,
+making the depth-based approach unreliable. The implementation pivoted to
+`types.Object` pointer identity, which is robust regardless of scope hierarchy
+depth.
+
+The approach: `collectSignatureVars` builds a set of `types.Object` pointers
+for all signature-level variables (parameters, named returns, receiver) using
+`info.Defs`. Then `isExternallyObservable` resolves an expression to its
+`types.Object` via `info.Uses` and checks membership in the set. Package-level
+variables are still detected via the two-level check
+(`v.Parent().Parent() == types.Universe`), which remains correct because the
+file scope sits between package and function, not between package and Universe.
+
 ```go
+// collectSignatureVars builds a set of types.Object pointers for all
+// variables declared in the function signature: parameters, named
+// returns, and receivers.
+func collectSignatureVars(info *types.Info, fd *ast.FuncDecl) map[types.Object]bool
+
 // isExternallyObservable returns true if expr refers to a variable
 // that is observable from outside the function: a parameter, receiver,
 // named return, or package-level variable. Returns false for body-local
 // variables (make, var, :=). Returns true (conservative) when the
 // expression cannot be resolved.
-func isExternallyObservable(info *types.Info, expr ast.Expr) bool {
+func isExternallyObservable(info *types.Info, expr ast.Expr, sigVars map[types.Object]bool) bool {
     ident := unwrapToIdent(expr)
     if ident == nil {
-        return true // can't resolve selector/index — conservative
+        return true // can't resolve expression — conservative
     }
     if info == nil {
         return true // no type info — conservative
     }
     obj := info.Uses[ident]
     if obj == nil {
-        return true // unresolved — conservative
+        return true // unresolved identifier — conservative
     }
     v, ok := obj.(*types.Var)
     if !ok {
-        return true // not a variable — conservative
+        return true // not a variable (e.g., constant, function) — conservative
     }
-    // Package-level variable: externally observable.
+    // Package-level variable: parent scope is the package scope,
+    // whose parent is Universe.
     if v.Parent() != nil && v.Parent().Parent() == types.Universe {
         return true
     }
-    // Function signature-level (parameter, receiver, named return):
-    // the parent scope is the function type scope, which is a child
-    // of the package scope. Check if the variable is declared in a
-    // scope whose parent is the package scope.
-    if v.Parent() != nil && v.Parent().Parent() != nil &&
-        v.Parent().Parent().Parent() == types.Universe {
+    // Signature-level variable (parameter, receiver, named return):
+    // check by types.Object pointer identity against the pre-built set.
+    if sigVars[obj] {
         return true
     }
     // Body-local variable: not externally observable.
@@ -85,13 +104,13 @@ func isExternallyObservable(info *types.Info, expr ast.Expr) bool {
 }
 ```
 
-The scope hierarchy for Go functions is:
-- Universe → Package → FuncType (params) → FuncBody (locals)
+The actual scope hierarchy for Go functions includes a file scope:
+- Universe → Package → **File** → FuncType (params) → FuncBody (locals)
 
-A parameter's `v.Parent()` is the FuncType scope, whose parent is the Package
-scope, whose parent is Universe. A body-local's `v.Parent()` is the FuncBody
-scope (or a nested block scope), which has more ancestors before reaching
-Universe.
+This means scope-depth counting is fragile — a parameter's depth from
+Universe varies depending on the type checker's internal representation.
+Pointer identity via `collectSignatureVars` is immune to this because it
+matches the exact `types.Object` instance rather than counting scope levels.
 
 ### D2: `unwrapToIdent` helper for expression resolution
 
