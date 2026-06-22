@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -1080,14 +1081,33 @@ func mergeSummaries(summaries []*taxonomy.PackageSummary) *taxonomy.PackageSumma
 
 	merged := &taxonomy.PackageSummary{}
 	var totalCoverage float64
+	var totalDetectionConf int
+	var allWorst []taxonomy.QualityReport
 	for _, s := range summaries {
 		merged.TotalTests += s.TotalTests
 		merged.TotalOverSpecifications += s.TotalOverSpecifications
 		totalCoverage += s.AverageContractCoverage
+		totalDetectionConf += s.AssertionDetectionConfidence
+		allWorst = append(allWorst, s.WorstCoverageTests...)
 		merged.SSADegraded = merged.SSADegraded || s.SSADegraded
 		merged.SSADegradedPackages = append(merged.SSADegradedPackages, s.SSADegradedPackages...)
 	}
-	merged.AverageContractCoverage = totalCoverage / float64(len(summaries))
+	n := float64(len(summaries))
+	merged.AverageContractCoverage = totalCoverage / n
+	merged.AssertionDetectionConfidence = int(float64(totalDetectionConf)/n + 0.5)
+
+	// Re-sort combined worst tests by coverage ascending, truncate to 5.
+	sort.SliceStable(allWorst, func(i, j int) bool {
+		if allWorst[i].ContractCoverage.Percentage != allWorst[j].ContractCoverage.Percentage {
+			return allWorst[i].ContractCoverage.Percentage < allWorst[j].ContractCoverage.Percentage
+		}
+		return allWorst[i].TestFunction < allWorst[j].TestFunction
+	})
+	if len(allWorst) > 5 {
+		allWorst = allWorst[:5]
+	}
+	merged.WorstCoverageTests = allWorst
+
 	return merged
 }
 

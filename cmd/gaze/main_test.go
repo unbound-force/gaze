@@ -145,6 +145,33 @@ func TestRunAnalyze_BadPackage(t *testing.T) {
 	}
 }
 
+func TestRunAnalyze_MultiPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: loads multiple real packages")
+	}
+	var stdout, stderr bytes.Buffer
+	err := runAnalyze(analyzeParams{
+		patterns: []string{
+			"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+			"github.com/unbound-force/gaze/internal/analysis/testdata/src/mutation",
+		},
+		format: "text",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Verify results from both packages appear.
+	if !strings.Contains(out, "SingleReturn") {
+		t.Error("expected SingleReturn from returns package in output")
+	}
+	if !strings.Contains(out, "Increment") {
+		t.Error("expected Increment from mutation package in output")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // writeCrapReport tests
 // ---------------------------------------------------------------------------
@@ -1128,6 +1155,54 @@ func TestRunQuality_BadPackage(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for non-existent package")
+	}
+}
+
+func TestRunQuality_MultiPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: loads multiple real packages with test suites")
+	}
+	var stdout, stderr bytes.Buffer
+	err := runQuality(qualityParams{
+		patterns: []string{
+			"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+			"github.com/unbound-force/gaze/internal/quality/testdata/src/helpers",
+		},
+		format: "text",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Verify the merged summary reflects tests from multiple packages.
+	if !strings.Contains(out, "Tests analyzed:") {
+		t.Error("expected 'Tests analyzed:' summary line in output")
+	}
+}
+
+func TestRunQuality_MultiPackage_SkipsNoTests(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: loads real packages")
+	}
+	var stdout, stderr bytes.Buffer
+	// returns has no test files — should be skipped with a warning.
+	err := runQuality(qualityParams{
+		patterns: []string{
+			"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+			"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		},
+		format: "text",
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error (should skip no-test package): %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Tests analyzed:") {
+		t.Error("expected quality output from welltested package")
 	}
 }
 

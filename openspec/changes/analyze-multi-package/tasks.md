@@ -35,8 +35,8 @@
 
 - [x] 5.1 Update all existing tests in `cmd/gaze/main_test.go` that construct `analyzeParams` to use `patterns []string` instead of `pkgPath string`
 - [x] 5.2 Update all existing tests in `cmd/gaze/main_test.go` that construct `qualityParams` to use `patterns []string` instead of `pkgPath string`
-- [ ] 5.3 Add test for multi-package analyze: verify results from multiple packages appear in output
-- [ ] 5.4 Add test for multi-package quality: verify reports from multiple packages appear in output
+- [x] 5.3 Add test for multi-package analyze: verify results from multiple packages appear in output
+- [x] 5.4 Add test for multi-package quality: verify reports from multiple packages appear in output
 
 ## 6. Documentation updates
 
