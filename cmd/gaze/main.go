@@ -121,7 +121,7 @@ you can use /gaze in OpenCode to generate quality reports.`,
 
 // analyzeParams holds the parsed flags for the analyze command.
 type analyzeParams struct {
-	pkgPath           string
+	patterns          []string
 	format            string
 	function          string
 	includeUnexported bool
@@ -208,38 +208,29 @@ func runAnalyze(p analyzeParams) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
 	}
 
-	opts := analysis.Options{
-		IncludeUnexported: p.includeUnexported,
-		FunctionFilter:    p.function,
-		Version:           version,
-	}
-
-	logger.Info("analyzing package", "pkg", p.pkgPath)
-	results, err := analysis.LoadAndAnalyze(p.pkgPath, opts)
+	// Resolve package patterns to concrete package paths.
+	moduleDir, err := os.Getwd()
 	if err != nil {
-		return err
+		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	if len(results) == 0 {
-		if p.function != "" {
-			return fmt.Errorf("function %q not found in package %q", p.function, p.pkgPath)
-		}
-		logger.Warn("no functions found to analyze")
-		return nil
+	pkgPaths, err := loader.ResolvePackagePaths(p.patterns, moduleDir)
+	if err != nil {
+		return fmt.Errorf("resolving package patterns: %w", err)
 	}
-
-	logger.Info("analysis complete", "functions", len(results))
+	if len(pkgPaths) == 0 {
+		return fmt.Errorf("no packages found for patterns %v", p.patterns)
+	}
 
 	// --verbose implies --classify.
 	if p.verbose {
 		p.classify = true
 	}
 
-	// Run mechanical classification if requested.
+	// Pre-load config and module packages once (shared across all packages).
+	var cfg *config.GazeConfig
+	var modPkgs []*packages.Package
 	if p.classify {
-		// Normalize zero to -1 (not set). The flag default is -1 but
-		// struct literals in tests may leave these fields at their Go
-		// zero value (0). Both mean "use config/default".
 		contractualThresh := p.contractualThresh
 		if contractualThresh == 0 {
 			contractualThresh = -1
@@ -248,29 +239,77 @@ func runAnalyze(p analyzeParams) error {
 		if incidentalThresh == 0 {
 			incidentalThresh = -1
 		}
-		cfg, cfgErr := loadConfig(p.configPath, contractualThresh, incidentalThresh)
+		var cfgErr error
+		cfg, cfgErr = loadConfig(p.configPath, contractualThresh, incidentalThresh)
 		if cfgErr != nil {
 			return fmt.Errorf("loading config: %w", cfgErr)
 		}
-		results, err = runClassify(results, p.pkgPath, cfg, p.verbose)
-		if err != nil {
-			return fmt.Errorf("classification: %w", err)
+
+		// Load module once for caller/interface analysis.
+		logger.Info("loading module packages for classification")
+		modResult, modErr := loader.LoadModule(moduleDir)
+		if modErr != nil {
+			logger.Warn("module loading failed; caller/interface signals degraded", "err", modErr)
+		} else {
+			modPkgs = modResult.Packages
 		}
 	}
 
+	var allResults []taxonomy.AnalysisResult
+	for _, pkgPath := range pkgPaths {
+		opts := analysis.Options{
+			IncludeUnexported: p.includeUnexported,
+			FunctionFilter:    p.function,
+			Version:           version,
+		}
+		// Auto-detect package main per package.
+		if !opts.IncludeUnexported && loader.IsMainPkg(pkgPath) {
+			opts.IncludeUnexported = true
+			logger.Info("package main detected, including unexported functions", "pkg", pkgPath)
+		}
+
+		logger.Info("analyzing package", "pkg", pkgPath)
+		results, loadErr := analysis.LoadAndAnalyze(pkgPath, opts)
+		if loadErr != nil {
+			return loadErr
+		}
+
+		// Classify per package — each package needs its own target
+		// package AST for accurate classification signals.
+		if p.classify && len(results) > 0 {
+			classified, clErr := runClassify(results, pkgPath, cfg, p.verbose, modPkgs)
+			if clErr != nil {
+				return fmt.Errorf("classification of %s: %w", pkgPath, clErr)
+			}
+			results = classified
+		}
+
+		allResults = append(allResults, results...)
+	}
+
+	if len(allResults) == 0 {
+		if p.function != "" {
+			return fmt.Errorf("function %q not found in packages %v", p.function, p.patterns)
+		}
+		logger.Warn("no functions found to analyze")
+		return nil
+	}
+
+	logger.Info("analysis complete", "functions", len(allResults))
+
 	if p.interactive {
-		return runInteractiveAnalyze(results)
+		return runInteractiveAnalyze(allResults)
 	}
 
 	switch p.format {
 	case "json":
-		return report.WriteJSON(p.stdout, results, version)
+		return report.WriteJSON(p.stdout, allResults, version)
 	default:
 		textOpts := report.TextOptions{
 			Classify: p.classify,
 			Verbose:  p.verbose,
 		}
-		return report.WriteTextOptions(p.stdout, results, textOpts)
+		return report.WriteTextOptions(p.stdout, allResults, textOpts)
 	}
 }
 
@@ -278,11 +317,15 @@ func runAnalyze(p analyzeParams) error {
 // analysis results and returns classified results. It adds a
 // metadata warning noting that document-enhanced classification
 // is not applied (the gaze-reporter agent handles that in full mode).
+//
+// When modPkgs is non-nil, it is used directly for caller/interface
+// analysis. When nil, the module is loaded from the working directory.
 func runClassify(
 	results []taxonomy.AnalysisResult,
 	pkgPath string,
 	cfg *config.GazeConfig,
 	verbose bool,
+	modPkgs []*packages.Package,
 ) ([]taxonomy.AnalysisResult, error) {
 	// Load the target package for AST access.
 	targetResult, err := loader.Load(pkgPath)
@@ -290,30 +333,28 @@ func runClassify(
 		return nil, fmt.Errorf("loading target package: %w", err)
 	}
 
-	// Load the module for caller/interface analysis. Use the
-	// directory containing the target package if possible.
-	logger.Info("loading module packages for classification")
-	cwd, err := os.Getwd()
-	if err != nil {
-		logger.Debug("could not determine working directory for module load", "err", err)
-		cwd = ""
-	}
-	moduleRoot := cwd
-	if cwd != "" {
-		if root, findErr := loader.FindModuleRoot(cwd); findErr == nil {
-			moduleRoot = root
-		} else {
-			logger.Warn("could not find module root; classification signals may be degraded", "err", findErr)
+	// Load the module for caller/interface analysis if not provided.
+	if modPkgs == nil {
+		logger.Info("loading module packages for classification")
+		cwd, cwdErr := os.Getwd()
+		if cwdErr != nil {
+			logger.Debug("could not determine working directory for module load", "err", cwdErr)
+			cwd = ""
 		}
-	}
-	modResult, modErr := loader.LoadModule(moduleRoot)
-	var modPkgs []*packages.Package
-	if modErr != nil {
-		// Non-fatal: module loading failure means caller analysis
-		// and interface signals will be degraded but not broken.
-		logger.Warn("module loading failed; caller/interface signals degraded", "err", modErr)
-	} else {
-		modPkgs = modResult.Packages
+		moduleRoot := cwd
+		if cwd != "" {
+			if root, findErr := loader.FindModuleRoot(cwd); findErr == nil {
+				moduleRoot = root
+			} else {
+				logger.Warn("could not find module root; classification signals may be degraded", "err", findErr)
+			}
+		}
+		modResult, modErr := loader.LoadModule(moduleRoot)
+		if modErr != nil {
+			logger.Warn("module loading failed; caller/interface signals degraded", "err", modErr)
+		} else {
+			modPkgs = modResult.Packages
+		}
 	}
 
 	clOpts := classify.Options{
@@ -351,17 +392,18 @@ func newAnalyzeCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "analyze [package]",
+		Use:   "analyze [packages...]",
 		Short: "Analyze side effects of Go functions",
-		Long: `Analyze a Go package (or specific function) and report all
-observable side effects each function produces.
+		Long: `Analyze one or more Go packages and report all observable side
+effects each function produces. Accepts multiple package patterns
+including ./... wildcards.
 
 Use --classify to attach contractual classification (mechanical signals).
 Use /gaze in OpenCode (full mode) for document-enhanced classification.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runAnalyze(analyzeParams{
-				pkgPath:           args[0],
+				patterns:          args,
 				format:            format,
 				function:          function,
 				includeUnexported: includeUnexported,
@@ -873,7 +915,7 @@ Priority:
 
 // qualityParams holds the parsed flags for the quality command.
 type qualityParams struct {
-	pkgPath              string
+	patterns             []string
 	format               string
 	targetFunc           string
 	verbose              bool
@@ -895,32 +937,21 @@ func runQuality(p qualityParams) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
 	}
 
-	// Step 1: Load and analyze the package (Spec 001).
-	opts := analysis.Options{
-		IncludeUnexported: p.includeUnexported,
-		Version:           version,
-	}
-
-	// Auto-detect package main: include unexported functions
-	// automatically since main packages have no exported API.
-	if !opts.IncludeUnexported {
-		if isMainPackage(p.pkgPath) {
-			opts.IncludeUnexported = true
-			logger.Info("package main detected, including unexported functions")
-		}
-	}
-
-	logger.Info("analyzing package", "pkg", p.pkgPath)
-	results, err := analysis.LoadAndAnalyze(p.pkgPath, opts)
+	// Resolve package patterns to concrete package paths.
+	moduleDir, err := os.Getwd()
 	if err != nil {
-		return err
-	}
-	if len(results) == 0 {
-		logger.Warn("no functions found to analyze")
-		return nil
+		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	// Step 2: Classify side effects (Spec 002).
+	pkgPaths, err := loader.ResolvePackagePaths(p.patterns, moduleDir)
+	if err != nil {
+		return fmt.Errorf("resolving package patterns: %w", err)
+	}
+	if len(pkgPaths) == 0 {
+		return fmt.Errorf("no packages found for patterns %v", p.patterns)
+	}
+
+	// Pre-load config once (shared across all packages).
 	contractualThresh := p.contractualThresh
 	if contractualThresh == 0 {
 		contractualThresh = -1
@@ -933,53 +964,131 @@ func runQuality(p qualityParams) error {
 	if cfgErr != nil {
 		return fmt.Errorf("loading config: %w", cfgErr)
 	}
-	results, err = runClassify(results, p.pkgPath, cfg, p.verbose)
-	if err != nil {
-		return fmt.Errorf("classification: %w", err)
-	}
 
-	// Step 3: Load the test package with test files.
-	testPkg, err := loadTestPackage(p.pkgPath)
-	if err != nil {
-		return fmt.Errorf("loading test package: %w", err)
-	}
-
-	// Step 4: Assess test quality (Spec 003).
-	qualOpts := quality.Options{
-		TargetFunc: p.targetFunc,
-		Verbose:    p.verbose,
-		Version:    version,
-		Stderr:     p.stderr,
+	// Load module once for caller/interface analysis.
+	logger.Info("loading module packages for classification")
+	modResult, modErr := loader.LoadModule(moduleDir)
+	var modPkgs []*packages.Package
+	if modErr != nil {
+		logger.Warn("module loading failed; caller/interface signals degraded", "err", modErr)
+	} else {
+		modPkgs = modResult.Packages
 	}
 
 	// Wire AI-assisted assertion mapping when --ai-mapper is set.
+	var aiMapperFn quality.AIMapperFunc
 	if p.aiMapper != "" {
-		aiMapperFn, aiErr := buildAIMapperFunc(p.aiMapper, p.aiMapperModel)
+		var aiErr error
+		aiMapperFn, aiErr = buildAIMapperFunc(p.aiMapper, p.aiMapperModel)
 		if aiErr != nil {
 			return aiErr
 		}
-		qualOpts.AIMapperFunc = aiMapperFn
 	}
 
-	reports, summary, err := quality.Assess(results, testPkg, qualOpts)
-	if err != nil {
-		return fmt.Errorf("quality assessment: %w", err)
+	var allReports []taxonomy.QualityReport
+	var allSummaries []*taxonomy.PackageSummary
+
+	for _, pkgPath := range pkgPaths {
+		opts := analysis.Options{
+			IncludeUnexported: p.includeUnexported,
+			Version:           version,
+		}
+
+		// Auto-detect package main per package.
+		if !opts.IncludeUnexported && loader.IsMainPkg(pkgPath) {
+			opts.IncludeUnexported = true
+			logger.Info("package main detected, including unexported functions", "pkg", pkgPath)
+		}
+
+		logger.Info("analyzing package", "pkg", pkgPath)
+		results, loadErr := analysis.LoadAndAnalyze(pkgPath, opts)
+		if loadErr != nil {
+			return loadErr
+		}
+		if len(results) == 0 {
+			logger.Warn("no functions found to analyze", "pkg", pkgPath)
+			continue
+		}
+
+		// Classify side effects.
+		results, err = runClassify(results, pkgPath, cfg, p.verbose, modPkgs)
+		if err != nil {
+			return fmt.Errorf("classification of %s: %w", pkgPath, err)
+		}
+
+		// Load the test package with test files.
+		testPkg, testErr := loadTestPackage(pkgPath)
+		if testErr != nil {
+			// Skip packages without tests gracefully.
+			logger.Warn("skipping package without tests", "pkg", pkgPath, "err", testErr)
+			continue
+		}
+
+		// Assess test quality.
+		qualOpts := quality.Options{
+			TargetFunc: p.targetFunc,
+			Verbose:    p.verbose,
+			Version:    version,
+			Stderr:     p.stderr,
+		}
+		if aiMapperFn != nil {
+			qualOpts.AIMapperFunc = aiMapperFn
+		}
+
+		reports, summary, assessErr := quality.Assess(results, testPkg, qualOpts)
+		if assessErr != nil {
+			return fmt.Errorf("quality assessment of %s: %w", pkgPath, assessErr)
+		}
+
+		allReports = append(allReports, reports...)
+		allSummaries = append(allSummaries, summary)
 	}
 
-	// Step 5: Write report.
+	if len(allReports) == 0 {
+		logger.Warn("no quality reports generated")
+		return nil
+	}
+
+	// Merge summaries into a single aggregate summary.
+	merged := mergeSummaries(allSummaries)
+
+	// Write report.
 	switch p.format {
 	case "json":
-		if err := quality.WriteJSON(p.stdout, reports, summary); err != nil {
+		if err := quality.WriteJSON(p.stdout, allReports, merged); err != nil {
 			return err
 		}
 	default:
-		if err := quality.WriteText(p.stdout, reports, summary); err != nil {
+		if err := quality.WriteText(p.stdout, allReports, merged); err != nil {
 			return err
 		}
 	}
 
-	// Step 6: Check CI thresholds.
-	return checkQualityThresholds(p, reports, summary)
+	// Check CI thresholds.
+	return checkQualityThresholds(p, allReports, merged)
+}
+
+// mergeSummaries combines multiple PackageSummary values into one.
+// Coverage is averaged, counts are summed.
+func mergeSummaries(summaries []*taxonomy.PackageSummary) *taxonomy.PackageSummary {
+	if len(summaries) == 0 {
+		return &taxonomy.PackageSummary{}
+	}
+	if len(summaries) == 1 {
+		return summaries[0]
+	}
+
+	merged := &taxonomy.PackageSummary{}
+	var totalCoverage float64
+	for _, s := range summaries {
+		merged.TotalTests += s.TotalTests
+		merged.TotalOverSpecifications += s.TotalOverSpecifications
+		totalCoverage += s.AverageContractCoverage
+		merged.SSADegraded = merged.SSADegraded || s.SSADegraded
+		merged.SSADegradedPackages = append(merged.SSADegradedPackages, s.SSADegradedPackages...)
+	}
+	merged.AverageContractCoverage = totalCoverage / float64(len(summaries))
+	return merged
 }
 
 // loadTestPackage loads a Go package with test files included.
@@ -1120,17 +1229,6 @@ func checkQualityThresholds(
 	return nil
 }
 
-// isMainPackage checks if the given package pattern resolves to a
-// package main. Uses a lightweight packages.Load with NeedName mode.
-func isMainPackage(pattern string) bool {
-	cfg := &packages.Config{Mode: packages.NeedName}
-	pkgs, err := packages.Load(cfg, pattern)
-	if err != nil || len(pkgs) == 0 {
-		return false
-	}
-	return pkgs[0].Name == "main"
-}
-
 func newQualityCmd() *cobra.Command {
 	var (
 		format               string
@@ -1147,18 +1245,20 @@ func newQualityCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "quality [package]",
+		Use:   "quality [packages...]",
 		Short: "Assess test quality via side effect mapping",
-		Long: `Analyze how well a package's tests assert on the contractual
-side effects of the functions they test. Reports Contract Coverage
-(ratio of contractual effects that are asserted on) and Over-
-Specification Score (assertions on incidental implementation details).
+		Long: `Analyze how well one or more packages' tests assert on the
+contractual side effects of the functions they test. Reports
+Contract Coverage (ratio of contractual effects that are asserted
+on) and Over-Specification Score (assertions on incidental
+implementation details). Accepts multiple package patterns
+including ./... wildcards.
 
-Requires the target package to have existing test files.`,
-		Args: cobra.ExactArgs(1),
+Packages without test files are skipped with a warning.`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runQuality(qualityParams{
-				pkgPath:              args[0],
+				patterns:             args,
 				format:               format,
 				targetFunc:           targetFunc,
 				verbose:              verbose,

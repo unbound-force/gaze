@@ -7,18 +7,18 @@ The target package must have existing `*_test.go` files.
 ## Synopsis
 
 ```
-gaze quality [package] [flags]
+gaze quality [packages...] [flags]
 ```
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `package` | Yes | Go package import path or relative path (e.g., `./internal/crap`) |
+| `packages...` | Yes (at least one) | One or more Go package import paths, relative paths, or patterns (e.g., `./internal/crap`, `./...`) |
 
-Exactly one package argument is required.
+At least one package argument is required. Wildcard patterns like `./...` are expanded to all matching packages. Packages without test files are skipped with a warning.
 
-**Auto-detection**: When the target package is `package main`, unexported functions are automatically included (a `main` package has no exported API by definition). This behavior is equivalent to passing `--include-unexported`.
+**Auto-detection**: When a target package is `package main`, unexported functions are automatically included (a `main` package has no exported API by definition). This behavior is equivalent to passing `--include-unexported`. Detection is applied per package.
 
 ## Flags
 
@@ -80,6 +80,14 @@ Summary
   Average contract coverage: 85.0%
   Total over-specifications: 2
 ```
+
+### Assess all packages in a module
+
+```bash
+gaze quality ./...
+```
+
+Expands `./...` to all packages with test files and reports quality metrics for each. Packages without tests are skipped with a warning.
 
 ### CI quality gate
 

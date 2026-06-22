@@ -22,10 +22,10 @@ import (
 
 func TestRunAnalyze_InvalidFormat(t *testing.T) {
 	err := runAnalyze(analyzeParams{
-		pkgPath: "./...",
-		format:  "yaml",
-		stdout:  &bytes.Buffer{},
-		stderr:  &bytes.Buffer{},
+		patterns: []string{"./..."},
+		format:   "yaml",
+		stdout:   &bytes.Buffer{},
+		stderr:   &bytes.Buffer{},
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid format")
@@ -38,10 +38,10 @@ func TestRunAnalyze_InvalidFormat(t *testing.T) {
 func TestRunAnalyze_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
-		format:  "text",
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		format:   "text",
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -58,10 +58,10 @@ func TestRunAnalyze_TextFormat(t *testing.T) {
 func TestRunAnalyze_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
-		format:  "json",
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		format:   "json",
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -80,7 +80,7 @@ func TestRunAnalyze_JSONFormat(t *testing.T) {
 func TestRunAnalyze_FunctionFilter(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		function: "SingleReturn",
 		stdout:   &stdout,
@@ -102,7 +102,7 @@ func TestRunAnalyze_FunctionFilter(t *testing.T) {
 func TestRunAnalyze_FunctionNotFound(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		function: "NonExistentFunc",
 		stdout:   &stdout,
@@ -121,7 +121,7 @@ func TestRunAnalyze_IncludeUnexported(t *testing.T) {
 	// so this just verifies the flag passes through without error.
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:           "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		patterns:          []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
 		format:            "text",
 		includeUnexported: true,
 		stdout:            &stdout,
@@ -135,10 +135,10 @@ func TestRunAnalyze_IncludeUnexported(t *testing.T) {
 func TestRunAnalyze_BadPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/unbound-force/gaze/nonexistent/package",
-		format:  "text",
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/unbound-force/gaze/nonexistent/package"},
+		format:   "text",
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err == nil {
 		t.Fatal("expected error for non-existent package")
@@ -499,7 +499,7 @@ func TestRunDocscan_EmptyPkg(t *testing.T) {
 func TestRunAnalyze_ClassifyFlag_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		classify: true,
 		stdout:   &stdout,
@@ -518,7 +518,7 @@ func TestRunAnalyze_ClassifyFlag_TextFormat(t *testing.T) {
 func TestRunAnalyze_ClassifyFlag_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath:  "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
 		format:   "json",
 		classify: true,
 		stdout:   &stdout,
@@ -539,11 +539,11 @@ func TestRunAnalyze_VerboseImpliesClassify(t *testing.T) {
 	// --verbose without --classify should still produce classification output.
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		pkgPath: "github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
-		format:  "text",
-		verbose: true,
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		format:   "text",
+		verbose:  true,
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err != nil {
 		t.Fatalf("runAnalyze --verbose error: %v", err)
@@ -1013,10 +1013,10 @@ func TestRunSelfCheck_ModuleRootError(t *testing.T) {
 
 func TestRunQuality_InvalidFormat(t *testing.T) {
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
-		format:  "yaml",
-		stdout:  &bytes.Buffer{},
-		stderr:  &bytes.Buffer{},
+		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		format:   "yaml",
+		stdout:   &bytes.Buffer{},
+		stderr:   &bytes.Buffer{},
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid format")
@@ -1029,10 +1029,10 @@ func TestRunQuality_InvalidFormat(t *testing.T) {
 func TestRunQuality_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
-		format:  "text",
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		format:   "text",
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1046,10 +1046,10 @@ func TestRunQuality_TextFormat(t *testing.T) {
 func TestRunQuality_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
-		format:  "json",
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		format:   "json",
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1071,7 +1071,7 @@ func TestRunQuality_JSONFormat(t *testing.T) {
 func TestRunQuality_TargetFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath:    "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		patterns:   []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
 		format:     "text",
 		targetFunc: "Add",
 		stdout:     &stdout,
@@ -1089,7 +1089,7 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 	// with mapping improvements (TODO #6), so coverage thresholds
 	// are not yet stable enough for CI enforcement.
 	err := runQuality(qualityParams{
-		pkgPath:              "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		patterns:             []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
 		format:               "text",
 		maxOverSpecification: 100, // very high — should pass
 		stdout:               &stdout,
@@ -1103,7 +1103,7 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 func TestRunQuality_ThresholdFail(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath:             "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		patterns:            []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
 		format:              "text",
 		minContractCoverage: 100, // strict — contract coverage is below 100%
 		stdout:              &stdout,
@@ -1121,10 +1121,10 @@ func TestRunQuality_ThresholdFail(t *testing.T) {
 func TestRunQuality_BadPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath: "github.com/nonexistent/package",
-		format:  "text",
-		stdout:  &stdout,
-		stderr:  &stderr,
+		patterns: []string{"github.com/nonexistent/package"},
+		format:   "text",
+		stdout:   &stdout,
+		stderr:   &stderr,
 	})
 	if err == nil {
 		t.Fatal("expected error for non-existent package")
@@ -2300,7 +2300,7 @@ func TestReportCmd_CoverprofileInHelp(t *testing.T) {
 func TestRunQuality_IncludeUnexported_PackageMain(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath:           "github.com/unbound-force/gaze/internal/quality/testdata/src/mainpkg",
+		patterns:          []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/mainpkg"},
 		format:            "json",
 		includeUnexported: false, // NOT set — auto-detect should kick in
 		contractualThresh: -1,
@@ -2334,7 +2334,7 @@ func TestRunQuality_IncludeUnexported_PackageMain(t *testing.T) {
 func TestRunQuality_IncludeUnexported_LibraryPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		pkgPath:           "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		patterns:          []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
 		format:            "json",
 		includeUnexported: false,
 		contractualThresh: -1,

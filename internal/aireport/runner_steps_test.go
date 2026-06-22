@@ -7,45 +7,6 @@ import (
 	"testing"
 )
 
-// TestResolvePackagePaths_ValidPattern verifies that resolvePackagePaths
-// returns non-empty results for a known-good package pattern.
-// Uses the aireport package itself as the target.
-func TestResolvePackagePaths_ValidPattern(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: loads Go packages")
-	}
-	modRoot := findModuleRoot(t)
-	paths, err := resolvePackagePaths([]string{"github.com/unbound-force/gaze/internal/aireport"}, modRoot)
-	if err != nil {
-		t.Fatalf("resolvePackagePaths: %v", err)
-	}
-	if len(paths) == 0 {
-		t.Error("expected at least one package path, got none")
-	}
-	// Verify test-variant packages are excluded.
-	for _, p := range paths {
-		if len(p) > 5 && p[len(p)-5:] == "_test" {
-			t.Errorf("test variant package leaked into results: %q", p)
-		}
-	}
-}
-
-// TestResolvePackagePaths_EmptyPatterns verifies that an empty pattern list
-// returns an empty result without error.
-func TestResolvePackagePaths_EmptyPatterns(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: loads Go packages")
-	}
-	modRoot := findModuleRoot(t)
-	paths, err := resolvePackagePaths([]string{}, modRoot)
-	if err != nil {
-		t.Fatalf("resolvePackagePaths: %v", err)
-	}
-	if len(paths) != 0 {
-		t.Errorf("expected empty result for empty patterns, got: %v", paths)
-	}
-}
-
 // TestLoadGazeConfigBestEffort_AlwaysNonNil verifies that the function always
 // returns a non-nil config, even in a directory with no .gaze.yaml.
 func TestLoadGazeConfigBestEffort_AlwaysNonNil(t *testing.T) {

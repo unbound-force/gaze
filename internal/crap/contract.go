@@ -38,7 +38,7 @@ func BuildContractCoverageFunc(
 	stderr io.Writer,
 	aiMapperFn ...quality.AIMapperFunc,
 ) (func(pkg, function string) (ContractCoverageInfo, bool), []string) {
-	pkgPaths, err := resolvePackagePaths(patterns, moduleDir)
+	pkgPaths, err := loader.ResolvePackagePaths(patterns, moduleDir)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "quality pipeline: failed to resolve packages: %v\n", err)
 		return nil, nil
@@ -65,7 +65,7 @@ func BuildContractCoverageFunc(
 		// quality pipeline runs. This captures functions with
 		// effects even when loadTestPackage fails (no tests).
 		analysisOpts := analysis.Options{
-			IncludeUnexported: isMainPkg(pkgPath),
+			IncludeUnexported: loader.IsMainPkg(pkgPath),
 		}
 		analysisResults, analysisErr := analysis.LoadAndAnalyze(pkgPath, analysisOpts)
 		if analysisErr == nil {
@@ -150,35 +150,6 @@ func BuildContractCoverageFunc(
 	}, degradedPkgs
 }
 
-// resolvePackagePaths resolves package patterns to individual
-// package paths, filtering out test-variant packages (those with
-// a "_test" suffix). Returns the deduplicated list of package paths
-// or an error if pattern resolution fails.
-//
-// NOTE: keep in sync with internal/aireport/runner_steps.go:resolvePackagePaths.
-// Consolidation deferred — see specs/022-report-gazecrap-pipeline/tasks.md.
-func resolvePackagePaths(patterns []string, moduleDir string) ([]string, error) {
-	cfg := &packages.Config{
-		Mode: packages.NeedName,
-		Dir:  moduleDir,
-	}
-	pkgs, err := packages.Load(cfg, patterns...)
-	if err != nil {
-		return nil, fmt.Errorf("resolving package patterns: %w", err)
-	}
-
-	pkgPaths := make([]string, 0, len(pkgs))
-	seen := make(map[string]bool)
-	for _, pkg := range pkgs {
-		if pkg.PkgPath == "" || seen[pkg.PkgPath] || strings.HasSuffix(pkg.PkgPath, "_test") {
-			continue
-		}
-		seen[pkg.PkgPath] = true
-		pkgPaths = append(pkgPaths, pkg.PkgPath)
-	}
-	return pkgPaths, nil
-}
-
 // analyzePackageCoverage runs the 4-step quality pipeline on a single
 // package (analysis -> classify -> test-load -> quality assess) and
 // returns the quality reports. The second return value is the degraded
@@ -194,7 +165,7 @@ func analyzePackageCoverage(
 	aiMapperFn ...quality.AIMapperFunc,
 ) ([]taxonomy.QualityReport, string) {
 	analysisOpts := analysis.Options{
-		IncludeUnexported: isMainPkg(pkgPath),
+		IncludeUnexported: loader.IsMainPkg(pkgPath),
 	}
 
 	// Step 1: Analyze (Spec 001).
@@ -340,18 +311,4 @@ func extractShortPkgName(importPath string) string {
 		return importPath[idx+1:]
 	}
 	return importPath
-}
-
-// isMainPkg checks if a package path resolves to package main.
-// Used to auto-detect main packages and include unexported functions.
-//
-// NOTE: keep in sync with internal/aireport/runner_steps.go:isMainPkg
-// and cmd/gaze/main.go:isMainPackage.
-func isMainPkg(pkgPath string) bool {
-	cfg := &packages.Config{Mode: packages.NeedName}
-	pkgs, err := packages.Load(cfg, pkgPath)
-	if err != nil || len(pkgs) == 0 {
-		return false
-	}
-	return pkgs[0].Name == "main"
 }

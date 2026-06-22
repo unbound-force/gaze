@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"golang.org/x/tools/go/packages"
 
@@ -88,7 +87,7 @@ type qualityStepResult struct {
 // returns the aggregated JSON output alongside the typed AvgContractCoverage
 // value for threshold evaluation.
 func runQualityStep(patterns []string, moduleDir string, stderr io.Writer) (*qualityStepResult, error) {
-	pkgPaths, err := resolvePackagePaths(patterns, moduleDir)
+	pkgPaths, err := loader.ResolvePackagePaths(patterns, moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving packages for quality: %w", err)
 	}
@@ -146,7 +145,7 @@ func runQualityForPackage(
 	modPkgs []*packages.Package,
 	stderr io.Writer,
 ) ([]taxonomy.QualityReport, string) {
-	includeUnexported := isMainPkg(pkgPath)
+	includeUnexported := loader.IsMainPkg(pkgPath)
 	if includeUnexported {
 		_, _ = fmt.Fprintf(stderr, "package main detected for %s, including unexported functions\n", pkgPath)
 	}
@@ -190,7 +189,7 @@ type classifyStepResult struct {
 // alongside typed classification label counts.
 func runClassifyStep(patterns []string, moduleDir string) (*classifyStepResult, error) {
 	// Use the first resolved package path for analysis + classify.
-	pkgPaths, err := resolvePackagePaths(patterns, moduleDir)
+	pkgPaths, err := loader.ResolvePackagePaths(patterns, moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving packages for classification: %w", err)
 	}
@@ -205,7 +204,7 @@ func runClassifyStep(patterns []string, moduleDir string) (*classifyStepResult, 
 	var allResults []taxonomy.AnalysisResult
 
 	for _, pkgPath := range pkgPaths {
-		analysisOpts := analysis.Options{IncludeUnexported: isMainPkg(pkgPath)}
+		analysisOpts := analysis.Options{IncludeUnexported: loader.IsMainPkg(pkgPath)}
 		results, err := analysis.LoadAndAnalyze(pkgPath, analysisOpts)
 		if err != nil || len(results) == 0 {
 			continue
@@ -246,30 +245,6 @@ func runDocscanStep(moduleDir string) (json.RawMessage, error) {
 		enc := json.NewEncoder(w)
 		return enc.Encode(docs)
 	})
-}
-
-// resolvePackagePaths resolves package patterns to individual package paths,
-// filtering out test-variant packages. Returns deduplicated package paths.
-func resolvePackagePaths(patterns []string, moduleDir string) ([]string, error) {
-	cfg := &packages.Config{
-		Mode: packages.NeedName,
-		Dir:  moduleDir,
-	}
-	pkgs, err := packages.Load(cfg, patterns...)
-	if err != nil {
-		return nil, fmt.Errorf("resolving package patterns: %w", err)
-	}
-
-	pkgPaths := make([]string, 0, len(pkgs))
-	seen := make(map[string]bool)
-	for _, pkg := range pkgs {
-		if pkg.PkgPath == "" || seen[pkg.PkgPath] || strings.HasSuffix(pkg.PkgPath, "_test") {
-			continue
-		}
-		seen[pkg.PkgPath] = true
-		pkgPaths = append(pkgPaths, pkg.PkgPath)
-	}
-	return pkgPaths, nil
 }
 
 // runClassifyResults runs the mechanical classification pipeline.
@@ -354,18 +329,4 @@ func loadTestPackageForQuality(pkgPath string) (*packages.Package, error) {
 		}
 	}
 	return nil, fmt.Errorf("no test package found for %q", pkgPath)
-}
-
-// isMainPkg checks if a package path resolves to package main.
-// Used to auto-detect main packages and include unexported functions.
-//
-// NOTE: keep in sync with internal/crap/contract.go:isMainPkg
-// and cmd/gaze/main.go:isMainPackage.
-func isMainPkg(pkgPath string) bool {
-	cfg := &packages.Config{Mode: packages.NeedName}
-	pkgs, err := packages.Load(cfg, pkgPath)
-	if err != nil || len(pkgs) == 0 {
-		return false
-	}
-	return pkgs[0].Name == "main"
 }

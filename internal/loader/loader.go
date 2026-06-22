@@ -50,6 +50,10 @@ func Load(pattern string) (*Result, error) {
 		return nil, fmt.Errorf("no packages found for pattern %q", pattern)
 	}
 
+	if len(pkgs) > 1 {
+		fmt.Fprintf(os.Stderr, "warning: pattern %q resolved to %d packages, using only the first; use ResolvePackagePaths for multi-package analysis\n", pattern, len(pkgs))
+	}
+
 	pkg := pkgs[0]
 
 	// Check for package-level errors (syntax, type errors, etc.).
@@ -140,4 +144,41 @@ func FindModuleRoot(startDir string) (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// ResolvePackagePaths resolves package patterns (including ./...
+// wildcards) to individual fully-qualified package paths. It uses a
+// lightweight NeedName load mode, deduplicates results, and filters
+// out test-variant packages (those with a "_test" suffix).
+func ResolvePackagePaths(patterns []string, moduleDir string) ([]string, error) {
+	cfg := &packages.Config{
+		Mode: packages.NeedName,
+		Dir:  moduleDir,
+	}
+	pkgs, err := packages.Load(cfg, patterns...)
+	if err != nil {
+		return nil, fmt.Errorf("resolving package patterns: %w", err)
+	}
+
+	pkgPaths := make([]string, 0, len(pkgs))
+	seen := make(map[string]bool)
+	for _, pkg := range pkgs {
+		if pkg.PkgPath == "" || seen[pkg.PkgPath] || strings.HasSuffix(pkg.PkgPath, "_test") {
+			continue
+		}
+		seen[pkg.PkgPath] = true
+		pkgPaths = append(pkgPaths, pkg.PkgPath)
+	}
+	return pkgPaths, nil
+}
+
+// IsMainPkg checks if a package path resolves to package main.
+// Uses a lightweight NeedName load mode for efficiency.
+func IsMainPkg(pkgPath string) bool {
+	cfg := &packages.Config{Mode: packages.NeedName}
+	pkgs, err := packages.Load(cfg, pkgPath)
+	if err != nil || len(pkgs) == 0 {
+		return false
+	}
+	return pkgs[0].Name == "main"
 }

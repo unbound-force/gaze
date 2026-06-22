@@ -83,6 +83,121 @@ func TestLoadModule_ValidModule(t *testing.T) {
 	}
 }
 
+func TestLoad_MultiPackagePattern_ReturnsFirst(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test: loads real Go module via go/packages")
+	}
+
+	// Load with a wildcard pattern that resolves to multiple packages.
+	// Load should return the first package without error.
+	root := findModuleRoot(t)
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("Chdir(%q): %v", root, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	result, err := loader.Load("./...")
+	if err != nil {
+		t.Fatalf("Load(\"./...\") failed: %v", err)
+	}
+	if result.Pkg == nil {
+		t.Fatal("expected non-nil Pkg when multiple packages resolve")
+	}
+	if result.Fset == nil {
+		t.Fatal("expected non-nil Fset when multiple packages resolve")
+	}
+	if result.Pkg.PkgPath == "" {
+		t.Error("expected non-empty PkgPath on first resolved package")
+	}
+}
+
+func TestResolvePackagePaths_Wildcard(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test: loads real Go module via go/packages")
+	}
+
+	root := findModuleRoot(t)
+	paths, err := loader.ResolvePackagePaths([]string{"./..."}, root)
+	if err != nil {
+		t.Fatalf("ResolvePackagePaths failed: %v", err)
+	}
+	if len(paths) < 2 {
+		t.Fatalf("expected multiple packages from ./..., got %d", len(paths))
+	}
+
+	// Verify no test-variant packages.
+	for _, p := range paths {
+		if strings.HasSuffix(p, "_test") {
+			t.Errorf("expected no _test packages, got %q", p)
+		}
+	}
+
+	// Verify deduplication: no path should appear twice.
+	seen := make(map[string]bool)
+	for _, p := range paths {
+		if seen[p] {
+			t.Errorf("duplicate package path: %q", p)
+		}
+		seen[p] = true
+	}
+}
+
+func TestResolvePackagePaths_SinglePackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test: loads real Go module via go/packages")
+	}
+
+	root := findModuleRoot(t)
+	paths, err := loader.ResolvePackagePaths(
+		[]string{"github.com/unbound-force/gaze/internal/loader"}, root,
+	)
+	if err != nil {
+		t.Fatalf("ResolvePackagePaths failed: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 package, got %d: %v", len(paths), paths)
+	}
+	if paths[0] != "github.com/unbound-force/gaze/internal/loader" {
+		t.Errorf("unexpected path: %q", paths[0])
+	}
+}
+
+func TestResolvePackagePaths_EmptyPatterns(t *testing.T) {
+	root := findModuleRoot(t)
+	paths, err := loader.ResolvePackagePaths([]string{}, root)
+	if err != nil {
+		t.Fatalf("ResolvePackagePaths failed: %v", err)
+	}
+	// When no patterns are given, packages.Load resolves the
+	// current directory, which may return the module root
+	// package. Either 0 or 1 results is acceptable.
+	if len(paths) > 1 {
+		t.Errorf("expected 0 or 1 paths for empty patterns, got %d", len(paths))
+	}
+}
+
+func TestIsMainPkg_Library(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test: loads package via go/packages")
+	}
+	if loader.IsMainPkg("github.com/unbound-force/gaze/internal/loader") {
+		t.Error("expected library package to return false")
+	}
+}
+
+func TestIsMainPkg_Main(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test: loads package via go/packages")
+	}
+	if !loader.IsMainPkg("github.com/unbound-force/gaze/cmd/gaze") {
+		t.Error("expected main package to return true")
+	}
+}
+
 func TestLoadModule_NonExistentDir(t *testing.T) {
 	_, err := loader.LoadModule("/nonexistent/path/that/does/not/exist")
 	if err == nil {

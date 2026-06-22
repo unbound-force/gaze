@@ -1,22 +1,22 @@
 # gaze analyze
 
-Analyze a Go package (or specific function) and report all observable side effects each function produces.
+Analyze one or more Go packages (or a specific function) and report all observable side effects each function produces.
 
 Side effects are categorized into priority tiers (P0–P4) from the [side effect taxonomy](../../concepts/side-effects.md). Use `--classify` to attach [contractual classification](../../concepts/classification.md) labels (mechanical signals only). For document-enhanced classification, use the `/gaze` command in OpenCode (full mode).
 
 ## Synopsis
 
 ```
-gaze analyze [package] [flags]
+gaze analyze [packages...] [flags]
 ```
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `package` | Yes | Go package import path or relative path (e.g., `./internal/crap`, `github.com/foo/bar`) |
+| `packages...` | Yes (at least one) | One or more Go package import paths, relative paths, or patterns (e.g., `./internal/crap`, `./...`, `github.com/foo/bar`) |
 
-Exactly one package argument is required.
+At least one package argument is required. Wildcard patterns like `./...` are expanded to all matching packages.
 
 ## Flags
 
@@ -78,6 +78,20 @@ gaze analyze ./internal/crap -f Formula --verbose
 ```
 
 Shows the full signal breakdown for each side effect, including individual signal sources (interface, visibility, caller, naming, godoc) and their weight contributions.
+
+### Analyze all packages in a module
+
+```bash
+gaze analyze ./...
+```
+
+Expands `./...` to all packages in the module and reports side effects for every exported function across all packages.
+
+### Analyze multiple specific packages
+
+```bash
+gaze analyze ./internal/crap ./internal/loader
+```
 
 ### JSON output for machine consumption
 

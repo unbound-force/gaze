@@ -205,8 +205,6 @@ For setup details, see the [OpenCode Integration guide](docs/guides/opencode-int
 - **P3-P4 side effects not yet detected.** The taxonomy defines types for stdout/stderr writes, environment mutations, mutex operations, reflection, unsafe, and other P3-P4 effects, but detection logic is not yet implemented for these tiers.
 - **GazeCRAP accuracy is limited.** The quality pipeline is wired into the CRAP command and GazeCRAP scores are computed when contract coverage data is available. However, assertion-to-side-effect mapping accuracy is currently ~86% (target: 90%), primarily affecting cross-target assertions and go-cmp patterns (tracked as GitHub Issue #6).
 - **No CGo or unsafe analysis.** Functions using `cgo` or `unsafe.Pointer` are not analyzed for their specific side effects.
-- **Single package loading.** The `analyze` command processes one package at a time. Use shell loops or scripting for multi-package analysis.
-
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.

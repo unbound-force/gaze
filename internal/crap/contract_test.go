@@ -2,7 +2,6 @@ package crap
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"github.com/unbound-force/gaze/internal/config"
@@ -38,75 +37,6 @@ func TestExtractShortPkgName_Empty(t *testing.T) {
 	got := extractShortPkgName("")
 	if got != "" {
 		t.Errorf("extractShortPkgName('') = %q, want %q", got, "")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// resolvePackagePaths tests
-// ---------------------------------------------------------------------------
-
-func TestResolvePackagePaths_ValidPattern(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: resolves packages via go/packages")
-	}
-	paths, err := resolvePackagePaths([]string{"./internal/docscan/..."}, ".")
-	if err != nil {
-		t.Fatalf("resolvePackagePaths failed: %v", err)
-	}
-	if len(paths) == 0 {
-		t.Error("expected non-empty package paths")
-	}
-}
-
-func TestResolvePackagePaths_FilterTestSuffix(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: resolves packages via go/packages")
-	}
-	paths, err := resolvePackagePaths([]string{"./internal/docscan/..."}, ".")
-	if err != nil {
-		t.Fatalf("resolvePackagePaths failed: %v", err)
-	}
-	for _, p := range paths {
-		if strings.HasSuffix(p, "_test") {
-			t.Errorf("test-variant package should have been filtered: %s", p)
-		}
-	}
-}
-
-func TestResolvePackagePaths_AllTestVariants(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: resolves packages via go/packages")
-	}
-	paths, err := resolvePackagePaths([]string{"./..."}, ".")
-	if err != nil {
-		t.Fatalf("resolvePackagePaths failed: %v", err)
-	}
-	for _, p := range paths {
-		if strings.HasSuffix(p, "_test") {
-			t.Errorf("expected no _test packages, found: %s", p)
-		}
-	}
-}
-
-func TestResolvePackagePaths_InvalidPattern(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: invokes go/packages.Load")
-	}
-	paths, err := resolvePackagePaths(
-		[]string{"github.com/nonexistent/does/not/exist"},
-		t.TempDir(),
-	)
-	t.Logf("resolvePackagePaths returned paths=%v, err=%v", paths, err)
-	// go/packages.Load with a nonexistent module-path in a temp dir
-	// returns either an error or an empty package list. Either is
-	// acceptable; the key contract is no phantom paths are returned.
-	if err == nil && len(paths) > 0 {
-		t.Errorf("expected empty paths for nonexistent pattern, got %v", paths)
-	}
-	for _, p := range paths {
-		if strings.HasSuffix(p, "_test") {
-			t.Errorf("test-variant package should have been filtered: %s", p)
-		}
 	}
 }
 
