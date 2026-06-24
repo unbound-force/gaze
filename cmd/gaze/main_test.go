@@ -1207,6 +1207,111 @@ func TestRunQuality_MultiPackage_SkipsNoTests(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// mergeSummaries tests
+// ---------------------------------------------------------------------------
+
+func TestMergeSummaries_Empty(t *testing.T) {
+	got := mergeSummaries(nil)
+	if got == nil {
+		t.Fatal("expected non-nil summary for empty input")
+	}
+	if got.TotalTests != 0 {
+		t.Errorf("TotalTests = %d, want 0", got.TotalTests)
+	}
+}
+
+func TestMergeSummaries_Single(t *testing.T) {
+	s := &taxonomy.PackageSummary{
+		TotalTests:                   5,
+		AverageContractCoverage:      80.0,
+		TotalOverSpecifications:      2,
+		AssertionDetectionConfidence: 90,
+	}
+	got := mergeSummaries([]*taxonomy.PackageSummary{s})
+	if got != s {
+		t.Error("expected single-element input to return the same pointer")
+	}
+}
+
+func TestMergeSummaries_Multiple(t *testing.T) {
+	s1 := &taxonomy.PackageSummary{
+		TotalTests:                   3,
+		AverageContractCoverage:      60.0,
+		TotalOverSpecifications:      1,
+		AssertionDetectionConfidence: 80,
+		WorstCoverageTests: []taxonomy.QualityReport{
+			{TestFunction: "TestA", ContractCoverage: taxonomy.ContractCoverage{Percentage: 20}},
+		},
+	}
+	s2 := &taxonomy.PackageSummary{
+		TotalTests:                   7,
+		AverageContractCoverage:      40.0,
+		TotalOverSpecifications:      3,
+		AssertionDetectionConfidence: 60,
+		WorstCoverageTests: []taxonomy.QualityReport{
+			{TestFunction: "TestB", ContractCoverage: taxonomy.ContractCoverage{Percentage: 10}},
+		},
+	}
+	got := mergeSummaries([]*taxonomy.PackageSummary{s1, s2})
+
+	if got.TotalTests != 10 {
+		t.Errorf("TotalTests = %d, want 10", got.TotalTests)
+	}
+	if got.TotalOverSpecifications != 4 {
+		t.Errorf("TotalOverSpecifications = %d, want 4", got.TotalOverSpecifications)
+	}
+	// Average of 60 and 40 = 50.
+	if got.AverageContractCoverage != 50.0 {
+		t.Errorf("AverageContractCoverage = %f, want 50.0", got.AverageContractCoverage)
+	}
+	// Average of 80 and 60 = 70.
+	if got.AssertionDetectionConfidence != 70 {
+		t.Errorf("AssertionDetectionConfidence = %d, want 70", got.AssertionDetectionConfidence)
+	}
+	// Worst tests sorted ascending: TestB(10%), TestA(20%).
+	if len(got.WorstCoverageTests) != 2 {
+		t.Fatalf("WorstCoverageTests len = %d, want 2", len(got.WorstCoverageTests))
+	}
+	if got.WorstCoverageTests[0].TestFunction != "TestB" {
+		t.Errorf("first worst = %s, want TestB", got.WorstCoverageTests[0].TestFunction)
+	}
+}
+
+func TestMergeSummaries_TruncatesWorstTo5(t *testing.T) {
+	var summaries []*taxonomy.PackageSummary
+	for i := 0; i < 3; i++ {
+		s := &taxonomy.PackageSummary{
+			TotalTests: 1,
+			WorstCoverageTests: []taxonomy.QualityReport{
+				{TestFunction: fmt.Sprintf("Test%d_A", i), ContractCoverage: taxonomy.ContractCoverage{Percentage: float64(i * 10)}},
+				{TestFunction: fmt.Sprintf("Test%d_B", i), ContractCoverage: taxonomy.ContractCoverage{Percentage: float64(i*10 + 5)}},
+			},
+		}
+		summaries = append(summaries, s)
+	}
+	got := mergeSummaries(summaries)
+	if len(got.WorstCoverageTests) != 5 {
+		t.Errorf("WorstCoverageTests len = %d, want 5 (truncated from 6)", len(got.WorstCoverageTests))
+	}
+}
+
+func TestMergeSummaries_SSADegraded(t *testing.T) {
+	s1 := &taxonomy.PackageSummary{TotalTests: 1, SSADegraded: false}
+	s2 := &taxonomy.PackageSummary{
+		TotalTests:          2,
+		SSADegraded:         true,
+		SSADegradedPackages: []string{"pkg/broken"},
+	}
+	got := mergeSummaries([]*taxonomy.PackageSummary{s1, s2})
+	if !got.SSADegraded {
+		t.Error("SSADegraded should be true when any summary is degraded")
+	}
+	if len(got.SSADegradedPackages) != 1 || got.SSADegradedPackages[0] != "pkg/broken" {
+		t.Errorf("SSADegradedPackages = %v, want [pkg/broken]", got.SSADegradedPackages)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // checkQualityThresholds tests (SC-005)
 // ---------------------------------------------------------------------------
 
