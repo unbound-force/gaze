@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -51,7 +52,7 @@ func Load(pattern string) (*Result, error) {
 	}
 
 	if len(pkgs) > 1 {
-		fmt.Fprintf(os.Stderr, "warning: pattern %q resolved to %d packages, using only the first; use ResolvePackagePaths for multi-package analysis\n", pattern, len(pkgs))
+		log.Warn("pattern resolved to multiple packages, using only the first; use ResolvePackagePaths for multi-package analysis", "pattern", pattern, "count", len(pkgs))
 	}
 
 	pkg := pkgs[0]
