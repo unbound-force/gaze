@@ -489,3 +489,72 @@ func TestAnalyzeP1Effects_WrongWriteReturn(t *testing.T) {
 		t.Error("WrongWriteReturn must not produce WriterOutput — Write([]byte) int is not io.Writer")
 	}
 }
+
+// TestAnalyzeP1Effects_WrongParamType verifies that a type whose Write
+// method accepts string (not []byte) is not classified as io.Writer or
+// http.ResponseWriter.
+func TestAnalyzeP1Effects_WrongParamType(t *testing.T) {
+	pkg := loadTestPackage(t, "p1effects")
+	fd := analysis.FindFuncDecl(pkg, "HandleWrongParamType")
+	if fd == nil {
+		t.Fatal("HandleWrongParamType not found in p1effects package")
+	}
+
+	effects := analysis.AnalyzeP1Effects(pkg.Fset, pkg.TypesInfo, fd, pkg.PkgPath, "HandleWrongParamType")
+
+	if len(effects) != 0 {
+		t.Errorf("expected no effects for WrongParamType, got %d: %v", len(effects), effects)
+	}
+	if hasEffect(effects, taxonomy.HTTPResponseWrite) {
+		t.Error("WrongParamType must not produce HTTPResponseWrite — Write(string) is not Write([]byte)")
+	}
+	if hasEffect(effects, taxonomy.WriterOutput) {
+		t.Error("WrongParamType must not produce WriterOutput — Write(string) is not io.Writer")
+	}
+}
+
+// TestAnalyzeP1Effects_WrongIntReturn64 verifies that a type whose Write
+// method returns (int64, error) instead of (int, error) is not classified
+// as io.Writer or http.ResponseWriter.
+func TestAnalyzeP1Effects_WrongIntReturn64(t *testing.T) {
+	pkg := loadTestPackage(t, "p1effects")
+	fd := analysis.FindFuncDecl(pkg, "HandleWrongIntReturn64")
+	if fd == nil {
+		t.Fatal("HandleWrongIntReturn64 not found in p1effects package")
+	}
+
+	effects := analysis.AnalyzeP1Effects(pkg.Fset, pkg.TypesInfo, fd, pkg.PkgPath, "HandleWrongIntReturn64")
+
+	if len(effects) != 0 {
+		t.Errorf("expected no effects for WrongIntReturn64, got %d: %v", len(effects), effects)
+	}
+	if hasEffect(effects, taxonomy.HTTPResponseWrite) {
+		t.Error("WrongIntReturn64 must not produce HTTPResponseWrite — Write returns int64, not int")
+	}
+	if hasEffect(effects, taxonomy.WriterOutput) {
+		t.Error("WrongIntReturn64 must not produce WriterOutput — Write([]byte)(int64,error) is not io.Writer")
+	}
+}
+
+// TestAnalyzeP1Effects_ExtraParamWrite verifies that a type whose Write
+// method takes an extra parameter is not classified as io.Writer or
+// http.ResponseWriter.
+func TestAnalyzeP1Effects_ExtraParamWrite(t *testing.T) {
+	pkg := loadTestPackage(t, "p1effects")
+	fd := analysis.FindFuncDecl(pkg, "HandleExtraParamWrite")
+	if fd == nil {
+		t.Fatal("HandleExtraParamWrite not found in p1effects package")
+	}
+
+	effects := analysis.AnalyzeP1Effects(pkg.Fset, pkg.TypesInfo, fd, pkg.PkgPath, "HandleExtraParamWrite")
+
+	if len(effects) != 0 {
+		t.Errorf("expected no effects for ExtraParamWrite, got %d: %v", len(effects), effects)
+	}
+	if hasEffect(effects, taxonomy.HTTPResponseWrite) {
+		t.Error("ExtraParamWrite must not produce HTTPResponseWrite — Write has extra param")
+	}
+	if hasEffect(effects, taxonomy.WriterOutput) {
+		t.Error("ExtraParamWrite must not produce WriterOutput — Write([]byte, int) is not io.Writer")
+	}
+}

@@ -207,7 +207,7 @@ func HandlePartialRW(w *PartialResponseWriter) {
 	w.Write([]byte("ok"))
 }
 
-// --- Near-miss Write signature (issue #162) ---
+// --- Near-miss Write signatures (issue #162) ---
 
 // WrongWriteReturn has Write([]byte) int — missing error return.
 type WrongWriteReturn struct{}
@@ -220,6 +220,42 @@ func (wr *WrongWriteReturn) WriteHeader(statusCode int) {}
 // doesn't match io.Writer. Should NOT produce HTTPResponseWrite or WriterOutput.
 func HandleWrongWriteReturn(w *WrongWriteReturn) {
 	w.Write([]byte("ok"))
+}
+
+// WrongParamType has Write(string) (int, error) — wrong param type.
+type WrongParamType struct{}
+
+func (wp *WrongParamType) Header() http.Header        { return nil }
+func (wp *WrongParamType) Write(s string) (int, error) { return len(s), nil }
+func (wp *WrongParamType) WriteHeader(statusCode int)  {}
+
+// HandleWrongParamType calls Write on a type whose Write accepts string, not []byte.
+func HandleWrongParamType(w *WrongParamType) {
+	w.Write("ok")
+}
+
+// WrongIntReturn64 has Write([]byte) (int64, error) — wrong int type.
+type WrongIntReturn64 struct{}
+
+func (wr *WrongIntReturn64) Header() http.Header           { return nil }
+func (wr *WrongIntReturn64) Write(b []byte) (int64, error) { return int64(len(b)), nil }
+func (wr *WrongIntReturn64) WriteHeader(statusCode int)    {}
+
+// HandleWrongIntReturn64 calls Write on a type whose Write returns int64, not int.
+func HandleWrongIntReturn64(w *WrongIntReturn64) {
+	w.Write([]byte("ok"))
+}
+
+// ExtraParamWrite has Write([]byte, int) (int, error) — extra param.
+type ExtraParamWrite struct{}
+
+func (ep *ExtraParamWrite) Header() http.Header                { return nil }
+func (ep *ExtraParamWrite) Write(b []byte, n int) (int, error) { return n, nil }
+func (ep *ExtraParamWrite) WriteHeader(statusCode int)         {}
+
+// HandleExtraParamWrite calls Write on a type with an extra parameter.
+func HandleExtraParamWrite(w *ExtraParamWrite) {
+	w.Write([]byte("ok"), 2)
 }
 
 // --- Pure function (no P1 effects) ---

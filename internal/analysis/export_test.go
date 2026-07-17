@@ -42,3 +42,8 @@ func ExprRootIdent(expr ast.Expr) *ast.Ident {
 func IsPointerArgStore(store *ssa.Store, ptrParams map[string]*ssa.Parameter) (string, bool) {
 	return isPointerArgStore(store, ptrParams)
 }
+
+// MatchesWriteSignature is exported for testing. See matchesWriteSignature.
+func MatchesWriteSignature(sig *types.Signature) bool {
+	return matchesWriteSignature(sig)
+}
