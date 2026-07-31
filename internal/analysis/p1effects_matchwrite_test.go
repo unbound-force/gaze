@@ -94,6 +94,17 @@ func TestMatchesWriteSignature(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "wrong error return: Write([]byte)(int,string)",
+			sig: mkSig(
+				[]*types.Var{types.NewVar(0, nil, "p", byteSlice)},
+				[]*types.Var{
+					types.NewVar(0, nil, "", types.Typ[types.Int]),
+					types.NewVar(0, nil, "", types.Typ[types.String]),
+				},
+			),
+			want: false,
+		},
+		{
 			name: "no results: Write([]byte)",
 			sig: mkSig(
 				[]*types.Var{types.NewVar(0, nil, "p", byteSlice)},
