@@ -27,6 +27,10 @@ archives:
 checksum:
   name_template: checksums.txt
 
+release:
+  extra_files:
+    - glob: dist/homebrew/Casks/gaze.rb
+
 changelog:
   sort: asc
   use: github
