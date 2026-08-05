@@ -232,7 +232,7 @@ Split:        <"recommended" with count, or "not recommended">
 <For each agent: name, verdict, category, brief reasoning>
 
 ── Proposed Actions ──
-• Label: <label> (auto-apply / requires confirmation)
+• Label: <label> (requires confirmation)
 • Comment: <tone tier> (requires confirmation)
 • Split: <N child issues> (requires confirmation, if applicable)
 ──────────────────────────────────────────
@@ -240,7 +240,7 @@ Split:        <"recommended" with count, or "not recommended">
 
 ### 4.2 Label Application
 
-Labels are applied **automatically without user confirmation**, with one exception: the `duplicate` label requires user confirmation because it carries implicit "close" semantics.
+**All label mutations require user confirmation.** Before creating or applying any label, use the **AskUserQuestion tool** to obtain explicit confirmation. The `duplicate` label has an additional supplementary confirmation gate because it carries implicit "close" semantics.
 
 **Label mapping**:
 
@@ -256,24 +256,41 @@ Labels are applied **automatically without user confirmation**, with one excepti
 
 **Re-run check**: If the target label is already applied (detected in Phase 1.2), skip label application and note "label already present."
 
-**Label existence check**: Before applying, verify the label exists in the repository. If it does not exist, create it:
+**Label existence check and confirmation**: Before applying, verify the label exists in the repository. The following two paths are **mutually exclusive** (not sequential):
+
+**Path A — Label does NOT exist in the repository**:
+
+Inform the user: "The label '<label>' does not exist in the repository." Use the **AskUserQuestion tool** with options `["Yes -- create and apply label '<label>'", "No -- skip"]`.
+
+If the user selects "No -- skip", skip both label creation and application. Record `labels_applied: []` and `label_creation_failed: false` in `actions_taken`. Proceed to Section 4.3.
+
+If the user confirms, create and then apply the label:
 
 ```bash
 gh label create "<label>" --description "<description>" --color "<color>"
 ```
 
-If label creation fails due to insufficient permissions, report the specific label that could not be created, skip that label, and continue with remaining actions. Record the failure in `actions_taken`.
+If label creation fails due to insufficient permissions, report the specific label that could not be created, skip that label, and continue with remaining actions. Record the failure in `actions_taken`. Proceed to Section 4.3.
 
-**Apply the label**:
+If label creation succeeds, apply it to the issue:
 
 ```bash
 gh issue edit <ISSUE_NUMBER> --add-label "<label>"
 ```
 
-**For `duplicate` label only**: Inform the user that the
-`duplicate` label signals the issue should be closed.
-Use the **AskUserQuestion tool** with options
-`["Yes -- apply duplicate label", "No -- skip"]`.
+**Path B — Label already EXISTS in the repository**:
+
+Use the **AskUserQuestion tool** with options `["Yes -- apply label '<label>'", "No -- skip"]`.
+
+If the user selects "No -- skip", skip label application. Record `labels_applied: []` in `actions_taken`. Proceed to Section 4.3.
+
+If the user confirms, apply the label:
+
+```bash
+gh issue edit <ISSUE_NUMBER> --add-label "<label>"
+```
+
+**For `duplicate` label only** (supplementary gate, applies after either Path A or Path B confirmation): Inform the user that the `duplicate` label signals the issue should be closed. Use the **AskUserQuestion tool** with options `["Yes -- apply duplicate label", "No -- skip"]`. Only execute the `gh issue edit --add-label` command if the user confirms this supplementary gate. If the user declines, skip label application, record `labels_applied: []` in `actions_taken`, and proceed to Section 4.3.
 
 ### 4.3 Comment Composition and Posting
 
@@ -461,7 +478,7 @@ Fields may be `null` when not applicable (e.g., `duplicate_of` when the issue is
 
 ## Guardrails
 
-1. **No auto-close**: MUST NOT close or lock any issue under any circumstances. The parent issue remains open even after splitting. The `duplicate` label is applied only with user confirmation.
+1. **No auto-close**: MUST NOT close or lock any issue under any circumstances. The parent issue remains open even after splitting. All labels are applied only with user confirmation.
 
 2. **No comments without confirmation**: Every issue comment is shown to the user before posting. No autonomous public communication.
 

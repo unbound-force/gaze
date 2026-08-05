@@ -8,6 +8,7 @@
 @.opencode/uf/packs/default.md
 @.opencode/uf/packs/severity.md
 @.opencode/uf/packs/content.md
+@.opencode/uf/packs/ci.md
 @.opencode/uf/packs/go.md
 
 ## Review Agents (read on-demand)

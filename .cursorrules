@@ -10,6 +10,7 @@ Available packs:
 - .opencode/uf/packs/default.md
 - .opencode/uf/packs/severity.md
 - .opencode/uf/packs/content.md
+- .opencode/uf/packs/ci.md
 - .opencode/uf/packs/go.md
 
 For engineering philosophy and coding principles, read
