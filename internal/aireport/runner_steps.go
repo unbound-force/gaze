@@ -10,6 +10,7 @@ import (
 
 	"github.com/unbound-force/gaze/internal/analysis"
 	"github.com/unbound-force/gaze/internal/classify"
+	"github.com/unbound-force/gaze/internal/cliutil"
 	"github.com/unbound-force/gaze/internal/config"
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/docscan"
@@ -117,7 +118,7 @@ func runCRAPStep(patterns []string, moduleDir string, coverProfile string, stder
 		return nil, fmt.Errorf("CRAP analysis: %w", err)
 	}
 
-	raw, err := captureJSON(func(w io.Writer) error {
+	raw, err := cliutil.CaptureJSON(func(w io.Writer) error {
 		return crap.WriteJSON(w, rpt)
 	})
 	if err != nil {
@@ -176,7 +177,7 @@ func runQualityStep(patterns []string, moduleDir string, stderr io.Writer, deps 
 		summary.SSADegraded = true
 		summary.SSADegradedPackages = degradedPkgs
 	}
-	raw, err := captureJSON(func(w io.Writer) error {
+	raw, err := cliutil.CaptureJSON(func(w io.Writer) error {
 		return quality.WriteJSON(w, allReports, summary)
 	})
 	if err != nil {
@@ -282,7 +283,7 @@ func runClassifyStep(patterns []string, moduleDir string, deps ...qualityPipelin
 		allResults = append(allResults, classified...)
 	}
 
-	raw, err := captureJSON(func(w io.Writer) error {
+	raw, err := cliutil.CaptureJSON(func(w io.Writer) error {
 		return report.WriteJSON(w, allResults, "")
 	})
 	if err != nil {
@@ -307,7 +308,7 @@ func runDocscanStep(moduleDir string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docscan: %w", err)
 	}
-	return captureJSON(func(w io.Writer) error {
+	return cliutil.CaptureJSON(func(w io.Writer) error {
 		enc := json.NewEncoder(w)
 		return enc.Encode(docs)
 	})

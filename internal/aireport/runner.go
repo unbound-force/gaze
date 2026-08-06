@@ -337,12 +337,3 @@ func runProductionPipeline(patterns []string, moduleDir string, coverProfile str
 
 	return payload, nil
 }
-
-// captureJSON runs fn writing JSON to a buffer and returns the bytes.
-func captureJSON(fn func(w io.Writer) error) (json.RawMessage, error) {
-	var buf bytes.Buffer
-	if err := fn(&buf); err != nil {
-		return nil, err
-	}
-	return json.RawMessage(buf.Bytes()), nil
-}

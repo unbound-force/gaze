@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"strings"
 	"testing"
@@ -410,30 +409,6 @@ func TestErrString_NonNilError(t *testing.T) {
 	}
 	if *s != "test error" {
 		t.Errorf("expected %q, got %q", "test error", *s)
-	}
-}
-
-// TestCaptureJSON_Success verifies captureJSON captures JSON output from a func.
-func TestCaptureJSON_Success(t *testing.T) {
-	raw, err := captureJSON(func(w io.Writer) error {
-		_, err := w.Write([]byte(`{"key":"value"}`))
-		return err
-	})
-	if err != nil {
-		t.Fatalf("captureJSON: %v", err)
-	}
-	if string(raw) != `{"key":"value"}` {
-		t.Errorf("expected %q, got %q", `{"key":"value"}`, string(raw))
-	}
-}
-
-// TestCaptureJSON_FuncError verifies captureJSON propagates errors from fn.
-func TestCaptureJSON_FuncError(t *testing.T) {
-	_, err := captureJSON(func(_ io.Writer) error {
-		return errors.New("write failed")
-	})
-	if err == nil {
-		t.Fatal("expected error from captureJSON")
 	}
 }
 

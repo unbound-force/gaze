@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +20,7 @@ import (
 	"github.com/unbound-force/gaze/internal/aireport"
 	"github.com/unbound-force/gaze/internal/analysis"
 	"github.com/unbound-force/gaze/internal/classify"
+	"github.com/unbound-force/gaze/internal/cliutil"
 	"github.com/unbound-force/gaze/internal/config"
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/docscan"
@@ -207,8 +207,8 @@ func loadConfig(path string, contractualThresh, incidentalThresh int) (*config.G
 
 // runAnalyze is the extracted, testable body of the analyze command.
 func runAnalyze(p analyzeParams) error {
-	if p.format != "text" && p.format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	if err := cliutil.ValidateFormat(p.format); err != nil {
+		return err
 	}
 
 	// Resolve package patterns to concrete package paths.
@@ -265,11 +265,7 @@ func runAnalyze(p analyzeParams) error {
 			FunctionFilter:    p.function,
 			Version:           version,
 		}
-		// Auto-detect package main per package.
-		if !opts.IncludeUnexported && loader.IsMainPkg(pkgPath) {
-			opts.IncludeUnexported = true
-			logger.Info("package main detected, including unexported functions", "pkg", pkgPath)
-		}
+		autoDetectMainPkg(pkgPath, &opts.IncludeUnexported)
 
 		logger.Info("analyzing package", "pkg", pkgPath)
 		results, loadErr := analysis.LoadAndAnalyze(pkgPath, opts)
@@ -495,8 +491,8 @@ validating output or generating client types.`,
 
 // runCrap is the extracted, testable body of the crap command.
 func runCrap(p crapParams) error {
-	if p.format != "text" && p.format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	if err := cliutil.ValidateFormat(p.format); err != nil {
+		return err
 	}
 
 	// External analyzer path: when --analyzer is set, use the
@@ -654,7 +650,7 @@ func initExternalSession(
 	analyzerFlag, languageFlag, moduleDir string,
 	patterns []string, stderr io.Writer,
 ) (*adapter.Session, *adapter.Providers, error) {
-	cfg := loadGazeConfigBestEffort(moduleDir)
+	cfg := config.LoadFromDir(moduleDir)
 	binary, args, err := adapter.Discover(analyzerFlag, languageFlag, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("discovering analyzer: %w", err)
@@ -727,7 +723,7 @@ func resolveBaselinePath(flagPath, moduleDir string) (string, bool) {
 	}
 
 	// Config file baseline.file setting (non-default only).
-	cfg := loadGazeConfigBestEffort(moduleDir)
+	cfg := config.LoadFromDir(moduleDir)
 	if cfg.Baseline.File != "" && cfg.Baseline.File != ".gaze/baseline.json" {
 		return resolveConfigBaselinePath(cfg.Baseline.File, moduleDir), false
 	}
@@ -778,7 +774,7 @@ func loadAndCompare(
 		return nil, nil
 	}
 
-	cfg := loadGazeConfigBestEffort(moduleDir)
+	cfg := config.LoadFromDir(moduleDir)
 	opts := crap.CompareOptions{
 		Epsilon:                      cfg.Baseline.Epsilon,
 		NewFunctionThreshold:         cfg.Baseline.NewFunctionThreshold,
@@ -797,15 +793,14 @@ func openAndLoadBaseline(path string) (*crap.Report, error) {
 	return crap.LoadBaseline(f)
 }
 
-// loadGazeConfigBestEffort loads the GazeConfig from the given
-// module directory, falling back to default config on any error.
-func loadGazeConfigBestEffort(moduleDir string) *config.GazeConfig {
-	cfgPath := filepath.Join(moduleDir, ".gaze.yaml")
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		return config.DefaultConfig()
+// autoDetectMainPkg enables unexported function inclusion when the
+// package path identifies a main package. This avoids requiring users
+// to pass --include-unexported explicitly for package main targets.
+func autoDetectMainPkg(pkgPath string, includeUnexported *bool) {
+	if !*includeUnexported && loader.IsMainPkg(pkgPath) {
+		*includeUnexported = true
+		logger.Info("package main detected, including unexported functions", "pkg", pkgPath)
 	}
-	return cfg
 }
 
 // printCISummary prints a one-line CI summary to stderr when
@@ -1054,8 +1049,8 @@ type qualityParams struct {
 
 // runQuality is the extracted, testable body of the quality command.
 func runQuality(p qualityParams) error {
-	if p.format != "text" && p.format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	if err := cliutil.ValidateFormat(p.format); err != nil {
+		return err
 	}
 
 	// External analyzer path: quality requires Go-specific test
@@ -1122,11 +1117,7 @@ func runQuality(p qualityParams) error {
 			Version:           version,
 		}
 
-		// Auto-detect package main per package.
-		if !opts.IncludeUnexported && loader.IsMainPkg(pkgPath) {
-			opts.IncludeUnexported = true
-			logger.Info("package main detected, including unexported functions", "pkg", pkgPath)
-		}
+		autoDetectMainPkg(pkgPath, &opts.IncludeUnexported)
 
 		logger.Info("analyzing package", "pkg", pkgPath)
 		results, loadErr := analysis.LoadAndAnalyze(pkgPath, opts)
@@ -1490,8 +1481,8 @@ type selfCheckParams struct {
 // quality pipeline. This serves as both a dogfooding exercise and
 // a code quality gate.
 func runSelfCheck(p selfCheckParams) error {
-	if p.format != "text" && p.format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", p.format)
+	if err := cliutil.ValidateFormat(p.format); err != nil {
+		return err
 	}
 
 	findRoot := p.moduleRootFunc
@@ -1705,7 +1696,7 @@ func runReport(p reportParams) error {
 			MaxGazeCrapload:     p.maxGazeCrapload,
 			MinContractCoverage: p.minContractCoverage,
 		},
-		TestShort:    p.testShort,
+		TestShort: p.testShort,
 	}
 
 	// External analyzer path: when --analyzer is set, override the
@@ -1769,7 +1760,7 @@ func runExternalReportCRAP(pats []string, modDir string, providers *adapter.Prov
 		return nil, fmt.Errorf("CRAP analysis with external analyzer: %w", err)
 	}
 
-	crapJSON, err := captureReportJSON(func(w io.Writer) error {
+	crapJSON, err := cliutil.CaptureJSON(func(w io.Writer) error {
 		return crap.WriteJSON(w, rpt)
 	})
 	if err != nil {
@@ -1787,16 +1778,6 @@ func runExternalReportCRAP(pats []string, modDir string, providers *adapter.Prov
 	payload.Errors.Docscan = &skipped
 
 	return payload, nil
-}
-
-// captureReportJSON runs fn writing JSON to a buffer and returns the bytes.
-// This is a local helper matching the pattern in aireport.captureJSON.
-func captureReportJSON(fn func(w io.Writer) error) (json.RawMessage, error) {
-	var buf bytes.Buffer
-	if err := fn(&buf); err != nil {
-		return nil, err
-	}
-	return json.RawMessage(buf.Bytes()), nil
 }
 
 // newReportCmd creates the "report" subcommand that orchestrates gaze's four
