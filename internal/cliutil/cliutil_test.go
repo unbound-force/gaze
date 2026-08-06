@@ -1,6 +1,7 @@
 package cliutil
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -40,6 +41,8 @@ func TestValidateFormat(t *testing.T) {
 	}
 }
 
+var errSentinel = errors.New("sentinel error")
+
 func TestCaptureJSON(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -57,19 +60,19 @@ func TestCaptureJSON(t *testing.T) {
 			wantStr: `{"key":"value"}`,
 		},
 		{
-			name: "error propagation",
+			name: "error propagation preserves identity",
 			fn: func(_ io.Writer) error {
-				return fmt.Errorf("write failed")
+				return errSentinel
 			},
 			wantNil: true,
 			wantErr: true,
 		},
 		{
-			name: "empty output",
+			name: "empty output returns nil message",
 			fn: func(_ io.Writer) error {
 				return nil
 			},
-			wantStr: "",
+			wantNil: true,
 		},
 	}
 
@@ -79,6 +82,9 @@ func TestCaptureJSON(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("CaptureJSON() = nil error, want error")
+				}
+				if !errors.Is(err, errSentinel) {
+					t.Errorf("CaptureJSON() error = %v, want %v (identity preserved)", err, errSentinel)
 				}
 				if got != nil {
 					t.Fatalf("CaptureJSON() returned non-nil message on error: %s", got)
@@ -91,8 +97,16 @@ func TestCaptureJSON(t *testing.T) {
 			if tt.wantNil && got != nil {
 				t.Fatalf("CaptureJSON() = %s, want nil", got)
 			}
-			if !tt.wantNil && string(got) != tt.wantStr {
-				t.Errorf("CaptureJSON() = %q, want %q", string(got), tt.wantStr)
+			if !tt.wantNil {
+				if got == nil {
+					t.Fatal("CaptureJSON() = nil, want non-nil json.RawMessage")
+				}
+				if string(got) != tt.wantStr {
+					t.Errorf("CaptureJSON() = %q, want %q", string(got), tt.wantStr)
+				}
+				if tt.wantStr == "" && len(got) != 0 {
+					t.Errorf("CaptureJSON() len = %d, want 0 for empty output", len(got))
+				}
 			}
 		})
 	}

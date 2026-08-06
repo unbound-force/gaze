@@ -2762,3 +2762,34 @@ func TestReportCmd_TestShortFlag(t *testing.T) {
 		t.Errorf("expected default value 'false', got %q", f.DefValue)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// autoDetectMainPkg tests
+// ---------------------------------------------------------------------------
+
+func TestAutoDetectMainPkg_MainPackage(t *testing.T) {
+	// "." resolves to cmd/gaze (package main) when tests run from this directory.
+	enabled := false
+	autoDetectMainPkg(".", &enabled)
+	if !enabled {
+		t.Error("autoDetectMainPkg did not enable includeUnexported for main package")
+	}
+}
+
+func TestAutoDetectMainPkg_LibraryPackage(t *testing.T) {
+	// A library package path — should leave includeUnexported unchanged.
+	enabled := false
+	autoDetectMainPkg("github.com/unbound-force/gaze/internal/cliutil", &enabled)
+	if enabled {
+		t.Error("autoDetectMainPkg incorrectly enabled includeUnexported for library package")
+	}
+}
+
+func TestAutoDetectMainPkg_AlreadyEnabled(t *testing.T) {
+	// When includeUnexported is already true, autoDetectMainPkg is a no-op.
+	enabled := true
+	autoDetectMainPkg(".", &enabled)
+	if !enabled {
+		t.Error("autoDetectMainPkg unexpectedly disabled includeUnexported")
+	}
+}

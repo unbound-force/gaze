@@ -313,6 +313,7 @@ internal/
   analysis/            Core side effect detection engine (AST + SSA)
   taxonomy/            Domain types: SideEffect, AnalysisResult, Tier, etc.
   classify/            Contractual classification engine
+  cliutil/             CLI-layer shared helpers (format validation, JSON capture)
   config/              Configuration file handling (.gaze.yaml)
   loader/              Go package loading (go/packages wrapper)
   report/              Output formatters (JSON, text, HTML stub)
