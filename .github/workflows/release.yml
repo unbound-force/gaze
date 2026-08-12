@@ -177,7 +177,7 @@ jobs:
 
             # Sign with codesign
             codesign --force --timestamp --options runtime \
-              --sign "Developer ID Application: John Flowers (PGFWLVZX55)" \
+              --sign "$MACOS_SIGN_IDENTITY" \
               "$workdir/gaze"
 
             # Verify signature
@@ -200,6 +200,7 @@ jobs:
             echo "==> Done: $(basename "$archive")"
           done
         env:
+          MACOS_SIGN_IDENTITY: "${{ vars.MACOS_SIGN_IDENTITY || 'Developer ID Application: John Flowers (PGFWLVZX55)' }}"
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
 

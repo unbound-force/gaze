@@ -248,7 +248,7 @@ Required before merge. The project uses a four-persona automated review council 
 
 ### Semantic Versioning
 
-Releases follow [semver](https://semver.org/). Tags trigger the GoReleaser pipeline for cross-platform binary builds and Homebrew cask updates.
+Releases follow [semver](https://semver.org/). A `workflow_dispatch` trigger with a `tag` input starts the release pipeline, which delegates to org-infra reusable workflows for preflight validation and GoReleaser execution. To release: `gh workflow run release.yml -f tag=v1.2.3`.
 
 ## Spec-First Development
 

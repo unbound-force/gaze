@@ -56,6 +56,8 @@ homebrew_casks:
     repository:
       owner: unbound-force
       name: homebrew-tap
+      # Token is required for cask URL generation even with skip_upload: true.
+      # The workflow handles actual tap publishing (push-unsigned-cask / sign-macos).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/unbound-force/gaze
     description: >-
