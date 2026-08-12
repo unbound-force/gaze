@@ -72,10 +72,10 @@ jobs:
     permissions: {}
     timeout-minutes: 5
     outputs:
-      has_signing_secrets: ${{ steps.check.outputs.has_secrets }}
+      has_signing_secrets: ${{ steps.check-secrets.outputs.has_secrets }}
     steps:
       - name: Check signing secrets
-        id: check
+        id: check-secrets
         run: |
           if [ -n "$MACOS_SIGN_P12" ]; then
             echo "has_secrets=true" >> "$GITHUB_OUTPUT"
