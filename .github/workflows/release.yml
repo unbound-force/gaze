@@ -100,12 +100,14 @@ jobs:
     steps:
       - name: Download cask from release
         run: |
+          set -euo pipefail
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "gaze.rb" --dir ./cask-staging
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push unsigned cask to tap
         run: |
+          set -euo pipefail
           git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/unbound-force/homebrew-tap.git" tap
           cp ./cask-staging/gaze.rb tap/Casks/gaze.rb
           cd tap
@@ -119,9 +121,12 @@ jobs:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
   sign-macos:
+    name: Sign macOS
     runs-on: macos-latest
     needs: [preflight, release, check-signing-secrets]
-    if: needs.check-signing-secrets.outputs.has_signing_secrets == 'true'
+    if: >-
+      needs.preflight.outputs.tag != ''
+      && needs.check-signing-secrets.outputs.has_signing_secrets == 'true'
     permissions:
       contents: write
     timeout-minutes: 30
