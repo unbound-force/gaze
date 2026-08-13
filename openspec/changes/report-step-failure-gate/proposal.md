@@ -1,3 +1,5 @@
+<!-- spec-review: passed -->
+
 ## Why
 
 `gaze report` serves as a CI quality gate via threshold flags (`--max-crapload`,
@@ -71,31 +73,33 @@ were providing false assurance.
 
 ## Constitution Alignment
 
-Assessed against the Unbound Force org constitution.
+Assessed against the Gaze project constitution (`.specify/memory/constitution.md`
+v1.3.0).
 
-### I. Autonomous Collaboration
+### I. Accuracy
+
+**Assessment**: PASS
+
+This fix eliminates false-pass CI gate results caused by zero-value masquerade.
+When an analysis step fails, the threshold correctly reports FAIL with
+"unavailable" instead of silently passing with a zero value. This directly serves
+the Accuracy principle: "false positives erode trust and MUST be treated as bugs."
+
+### II. Minimal Assumptions
 
 **Assessment**: N/A
 
-This change is internal to the `gaze` binary and does not affect artifact-based
-communication between heroes.
+No new assumptions are introduced. The fix is internal to `internal/aireport/`
+and does not require users to annotate or restructure their code.
 
-### II. Composability First
-
-**Assessment**: PASS
-
-The change is entirely within `internal/aireport/` and does not introduce new
-dependencies or coupling. The `*int` pattern is already established in the same
-package.
-
-### III. Observable Quality
+### III. Actionable Output
 
 **Assessment**: PASS
 
-This fix directly improves observable quality — threshold results will
-accurately distinguish "measured zero" from "data unavailable" in machine-parseable
-JSON output. The `ThresholdResult.Actual` field (already `*int`) correctly
-represents nil vs zero.
+Threshold results now accurately distinguish "measured zero" (`intPtr(0)`) from
+"data unavailable" (`nil`). The `ThresholdResult.Actual` field (already `*int`)
+correctly represents nil vs zero, making metrics comparable across runs as
+required by the constitution.
 
 ### IV. Testability
 
@@ -104,4 +108,6 @@ represents nil vs zero.
 All DI seams needed for testing already exist (`pipelineStepFuncs`, `AnalyzeFunc`,
 `fakeAnalyze`). The fix adds ~8 new tests covering the previously-missing
 composition scenario (step failure + threshold configured). The existing test
-that enshrines the bug will be corrected.
+that enshrines the bug will be corrected. Coverage strategy: unit tests for
+`EvaluateThresholds` nil-handling, integration tests for `Run` end-to-end with
+step failures + thresholds, pipeline tests for summary field propagation.

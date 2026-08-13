@@ -35,15 +35,21 @@ depend on it.
 - [ ] 1.4 Change `compactSummary.CRAPload` from `int` to `*int` and
   `compactSummary.AvgContractCoverage` from `int` to `*int` in
   `internal/aireport/compact.go` (lines 27, 29). Add `omitempty` JSON
-  tags to match `GazeCRAPload` pattern. Update `CompactForAI` and
-  `compactForFullJSON` assignment sites (lines 165, 167, 232, 237) to
-  propagate `*int` values correctly.
+  tags to match `GazeCRAPload` pattern. Update `CompactForAI`
+  assignment sites (lines 165, 167) to propagate `*int` values
+  correctly. **Note**: `compactCRAPField` (lines 232, 237) copies from
+  `crap.Summary` which has its own `CRAPload int` and
+  `AvgContractCoverage *float64` — these are different types in a
+  different package and are NOT affected by this change.
 
 - [ ] 1.5 Update `runProductionPipeline` in `internal/aireport/runner.go`
   (lines 297, 313) — the assignment `payload.Summary.CRAPload = crapRes.CRAPload`
   already lives in the success branch, so it will naturally propagate the
-  `*int`. Verify no additional changes are needed in the error branch
-  (nil default is correct). Same for `AvgContractCoverage` at line 313.
+  `*int`. Confirm that the error branch does NOT set CRAPload — the nil
+  default is the desired semantics. Same for `AvgContractCoverage` at
+  line 313. **Note**: upstream `crap.Summary.CRAPload` remains `int` — the
+  `*int` wrapper is applied at the `aireport` pipeline boundary, not in the
+  `crap` package.
 
 ## 2. Threshold evaluation: nil-check guards
 
@@ -70,29 +76,31 @@ pattern (threshold.go:48-57).
 Add unit tests for `EvaluateThresholds` covering the new nil-handling
 paths.
 
-- [ ] 3.1 [P] Add `TestEvaluateThresholds_CRAPload_Unavailable` to
+- [ ] 3.1 Add `TestEvaluateThresholds_CRAPload_Unavailable` to
   `internal/aireport/threshold_test.go`. Verify that when
   `Summary.CRAPload` is nil and `MaxCrapload` is set, the result is
   FAIL with `Actual == nil` and `Name` contains "(unavailable)".
 
-- [ ] 3.2 [P] Add `TestEvaluateThresholds_AvgContractCoverage_Unavailable`
+- [ ] 3.2 Add `TestEvaluateThresholds_AvgContractCoverage_Unavailable`
   to `internal/aireport/threshold_test.go`. Same pattern for
   `AvgContractCoverage` + `MinContractCoverage`.
 
-- [ ] 3.3 [P] Add `TestEvaluateThresholds_CRAPload_ZeroIsValid` to
+- [ ] 3.3 Add `TestEvaluateThresholds_CRAPload_ZeroIsValid` to
   `internal/aireport/threshold_test.go`. Verify that
   `CRAPload = intPtr(0)` with `MaxCrapload = 5` produces PASS with
   `Actual = intPtr(0)` — confirming zero-from-success is
   distinguishable from nil-from-failure.
 
-- [ ] 3.4 [P] Update `TestEvaluateThresholds_NilPayload` in
+- [ ] 3.4 Update `TestEvaluateThresholds_NilPayload` in
   `internal/aireport/threshold_test.go` — with nil payload, all
   summary fields are nil (not zero), so all configured thresholds
-  should now FAIL with "(unavailable)".
+  should now FAIL with "(unavailable)". Expected assertion changes:
+  `passed=true` → `passed=false`, `results[0].Passed=true` →
+  `results[0].Passed=false`, `results[0].Actual == nil`, and
+  `results[0].Name` contains "(unavailable)".
 
-  **Note**: tasks 3.1-3.4 all touch `threshold_test.go` — despite [P]
-  markers, these should be implemented as a single batch to avoid
-  conflicts.
+  **Note**: tasks 3.1-3.4 all touch `threshold_test.go` and MUST be
+  implemented as a single batch to avoid conflicts.
 
 ## 4. Tests: integration (Run end-to-end)
 

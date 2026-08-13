@@ -78,8 +78,10 @@ thresholds configured must produce a non-nil error.
 ### D4: Compact struct alignment
 
 **Decision**: Update `compactSummary.CRAPload` from `int` to `*int` and
-`compactSummary.AvgContractCoverage` to match (already `*float64` in one
-location, `int` in another — align to `*int`).
+`compactSummary.AvgContractCoverage` from `int` to `*int`. Note:
+`compactCRAPSummary.AvgContractCoverage` is `*float64` (mirrors `crap.Summary`)
+and is a different struct — it is NOT changed by this spec. Only the pipeline
+summary fields in `compactSummary` are in scope.
 
 **Rationale**: The compact structs are the JSON-serialization boundary. The
 `omitempty` tag already exists on `GazeCRAPload` and should be applied
