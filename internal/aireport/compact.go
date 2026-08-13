@@ -24,9 +24,9 @@ type compactPayload struct {
 // compactSummary mirrors ReportSummary with JSON tags so it appears in
 // the compact payload output.
 type compactSummary struct {
-	CRAPload            int      `json:"crapload"`
-	GazeCRAPload        *int     `json:"gaze_crapload"`
-	AvgContractCoverage int      `json:"avg_contract_coverage"`
+	CRAPload            *int     `json:"crapload,omitempty"`
+	GazeCRAPload        *int     `json:"gaze_crapload,omitempty"`
+	AvgContractCoverage *int     `json:"avg_contract_coverage,omitempty"`
 	SSADegraded         bool     `json:"ssa_degraded"`
 	SSADegradedPackages []string `json:"ssa_degraded_packages"`
 	Contractual         int      `json:"contractual"`

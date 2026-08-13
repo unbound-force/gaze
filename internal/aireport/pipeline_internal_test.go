@@ -17,7 +17,7 @@ func fakeSteps() pipelineStepFuncs {
 		crapStep: func(_ []string, _ string, _ string, _ io.Writer, _ crap.ContractCoverageProvider, _ bool) (*crapStepResult, error) {
 			return &crapStepResult{
 				JSON:           json.RawMessage(`{"crap":"ok"}`),
-				CRAPload:       5,
+				CRAPload:       intPtr(5),
 				GazeCRAPload:   intPtr(3),
 				TotalFunctions: 20,
 			}, nil
@@ -25,7 +25,7 @@ func fakeSteps() pipelineStepFuncs {
 		qualityStep: func(_ []string, _ string, _ io.Writer, _ ...qualityPipelineDeps) (*qualityStepResult, error) {
 			return &qualityStepResult{
 				JSON:                json.RawMessage(`{"quality":"ok"}`),
-				AvgContractCoverage: 85,
+				AvgContractCoverage: intPtr(85),
 			}, nil
 		},
 		classifyStep: func(_ []string, _ string, _ ...qualityPipelineDeps) (*classifyStepResult, error) {
@@ -105,7 +105,7 @@ func TestRunProductionPipeline_CRAPStepSSADegradation(t *testing.T) {
 	steps.crapStep = func(_ []string, _ string, _ string, _ io.Writer, _ crap.ContractCoverageProvider, _ bool) (*crapStepResult, error) {
 		return &crapStepResult{
 			JSON:                json.RawMessage(`{"crap":"ok"}`),
-			CRAPload:            5,
+			CRAPload:            intPtr(5),
 			GazeCRAPload:        intPtr(3),
 			TotalFunctions:      20,
 			SSADegradedPackages: []string{"pkg/degraded-from-crap"},
@@ -306,7 +306,7 @@ func TestRunProductionPipeline_GazeCRAPloadFlowsThroughPipeline(t *testing.T) {
 	steps.crapStep = func(_ []string, _ string, _ string, _ io.Writer, _ crap.ContractCoverageProvider, _ bool) (*crapStepResult, error) {
 		return &crapStepResult{
 			JSON:           json.RawMessage(`{"crap":"ok"}`),
-			CRAPload:       2,
+			CRAPload:       intPtr(2),
 			GazeCRAPload:   intPtr(7),
 			TotalFunctions: 15,
 		}, nil
@@ -331,14 +331,45 @@ func TestRunProductionPipeline_SummaryFields(t *testing.T) {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
 
-	if payload.Summary.CRAPload != 5 {
-		t.Errorf("expected CRAPload 5, got %d", payload.Summary.CRAPload)
+	if payload.Summary.CRAPload == nil || *payload.Summary.CRAPload != 5 {
+		t.Errorf("expected CRAPload 5, got %v", payload.Summary.CRAPload)
 	}
 	if payload.Summary.GazeCRAPload == nil || *payload.Summary.GazeCRAPload != 3 {
 		t.Errorf("expected GazeCRAPload 3, got %v", payload.Summary.GazeCRAPload)
 	}
-	if payload.Summary.AvgContractCoverage != 85 {
-		t.Errorf("expected AvgContractCoverage 85, got %d", payload.Summary.AvgContractCoverage)
+	if payload.Summary.AvgContractCoverage == nil || *payload.Summary.AvgContractCoverage != 85 {
+		t.Errorf("expected AvgContractCoverage 85, got %v", payload.Summary.AvgContractCoverage)
+	}
+}
+
+// TestRunProductionPipeline_CRAPStepFails_CRAPloadIsNil verifies that when
+// the CRAP step fails, payload.Summary.CRAPload is nil (not zero). This is
+// the pipeline-level regression test for #102: the *int type ensures that
+// a failed step produces nil (unavailable) rather than the Go int zero value 0,
+// which would silently pass threshold checks.
+func TestRunProductionPipeline_CRAPStepFails_CRAPloadIsNil(t *testing.T) {
+	var stderr bytes.Buffer
+	steps := fakeSteps()
+	steps.crapStep = func(_ []string, _ string, _ string, _ io.Writer, _ crap.ContractCoverageProvider, _ bool) (*crapStepResult, error) {
+		return nil, fmt.Errorf("crap analysis failed")
+	}
+
+	payload, err := runProductionPipeline([]string{"./..."}, "/tmp", "", false, &stderr, steps)
+	if err != nil {
+		t.Fatalf("pipeline should not return error on step failure, got: %v", err)
+	}
+
+	// CRAPload must be nil (unavailable), not zero.
+	if payload.Summary.CRAPload != nil {
+		t.Errorf("expected CRAPload=nil when CRAP step failed, got %d", *payload.Summary.CRAPload)
+	}
+	// GazeCRAPload must also be nil (same step).
+	if payload.Summary.GazeCRAPload != nil {
+		t.Errorf("expected GazeCRAPload=nil when CRAP step failed, got %d", *payload.Summary.GazeCRAPload)
+	}
+	// AvgContractCoverage should be populated (quality step succeeded).
+	if payload.Summary.AvgContractCoverage == nil {
+		t.Error("expected AvgContractCoverage to be populated (quality step succeeded)")
 	}
 }
 
@@ -356,7 +387,7 @@ func TestRunProductionPipeline_TestShortThreadsToStep(t *testing.T) {
 		capturedShort = short
 		return &crapStepResult{
 			JSON:           json.RawMessage(`{"crap":"ok"}`),
-			CRAPload:       1,
+			CRAPload:       intPtr(1),
 			GazeCRAPload:   intPtr(0),
 			TotalFunctions: 5,
 		}, nil

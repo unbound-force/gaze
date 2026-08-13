@@ -16,7 +16,7 @@ func TestReportPayload_JSONRoundTrip(t *testing.T) {
 	docscanMsg := json.RawMessage(`[{"path":"README.md","content":"x","priority":2}]`)
 
 	original := &ReportPayload{
-		Summary:  ReportSummary{CRAPload: 3, GazeCRAPload: intPtr(1), AvgContractCoverage: 75},
+		Summary:  ReportSummary{CRAPload: intPtr(3), GazeCRAPload: intPtr(1), AvgContractCoverage: intPtr(75)},
 		CRAP:     crapMsg,
 		Quality:  qualityMsg,
 		Classify: classifyMsg,
@@ -58,8 +58,8 @@ func TestReportPayload_JSONRoundTrip(t *testing.T) {
 	}
 
 	// Summary is not serialised (json:"-"), so decoded.Summary should be zero.
-	if decoded.Summary.CRAPload != 0 || decoded.Summary.GazeCRAPload != nil ||
-		decoded.Summary.AvgContractCoverage != 0 || decoded.Summary.SSADegraded ||
+	if decoded.Summary.CRAPload != nil || decoded.Summary.GazeCRAPload != nil ||
+		decoded.Summary.AvgContractCoverage != nil || decoded.Summary.SSADegraded ||
 		len(decoded.Summary.SSADegradedPackages) != 0 ||
 		decoded.Summary.Contractual != 0 || decoded.Summary.Ambiguous != 0 ||
 		decoded.Summary.Incidental != 0 {
@@ -152,7 +152,7 @@ func TestPayloadErrors_NullVsNonNull(t *testing.T) {
 // from JSON output via the json:"-" tag.
 func TestReportSummary_NotSerialised(t *testing.T) {
 	p := &ReportPayload{
-		Summary: ReportSummary{CRAPload: 99, GazeCRAPload: intPtr(42), AvgContractCoverage: 55},
+		Summary: ReportSummary{CRAPload: intPtr(99), GazeCRAPload: intPtr(42), AvgContractCoverage: intPtr(55)},
 	}
 	data, err := json.Marshal(p)
 	if err != nil {

@@ -1811,7 +1811,8 @@ func runExternalReportCRAP(pats []string, modDir string, providers *adapter.Prov
 	}
 
 	payload := &aireport.ReportPayload{CRAP: crapJSON}
-	payload.Summary.CRAPload = rpt.Summary.CRAPload
+	crapload := rpt.Summary.CRAPload
+	payload.Summary.CRAPload = &crapload
 	payload.Summary.GazeCRAPload = rpt.Summary.GazeCRAPload
 	payload.Summary.TotalFunctions = rpt.Summary.TotalFunctions
 

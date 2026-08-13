@@ -2039,8 +2039,9 @@ func TestSC002_ReportStructure(t *testing.T) {
 // with no I/O — its performance is validated by the BenchmarkEvaluateThresholds
 // benchmark in threshold_test.go.
 func TestSC003_ThresholdEvaluation_Correctness(t *testing.T) {
+	intPtr := func(v int) *int { return &v }
 	payload := &aireport.ReportPayload{
-		Summary: aireport.ReportSummary{CRAPload: 3},
+		Summary: aireport.ReportSummary{CRAPload: intPtr(3)},
 	}
 	maxCrapload := 10
 	cfg := aireport.ThresholdConfig{MaxCrapload: &maxCrapload}
@@ -2314,31 +2315,31 @@ func TestRunReport_ThresholdEnforcement(t *testing.T) {
 	}{
 		{
 			name:       "SC1: CRAPload exceeds max → fail",
-			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: 13}},
+			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: intPtr(13)}},
 			thresholds: aireport.ThresholdConfig{MaxCrapload: intPtr(10)},
 			expectFail: true,
 		},
 		{
 			name:       "SC2: CRAPload within max → pass",
-			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: 8}},
+			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: intPtr(8)}},
 			thresholds: aireport.ThresholdConfig{MaxCrapload: intPtr(10)},
 			expectFail: false,
 		},
 		{
 			name:       "SC3: avg coverage below min → fail",
-			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, AvgContractCoverage: 40}},
+			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, AvgContractCoverage: intPtr(40)}},
 			thresholds: aireport.ThresholdConfig{MinContractCoverage: intPtr(60)},
 			expectFail: true,
 		},
 		{
 			name:       "SC4: no thresholds → pass",
-			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: 999}},
+			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: intPtr(999)}},
 			thresholds: aireport.ThresholdConfig{},
 			expectFail: false,
 		},
 		{
 			name:       "SC5: max-crapload=0 with positive actual → fail",
-			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: 1}},
+			payload:    &aireport.ReportPayload{Summary: aireport.ReportSummary{TotalFunctions: 20, CRAPload: intPtr(1)}},
 			thresholds: aireport.ThresholdConfig{MaxCrapload: intPtr(0)},
 			expectFail: true,
 		},

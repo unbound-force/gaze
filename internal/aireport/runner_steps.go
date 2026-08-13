@@ -84,7 +84,7 @@ func resolveQualityDeps(deps []qualityPipelineDeps) qualityPipelineDeps {
 // crapStepResult holds the outputs of runCRAPStep.
 type crapStepResult struct {
 	JSON                json.RawMessage
-	CRAPload            int
+	CRAPload            *int
 	GazeCRAPload        *int
 	TotalFunctions      int
 	SSADegradedPackages []string
@@ -127,7 +127,7 @@ func runCRAPStep(patterns []string, moduleDir string, coverProfile string, stder
 
 	res := &crapStepResult{
 		JSON:                raw,
-		CRAPload:            rpt.Summary.CRAPload,
+		CRAPload:            intPtr(rpt.Summary.CRAPload),
 		GazeCRAPload:        rpt.Summary.GazeCRAPload,
 		TotalFunctions:      rpt.Summary.TotalFunctions,
 		SSADegradedPackages: rpt.Summary.SSADegradedPackages,
@@ -138,7 +138,7 @@ func runCRAPStep(patterns []string, moduleDir string, coverProfile string, stder
 // qualityStepResult holds the outputs of runQualityStep.
 type qualityStepResult struct {
 	JSON                json.RawMessage
-	AvgContractCoverage int
+	AvgContractCoverage *int
 	SSADegraded         bool
 	SSADegradedPackages []string
 	SkippedTests        int
@@ -201,7 +201,7 @@ func runQualityStep(patterns []string, moduleDir string, stderr io.Writer, deps 
 	}
 	return &qualityStepResult{
 		JSON:                raw,
-		AvgContractCoverage: avgCov,
+		AvgContractCoverage: intPtr(avgCov),
 		SSADegraded:         len(degradedPkgs) > 0,
 		SSADegradedPackages: degradedPkgs,
 		SkippedTests:        totalSkipped,

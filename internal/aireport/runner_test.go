@@ -21,7 +21,7 @@ func fakeAnalyze(payload *ReportPayload, err error) func([]string, string) (*Rep
 func TestRun_JSONFormat_WritesValidPayload(t *testing.T) {
 	crapMsg := json.RawMessage(`{"scores":[],"summary":{"crapload":2}}`)
 	payload := &ReportPayload{
-		Summary: ReportSummary{CRAPload: 2},
+		Summary: ReportSummary{CRAPload: intPtr(2)},
 		CRAP:    crapMsg,
 		Errors:  PayloadErrors{},
 	}
@@ -345,7 +345,7 @@ func TestRun_TextFormat_NilAdapter_ReturnsError(t *testing.T) {
 func TestRun_ThresholdFailure_ReturnsError(t *testing.T) {
 	maxCrapload := 5
 	payload := &ReportPayload{
-		Summary: ReportSummary{TotalFunctions: 20, CRAPload: 10},
+		Summary: ReportSummary{TotalFunctions: 20, CRAPload: intPtr(10)},
 	}
 
 	var stderr bytes.Buffer
@@ -372,7 +372,7 @@ func TestRun_ThresholdFailure_ReturnsError(t *testing.T) {
 func TestRun_ThresholdPass_ReturnsNil(t *testing.T) {
 	maxCrapload := 20
 	payload := &ReportPayload{
-		Summary: ReportSummary{TotalFunctions: 20, CRAPload: 5},
+		Summary: ReportSummary{TotalFunctions: 20, CRAPload: intPtr(5)},
 	}
 
 	var stderr bytes.Buffer
@@ -423,7 +423,8 @@ func TestRun_ZeroResults_ThresholdSet_ReturnsError(t *testing.T) {
 	maxCrapload := 5
 	payload := &ReportPayload{
 		// Zero results: TotalFunctions=0, no CRAP error.
-		Summary: ReportSummary{TotalFunctions: 0, CRAPload: 0, GazeCRAPload: nil},
+		// CRAPload is intPtr(0) because the step succeeded but found no functions.
+		Summary: ReportSummary{TotalFunctions: 0, CRAPload: intPtr(0), GazeCRAPload: nil},
 		Errors:  PayloadErrors{},
 	}
 
@@ -451,7 +452,7 @@ func TestRun_ZeroResults_ThresholdSet_ReturnsError(t *testing.T) {
 // Run returns nil (no error).
 func TestRun_ZeroResults_NoThreshold_ReturnsNil(t *testing.T) {
 	payload := &ReportPayload{
-		Summary: ReportSummary{TotalFunctions: 0, CRAPload: 0, GazeCRAPload: nil},
+		Summary: ReportSummary{TotalFunctions: 0, CRAPload: intPtr(0), GazeCRAPload: nil},
 		Errors:  PayloadErrors{},
 	}
 
@@ -468,14 +469,20 @@ func TestRun_ZeroResults_NoThreshold_ReturnsNil(t *testing.T) {
 	}
 }
 
-// TestRun_ZeroResults_CRAPStepFailed_NoGate verifies that the zero-result
-// gate does NOT fire when the CRAP step itself failed (the error is already
-// captured in PayloadErrors.CRAP).
-func TestRun_ZeroResults_CRAPStepFailed_NoGate(t *testing.T) {
+// TestRun_CRAPStepFailed_ThresholdSet_ReturnsError verifies that when the
+// CRAP step fails and a CRAPload threshold is configured, Run returns a
+// non-nil error because the CRAPload metric is unavailable (nil). This is
+// the fix for #102: CI gates must not silently pass when data is missing.
+//
+// Previously this test (named TestRun_ZeroResults_CRAPStepFailed_NoGate)
+// asserted err == nil, which enshrined the bug as correct behavior.
+func TestRun_CRAPStepFailed_ThresholdSet_ReturnsError(t *testing.T) {
 	maxCrapload := 5
 	crapErr := "coverage profile failed"
 	payload := &ReportPayload{
-		Summary: ReportSummary{TotalFunctions: 0, CRAPload: 0, GazeCRAPload: nil},
+		// CRAPload is nil because the CRAP step failed — the summary field
+		// was never set. GazeCRAPload is also nil (same step).
+		Summary: ReportSummary{TotalFunctions: 0, CRAPload: nil, GazeCRAPload: nil},
 		Errors:  PayloadErrors{CRAP: &crapErr},
 	}
 
@@ -489,17 +496,49 @@ func TestRun_ZeroResults_CRAPStepFailed_NoGate(t *testing.T) {
 			MaxCrapload: &maxCrapload,
 		},
 	})
-	// The zero-result gate skips because payload.Errors.CRAP is set
-	// (the CRAP step already failed). Threshold evaluation proceeds:
-	// CRAPload(0) <= 5 passes, so Run returns nil. The key invariant
-	// is that the error is NOT "no functions analyzed" — that gate
+	// The zero-result gate still skips because payload.Errors.CRAP is set.
+	// But threshold evaluation now correctly detects CRAPload=nil (unavailable)
+	// and fails the gate. Run must return a non-nil error.
+	if err == nil {
+		t.Fatal("expected error when CRAP step failed and threshold is set (CRAPload unavailable)")
+	}
+	// The error should NOT be "no functions analyzed" — that gate
 	// must not fire when the CRAP step itself reported an error.
-	if err != nil {
-		if strings.Contains(err.Error(), "no functions analyzed") {
-			t.Errorf("zero-result gate fired despite CRAP step error: %v", err)
-		} else {
-			t.Errorf("expected nil error (CRAP step error bypasses zero-result gate, threshold passes), got: %v", err)
-		}
+	if strings.Contains(err.Error(), "no functions analyzed") {
+		t.Errorf("zero-result gate fired despite CRAP step error: %v", err)
+	}
+}
+
+// TestRun_QualityStepFailed_ContractCoverageThreshold_ReturnsError verifies
+// that when the quality step fails and MinContractCoverage is set, Run returns
+// an error because AvgContractCoverage is unavailable (nil).
+func TestRun_QualityStepFailed_ContractCoverageThreshold_ReturnsError(t *testing.T) {
+	minCov := 50
+	qualErr := "quality analysis failed"
+	payload := &ReportPayload{
+		Summary: ReportSummary{
+			// CRAP step succeeded — CRAPload is valid.
+			CRAPload:       intPtr(3),
+			TotalFunctions: 10,
+			// Quality step failed — AvgContractCoverage is nil (never set).
+			AvgContractCoverage: nil,
+		},
+		CRAP:   json.RawMessage(`{"scores":[]}`),
+		Errors: PayloadErrors{Quality: &qualErr},
+	}
+
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "json",
+		Stdout:      &bytes.Buffer{},
+		Stderr:      &bytes.Buffer{},
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+		Thresholds: ThresholdConfig{
+			MinContractCoverage: &minCov,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when quality step failed and MinContractCoverage is set")
 	}
 }
 
@@ -507,7 +546,7 @@ func TestRun_ZeroResults_CRAPStepFailed_NoGate(t *testing.T) {
 // not fire when TotalFunctions > 0 (functions were analyzed).
 func TestCheckZeroResultGate_NonZeroTotalFunctions(t *testing.T) {
 	payload := &ReportPayload{
-		Summary: ReportSummary{TotalFunctions: 10, CRAPload: 0},
+		Summary: ReportSummary{TotalFunctions: 10, CRAPload: intPtr(0)},
 	}
 	cfg := ThresholdConfig{MaxCrapload: intPtr(5)}
 	err := checkZeroResultGate(payload, cfg)

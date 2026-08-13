@@ -19,7 +19,8 @@ type ReportSummary struct {
 
 	// CRAPload is the number of functions whose CRAP score meets or exceeds
 	// the configured threshold (from crap.Report.Summary.CRAPload).
-	CRAPload int
+	// Nil means the metric was not computed (e.g., CRAP step failed).
+	CRAPload *int
 
 	// GazeCRAPload is the number of Q4 functions (high complexity, low
 	// coverage) from crap.Report.Summary.GazeCRAPload. Nil means the
@@ -28,7 +29,8 @@ type ReportSummary struct {
 
 	// AvgContractCoverage is the average contract coverage percentage across
 	// all assessed packages (from quality.Summary.AvgContractCoverage).
-	AvgContractCoverage int
+	// Nil means the metric was not computed (e.g., quality step failed).
+	AvgContractCoverage *int
 
 	// SSADegraded is true when SSA construction failed for one or
 	// more packages and quality results are partial.

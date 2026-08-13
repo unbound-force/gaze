@@ -365,8 +365,8 @@ func TestRunQualityStep_DI_MultiplePackages(t *testing.T) {
 	}
 	// AvgContractCoverage should be computed from 2 reports.
 	// Both fake reports return 80% coverage, so the average should be 80.
-	if result.AvgContractCoverage != 80 {
-		t.Errorf("expected AvgContractCoverage=80, got %d", result.AvgContractCoverage)
+	if result.AvgContractCoverage == nil || *result.AvgContractCoverage != 80 {
+		t.Errorf("expected AvgContractCoverage=80, got %v", result.AvgContractCoverage)
 	}
 }
 
