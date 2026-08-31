@@ -13,8 +13,6 @@ package adapter
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/protocol"
@@ -38,20 +36,12 @@ func (p *ExternalComplexityProvider) Analyze(patterns []string, rootDir string) 
 	ctx, cancel := context.WithTimeout(context.Background(), protocol.AnalysisTimeout)
 	defer cancel()
 
-	resp, err := p.client.Call(ctx, protocol.MethodComplexity, protocol.ComplexityParams{
+	result, err := callAndUnmarshal[protocol.ComplexityResult](ctx, p.client, protocol.MethodComplexity, protocol.ComplexityParams{
 		RootPath: rootDir,
 		Patterns: patterns,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("complexity protocol call: %w", err)
-	}
-	if resp.Error != nil {
-		return nil, fmt.Errorf("complexity protocol error: %s (code %d)", resp.Error.Message, resp.Error.Code)
-	}
-
-	var result protocol.ComplexityResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("parsing complexity result: %w", err)
+		return nil, err
 	}
 
 	return convertComplexity(result.Functions), nil

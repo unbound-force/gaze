@@ -111,20 +111,12 @@ func (a *ExternalSideEffectAnalyzer) loadBatch() error {
 	ctx, cancel := context.WithTimeout(context.Background(), protocol.AnalysisTimeout)
 	defer cancel()
 
-	resp, err := a.client.Call(ctx, protocol.MethodAnalyze, protocol.AnalyzeParams{
+	result, err := callAndUnmarshal[protocol.AnalyzeResult](ctx, a.client, protocol.MethodAnalyze, protocol.AnalyzeParams{
 		RootPath: a.rootDir,
 		Patterns: a.patterns,
 	})
 	if err != nil {
-		return fmt.Errorf("analyze protocol call: %w", err)
-	}
-	if resp.Error != nil {
-		return fmt.Errorf("analyze protocol error: %s (code %d)", resp.Error.Message, resp.Error.Code)
-	}
-
-	var result protocol.AnalyzeResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return fmt.Errorf("parsing analyze result: %w", err)
+		return err
 	}
 
 	a.cached = convertAnalysisResults(result.Functions, a.stderr)

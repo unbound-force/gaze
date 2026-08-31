@@ -2,8 +2,6 @@ package adapter
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/protocol"
@@ -29,20 +27,12 @@ func (p *ExternalLineCoverageProvider) Coverage(patterns []string, rootDir strin
 	ctx, cancel := context.WithTimeout(context.Background(), protocol.AnalysisTimeout)
 	defer cancel()
 
-	resp, err := p.client.Call(ctx, protocol.MethodCoverage, protocol.CoverageParams{
+	result, err := callAndUnmarshal[protocol.CoverageResult](ctx, p.client, protocol.MethodCoverage, protocol.CoverageParams{
 		RootPath: rootDir,
 		Patterns: patterns,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("coverage protocol call: %w", err)
-	}
-	if resp.Error != nil {
-		return nil, fmt.Errorf("coverage protocol error: %s (code %d)", resp.Error.Message, resp.Error.Code)
-	}
-
-	var result protocol.CoverageResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("parsing coverage result: %w", err)
+		return nil, err
 	}
 
 	return convertCoverage(result.Functions), nil
