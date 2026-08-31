@@ -1,7 +1,6 @@
 package analysis_test
 
 import (
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,61 +15,15 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// safeSSABuild tests
-// ---------------------------------------------------------------------------
-
-// TestSafeSSABuild_NoPanic verifies that safeSSABuild returns nil
-// when the build function completes without panicking.
-func TestSafeSSABuild_NoPanic(t *testing.T) {
-	result := analysis.SafeSSABuild(func() {
-		// no panic
-	})
-	if result != nil {
-		t.Errorf("safeSSABuild returned %v, want nil for non-panicking function", result)
-	}
-}
-
-// TestSafeSSABuild_PanicString verifies that safeSSABuild recovers
-// a panic with a string value and returns it.
-func TestSafeSSABuild_PanicString(t *testing.T) {
-	result := analysis.SafeSSABuild(func() {
-		panic("test panic message")
-	})
-	s, ok := result.(string)
-	if !ok {
-		t.Fatalf("safeSSABuild returned %T, want string", result)
-	}
-	if s != "test panic message" {
-		t.Errorf("safeSSABuild returned %q, want %q", s, "test panic message")
-	}
-}
-
-// TestSafeSSABuild_PanicError verifies that safeSSABuild recovers
-// a panic with an error value and returns it.
-func TestSafeSSABuild_PanicError(t *testing.T) {
-	errPanic := errors.New("SSA builder error")
-	result := analysis.SafeSSABuild(func() {
-		panic(errPanic)
-	})
-	e, ok := result.(error)
-	if !ok {
-		t.Fatalf("safeSSABuild returned %T, want error", result)
-	}
-	if e != errPanic {
-		t.Errorf("safeSSABuild returned error %v, want %v", e, errPanic)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // SC-001 / SC-002: panic recovery contract tests
 //
 // Note: BuildSSA's panic recovery cannot be tested end-to-end because
 // prog.Build() is a concrete method on *ssa.Program that cannot be
 // mocked or injected. The recovery pattern is verified through the
-// safeSSABuild helper tests above (which exercise the identical
-// defer/recover logic). BuildSSA's logging behavior is verified by
-// code inspection — the log.Warn/log.Debug calls are co-located with the
-// safeSSABuild call in the same if-block.
+// ssaguard.SafeSSABuild tests in internal/ssaguard/ssaguard_test.go
+// (which exercise the identical defer/recover logic). BuildSSA's logging
+// behavior is verified by code inspection — the log.Warn/log.Debug calls
+// are co-located with the ssaguard.SafeSSABuild call in the same if-block.
 // ---------------------------------------------------------------------------
 
 // TestSC001_BuildSSANoPanicReturnsPackage verifies that BuildSSA

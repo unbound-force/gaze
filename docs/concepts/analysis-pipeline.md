@@ -142,7 +142,7 @@ The pipeline is designed to produce useful results even when parts fail:
 
 | Failure | Impact | Mitigation |
 |---|---|---|
-| SSA build panics | No mutation detection via SSA | `safeSSABuild` recovers the panic; AST fallback detects common mutation patterns |
+| SSA build panics | No mutation detection via SSA | `ssaguard.SafeSSABuild` recovers the panic; AST fallback detects common mutation patterns |
 | SSA build returns nil | Same as panic | AST fallback activates automatically |
 | Type info unavailable | Reduced precision for global detection, import resolution | Fallback to AST name matching (may produce false positives) |
 | Package load errors | No analysis for that package | Error returned to caller; other packages unaffected |
