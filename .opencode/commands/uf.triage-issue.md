@@ -10,6 +10,8 @@ You are a token-efficient issue analyst. The user provides a GitHub issue number
 
 The command follows four sequential phases (Ingest → Assess → Classify → Act). Phases are not independently invocable — run all four in sequence every invocation.
 
+<protect>
+
 ## Arguments
 
 - **Issue number** (required): The GitHub issue number to triage (e.g., `42`).
@@ -212,6 +214,44 @@ If two or more agents recommend splitting the issue, synthesize their recommenda
 
 Present the analysis and execute triage actions with user confirmation.
 
+>>> MANDATORY GATE: HUMAN CONFIRMATION REQUIRED <<<
+
+**Session-resume guard**: If this session was resumed
+from compressed context, or if you cannot verify that
+the human explicitly confirmed the triage actions in the
+current uncompressed conversation history, you MUST
+re-present the Phase 4.1 summary and obtain fresh
+confirmation via the **question tool** before proceeding.
+Do NOT rely on confirmation recorded in compressed
+context. When in doubt, re-confirm -- false
+re-confirmation is harmless; executing mutations without
+consent is a violation.
+
+**Before presenting the gate question**: Execute step 4.1
+below to display the full triage summary. The human MUST
+see the summary before being asked to confirm.
+
+**Confirmation**: Use the **question tool** with options:
+`["Proceed -- execute triage actions",
+"Skip -- write artifact only"]`.
+
+- If the user selects **"Proceed"**: continue to steps
+  4.2, 4.3, and 4.4 as described below.
+- If the user selects **"Skip"**: skip steps 4.2, 4.3,
+  and 4.4 entirely. Jump directly to step 4.5 (artifact
+  generation). Record `actions_taken` with all fields
+  set to their "not executed" defaults.
+
+**Mutation safety reminder**: All GitHub mutations in
+steps 4.2, 4.3, and 4.4 MUST use the temp file +
+`--input` pattern (see Guardrail 8). Write all untrusted
+content to a temporary file with restrictive permissions
+(`chmod 600` or `umask 077`), pass via `gh api --input
+<tmpfile>`, and clean up the file on ALL exit paths.
+MUST NOT interpolate untrusted text into shell arguments.
+
+>>> END MANDATORY GATE <<<
+
 ### 4.1 Present Analysis Summary
 
 Display the consolidated classification to the user:
@@ -240,7 +280,7 @@ Split:        <"recommended" with count, or "not recommended">
 
 ### 4.2 Label Application
 
-**All label mutations require user confirmation.** Before creating or applying any label, use the **AskUserQuestion tool** to obtain explicit confirmation. The `duplicate` label has an additional supplementary confirmation gate because it carries implicit "close" semantics.
+**All label mutations require user confirmation.** Before creating or applying any label, use the **question tool** to obtain explicit confirmation. The `duplicate` label has an additional supplementary confirmation gate because it carries implicit "close" semantics.
 
 **Label mapping**:
 
@@ -260,7 +300,7 @@ Split:        <"recommended" with count, or "not recommended">
 
 **Path A — Label does NOT exist in the repository**:
 
-Inform the user: "The label '<label>' does not exist in the repository." Use the **AskUserQuestion tool** with options `["Yes -- create and apply label '<label>'", "No -- skip"]`.
+Inform the user: "The label '<label>' does not exist in the repository." Use the **question tool** with options `["Yes -- create and apply label '<label>'", "No -- skip"]`.
 
 If the user selects "No -- skip", skip both label creation and application. Record `labels_applied: []` and `label_creation_failed: false` in `actions_taken`. Proceed to Section 4.3.
 
@@ -280,7 +320,7 @@ gh issue edit <ISSUE_NUMBER> --add-label "<label>"
 
 **Path B — Label already EXISTS in the repository**:
 
-Use the **AskUserQuestion tool** with options `["Yes -- apply label '<label>'", "No -- skip"]`.
+Use the **question tool** with options `["Yes -- apply label '<label>'", "No -- skip"]`.
 
 If the user selects "No -- skip", skip label application. Record `labels_applied: []` in `actions_taken`. Proceed to Section 4.3.
 
@@ -290,7 +330,7 @@ If the user confirms, apply the label:
 gh issue edit <ISSUE_NUMBER> --add-label "<label>"
 ```
 
-**For `duplicate` label only** (supplementary gate, applies after either Path A or Path B confirmation): Inform the user that the `duplicate` label signals the issue should be closed. Use the **AskUserQuestion tool** with options `["Yes -- apply duplicate label", "No -- skip"]`. Only execute the `gh issue edit --add-label` command if the user confirms this supplementary gate. If the user declines, skip label application, record `labels_applied: []` in `actions_taken`, and proceed to Section 4.3.
+**For `duplicate` label only** (supplementary gate, applies after either Path A or Path B confirmation): Inform the user that the `duplicate` label signals the issue should be closed. Use the **question tool** with options `["Yes -- apply duplicate label", "No -- skip"]`. Only execute the `gh issue edit --add-label` command if the user confirms this supplementary gate. If the user declines, skip label application, record `labels_applied: []` in `actions_taken`, and proceed to Section 4.3.
 
 ### 4.3 Comment Composition and Posting
 
@@ -312,21 +352,21 @@ _This triage was performed by the Divisor review panel._
 **Re-run check**: If a previous triage comment was
 detected in Phase 1.2, warn the user that posting
 another comment may cause confusion. Use the
-**AskUserQuestion tool** with options `["Yes -- post
+**question tool** with options `["Yes -- post
 another comment", "No -- skip comment"]`. If the user
 selects "No -- skip comment", record
 `comment_posted: false` in the artifact and skip to
 Phase 4.4.
 
 **Present the composed comment to the user for
-confirmation**: Use the **AskUserQuestion tool** with
+confirmation**: Use the **question tool** with
 options `["Approve -- post as-is", "Modify -- adjust
 comment text", "Abort -- do not post"]`.
 
 | Selection | Action |
 |---|---|
 | **Approve -- post as-is** | Post the comment as-is |
-| **Modify -- adjust comment text** | Use **AskUserQuestion tool** (open-ended, no preset options) to collect the adjusted comment text; post the adjusted version |
+| **Modify -- adjust comment text** | Use **question tool** (open-ended, no preset options) to collect the adjusted comment text; post the adjusted version |
 | **Abort -- do not post** | Do not post any comment; record `comment_posted: false` in artifact |
 
 **Post the comment** (on Approve or Modify):
@@ -358,7 +398,7 @@ This section applies only when Phase 3.5 produced split recommendations.
 For each proposed child issue:
 
 1. **Present to user**: Show the proposed title and body.
-   Use the **AskUserQuestion tool** with options
+   Use the **question tool** with options
    `["Yes -- create this child issue", "No -- skip"]`
    for each child issue individually.
 
@@ -369,7 +409,7 @@ gh issue list --search "<sanitized-child-title>" --state open --json number,titl
 ```
 
    If a close match is found, warn the user about the
-   potential duplicate and use the **AskUserQuestion
+   potential duplicate and use the **question
    tool** with options `["Yes -- create anyway",
    "No -- skip this child issue"]`.
 
@@ -495,3 +535,5 @@ Fields may be `null` when not applicable (e.g., `duplicate_of` when the issue is
 8. **Shell injection prevention**: All untrusted text (issue content, agent output, synthesized comments, child issue content) MUST be written to temporary files and passed via `--input` for all `gh api` calls. Untrusted text MUST NOT be interpolated into shell arguments. Temp files MUST use restrictive permissions (`chmod 600`) and be cleaned up in all exit paths (success, failure, abort).
 
 9. **Safe artifact paths**: The issue number is validated as a positive integer (matching `^[1-9][0-9]*$`) before use in any file path. This validation occurs in the Arguments section before any other processing.
+
+</protect>

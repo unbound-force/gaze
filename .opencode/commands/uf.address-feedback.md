@@ -10,6 +10,8 @@ You are a token-efficient feedback analyst. The user will provide a PR number or
 
 The command follows four sequential phases (Ingest → Assess → Triage → Execute). Phases are not independently invocable — run all four in sequence every invocation.
 
+<protect>
+
 > **SESSION-RESUME GUARD**: If this session has been resumed
 > from compressed context, or if you cannot locate the
 > execution checklist in the current conversation, you MUST:
@@ -23,6 +25,7 @@ The command follows four sequential phases (Ingest → Assess → Triage → Exe
 >    execution checklist are authoritative
 > 5. Resume from the first incomplete phase
 
+
 ## Arguments
 
 - **PR number** (optional): The pull request number to address feedback for (e.g., `42`). If omitted, auto-detect the open PR for the current branch.
@@ -30,6 +33,7 @@ The command follows four sequential phases (Ingest → Assess → Triage → Exe
 **Argument parsing** (before any tool calls): Check the user's message for a PR number argument. If present, set `PR_NUMBER` to that value immediately. All subsequent steps use `<PR_NUMBER>` — no auto-detection commands are needed or permitted.
 
 ---
+
 
 ## Execution Checklist
 
@@ -52,6 +56,7 @@ of progress.
 
 Replace `_N_`, `_M_`, etc. with actual counts as you
 progress. Mark each line `[x]` when the phase completes.
+
 
 ---
 
@@ -282,18 +287,20 @@ If the item has a GitHub suggestion block, display it clearly as an applicable c
 
 ### 3.2 Author Decision
 
-For each item, use the **AskUserQuestion tool** with
+For each item, use the **question tool** with
 options `["Accept", "Modify", "Reject", "Ask"]`. The
 author chooses exactly one:
 
 | Decision | Follow-up | Queued action |
 |---|---|---|
 | **Accept** | (none) | Code change using suggested approach |
-| **Modify** | Use **AskUserQuestion tool** (open-ended, no preset options) to collect the alternative approach | Code change using author's approach |
-| **Reject** | Use **AskUserQuestion tool** (open-ended, no preset options) to collect evidence-based reasoning | Reply comment with reasoning |
-| **Ask** | Use **AskUserQuestion tool** (open-ended, no preset options) to collect the clarification question | Reply comment with question |
+| **Modify** | Use **question tool** (open-ended, no preset options) to collect the alternative approach | Code change using author's approach |
+| **Reject** | Use **question tool** (open-ended, no preset options) to collect evidence-based reasoning | Reply comment with reasoning |
+| **Ask** | Use **question tool** (open-ended, no preset options) to collect the clarification question | Reply comment with question |
+
 
 **No item may be skipped or deferred.** Every item MUST receive a decision before the triage phase completes.
+
 
 ### 3.3 Conflicting Items
 
@@ -314,7 +321,7 @@ Total:   N items
 ```
 
 List each item with its decision. Use the
-**AskUserQuestion tool** with options `["Confirm --
+**question tool** with options `["Confirm --
 proceed with execution", "Revise -- change decisions"]`
 before execution proceeds.
 
@@ -325,6 +332,51 @@ before execution proceeds.
 ---
 
 ## Phase 4: Execute
+
+>>> MANDATORY GATE: HUMAN CONFIRMATION REQUIRED <<<
+
+**Session-resume guard**: If this session was resumed
+from compressed context, or if you cannot verify that
+the human explicitly confirmed the Phase 4 execution
+plan in the current uncompressed conversation history,
+you MUST re-present the execution summary below and
+obtain fresh confirmation via the **question tool**
+before proceeding. Do NOT rely on confirmation recorded
+in compressed context. When in doubt, re-confirm —
+false re-confirmation is harmless; executing mutations
+without consent is a violation.
+
+Present the execution summary to the user:
+
+> **Phase 4 Execution Plan:**
+>
+> - Code changes: N files to modify (ACCEPT: N, MODIFY: N)
+> - Commits: grouped by scope
+> - Push: to remote after review-council passes
+> - Reply comments: N comments to post on PR
+> - Thread resolutions: N threads to resolve
+>
+> This will execute all queued actions from Phase 3
+> triage. Individual sub-steps (4.4 push, 4.5 reply
+> comments) have their own confirmation prompts.
+
+Use the **question tool** with options
+`["Proceed with Phase 4 execution",
+"Review plan again", "Abort -- stop here"]`.
+
+- **"Proceed with Phase 4 execution"**: Continue to
+  sub-step 4.1.
+- **"Review plan again"**: Re-display the Phase 3
+  triage summary and allow decision changes.
+- **"Abort -- stop here"**: Stop execution. Report
+  that no mutations were performed.
+
+**CRITICAL RULE**: NEVER begin Phase 4 execution
+(code changes, commits, push, reply comments, or
+thread resolutions) without explicit human
+confirmation via the **question tool**.
+
+>>> END MANDATORY GATE <<<
 
 Implement all queued actions as a batch.
 
@@ -399,7 +451,7 @@ git status
 
 **If branch has diverged** (another contributor pushed
 commits): warn the author and use the
-**AskUserQuestion tool** with options `["Rebase onto
+**question tool** with options `["Rebase onto
 remote and push", "Abort -- preserve local commits"]`.
 
 Push all commits:
@@ -418,8 +470,9 @@ git push origin <branch>
 
 After push succeeds (or if there are no code changes),
 post reply comments to the PR. Before posting, use the
-**AskUserQuestion tool** with options `["Yes -- post
+**question tool** with options `["Yes -- post
 reply comments", "No -- skip posting"]`.
+
 
 **Checklist gate**: Before presenting comments for posting,
 verify the execution checklist shows:
@@ -430,6 +483,7 @@ If the checklist is missing, incomplete, or shows Phase 3
 as not complete, you MUST re-read this command template and
 rebuild state from `state.json` and the git log. Do NOT
 post comments without verified checklist state.
+
 
 For each item, compose the reply:
 
@@ -478,7 +532,7 @@ After posting reply comments for accepted items, offer to resolve those threads:
 gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_id>"}) { thread { isResolved } } }'
 ```
 
-Use the **AskUserQuestion tool** with options
+Use the **question tool** with options
 `["Yes -- resolve accepted threads", "No -- leave
 threads open"]` before resolving.
 
@@ -546,6 +600,7 @@ Fields `file`, `line`, `decision_reasoning`, and `commit_sha` may be `null` (gen
 
 ---
 
+
 ## Guardrails
 
 1. **No auto-merge**: This command addresses feedback. It NEVER merges the PR, approves the PR, or dismisses reviews.
@@ -567,3 +622,6 @@ Fields `file`, `line`, `decision_reasoning`, and `commit_sha` may be `null` (gen
 9. **File permissions**: Cache files `600`, cache directories `700`. The `.uf/feedback/` directory MUST be in `.gitignore`.
 
 10. **Commit scope**: Only commit files directly related to addressing the specific feedback item. Do not bundle unrelated changes into feedback fix commits.
+
+</protect>
+

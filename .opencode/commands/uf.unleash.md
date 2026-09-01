@@ -29,6 +29,8 @@ off on re-run.
 
 ## Instructions
 
+<protect>
+
 > **SESSION-RESUME GUARD**: If you are resuming this
 > command after context compression or a session restart,
 > STOP and re-read this entire template before continuing.
@@ -75,7 +77,8 @@ If `swarm_worktree_list` is not available (Replicator
 not installed), skip this step silently.
 
 > CHECKPOINT: Mark Step 0 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 1. Do NOT ask for confirmation.
 
 ### 1. Branch Safety Gate
 
@@ -129,7 +132,8 @@ git rev-parse --abbrev-ref HEAD
   > `/opsx-propose` to create one."
 
 > CHECKPOINT: Mark Step 1 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 2. Do NOT ask for confirmation.
 
 ### 2. Resumability Detection
 
@@ -192,7 +196,8 @@ skip directly to step 7 (retrospective) since it is
 idempotent.
 
 > CHECKPOINT: Mark Step 2 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 3. Do NOT ask for confirmation.
 
 ### 3. Step 1 -- Clarify
 
@@ -270,7 +275,8 @@ needed" and proceed to step 2.
   ```
 
 > CHECKPOINT: Mark Step 3 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 4. Do NOT ask for confirmation.
 
 ### 4. Step 2 -- Plan
 
@@ -294,7 +300,8 @@ Generate the implementation plan by delegating to the
    > Check the agent output for errors."
 
 > CHECKPOINT: Mark Step 4 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 5. Do NOT ask for confirmation.
 
 ### 5. Step 3 -- Tasks
 
@@ -317,7 +324,8 @@ Generate the task list by delegating to the
    > Check the agent output for errors."
 
 > CHECKPOINT: Mark Step 5 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 6. Do NOT ask for confirmation.
 
 ### 6. Step 4 -- Spec Review
 
@@ -377,7 +385,8 @@ analysis + quality validation) in a single pass.
   ```
 
 > CHECKPOINT: Mark Step 6 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 7. Do NOT ask for confirmation.
 
 ### 7. Step 5 -- Implement
 
@@ -534,7 +543,8 @@ logic used by `/uf.review-council` and `/uf.review-pr`.
      ```
 
 > CHECKPOINT: Mark Step 7 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 8. Do NOT ask for confirmation.
 
 ### 8. Step 6 -- Code Review
 
@@ -605,7 +615,8 @@ quality data.
   ```
 
 > CHECKPOINT: Mark Step 8 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 9. Do NOT ask for confirmation.
 
 ### 9. Step 7 -- Retrospective
 
@@ -644,9 +655,17 @@ memory.
    lost.
 
 > CHECKPOINT: Mark Step 9 complete in the execution
-> checklist before proceeding.
+> checklist before proceeding. Proceed immediately to
+> Step 10. Do NOT ask for confirmation.
 
 ### 10. Step 8 -- Demo
+
+> **OUTPUT FIDELITY GUARD**: Before composing any demo
+> output, re-read this Step 10 Demo section (from this
+> heading through the CHECKPOINT blockquote below).
+> The template is the sole authority for prescribed
+> output format — NEVER reconstruct it from memory or
+> compressed context summaries.
 
 Present structured demo instructions to the developer.
 
@@ -678,11 +697,13 @@ Present structured demo instructions to the developer.
 4. **Test Results**: summarize the test output from the
    most recent build/test checkpoint.
 
-5. **Next Steps**: always present these options:
-   - `/uf.finale` to commit, push, create PR, and return
-     to main
-   - `/speckit.clarify` to refine the spec and re-run
-     `/uf.unleash`
+5. **Next Steps**: always present exactly these two
+   options as shown in the format block below — do not
+   paraphrase, add, or remove options.
+   **Note**: The pre-PR `/uf.review-council` requirement
+   is already satisfied by Step 8 (Code Review). Do NOT
+   re-suggest `/uf.review-council` or hand-roll git
+   commit/push/PR steps in the demo output.
 
 Format the output as:
 
@@ -715,6 +736,13 @@ Format the output as:
 
 ## Guardrails
 
+- **NEVER pause between steps to ask for human
+  confirmation** -- proceed immediately from one step to
+  the next. The only valid reasons to exit the pipeline
+  are: unanswerable clarification questions,
+  HIGH/CRITICAL spec findings, build/test failures,
+  merge conflicts, and 3 review iterations exhausted.
+  All other transitions are autonomous.
 - **NEVER run on `main`** -- the command is for Speckit
   (`NNN-*`) and OpenSpec (`opsx/*`) feature branches
 - **NEVER skip spec review exit on HIGH/CRITICAL** --
@@ -738,3 +766,8 @@ Format the output as:
 - **NEVER hardcode build/test commands** -- load the
   `pre-flight` skill to derive them from
   `.github/workflows/` and local tool configs
+- **NEVER improvise Demo exit text** -- the "Next Steps"
+  section in Step 10 prescribes the exact output; re-read
+  and reproduce it verbatim
+
+</protect>

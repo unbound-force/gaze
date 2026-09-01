@@ -546,7 +546,7 @@ step: run `.specify/scripts/bash/check-prerequisites.sh
 ### Step 6: Speckit Command Guardrails
 
 Inject a `## Guardrails` section into ALL 9
-`.opencode/commands/speckit.*.md` files. Use two
+`.opencode/commands/speckit.*.md` files. Use four
 variants depending on the command type.
 
 **Spec-phase commands** (get Guardrails WITH
@@ -558,29 +558,60 @@ review-rationale sentence):
 - `speckit.analyze.md`
 - `speckit.checklist.md`
 
-**Execution/utility commands** (get Guardrails WITHOUT
-review-rationale sentence):
-- `speckit.implement.md`
-- `speckit.constitution.md`
-- `speckit.taskstoissues.md`
+**`speckit.implement.md`** (command-specific: implementation
+guardrails — this command writes source code)
+
+**`speckit.constitution.md`** (command-specific: constitution
+guardrails — writes to `.specify/memory/` and templates)
+
+**`speckit.taskstoissues.md`** (command-specific: issue creation
+guardrails — creates GitHub issues via MCP API)
 
 For each file:
 
 1. **Read** the file content
 2. **Check** if a `## Guardrails` section already exists
-   (search for the heading text `## Guardrails`)
+   (search for the heading text `## Guardrails` as a
+   markdown heading outside of fenced code blocks)
 3. **If NOT present**: Append the appropriate guardrails
    variant at the very end of the file. Report
    `✅ <filename>: guardrails injected`
-4. **If already present**: Perform a secondary check
-   for spec-phase commands only -- search for the phrase
-   "review defeats the purpose". If the Guardrails
-   heading exists but the review-rationale sentence is
-   missing, append the sentence to the existing
-   Guardrails section. Report
-   `✅ <filename>: review-rationale added`.
-   If the sentence is already present, report
+4. **If already present — spec-phase commands**: Perform
+   a secondary check — search for BOTH the phrase "review
+   defeats the purpose" AND the UF-reference markers
+   `dewey_semantic_search` and
+   `.specify/memory/constitution.md`. If the Guardrails
+   heading exists but ANY of these markers is missing,
+   the block is stale (pre-reconciliation): replace the
+   entire `## Guardrails` section (from the heading to the
+   next `##` heading or end of file) with the current
+   Spec-phase guardrails block below.
+   Report `✅ <filename>: guardrails corrected`.
+   If ALL markers are already present, report
    `⊘ <filename>: guardrails already present (skipped)`
+5. **If already present — command-specific commands**
+   (`implement`, `constitution`, `taskstoissues`):
+   Check for ALL of the command's correctness markers.
+   A block is correct only when EVERY marker is present:
+
+   | Command | Correctness markers |
+   |---------|--------------------|
+   | `speckit.implement.md` | "writes source code" AND `dewey_semantic_search` AND `.specify/memory/constitution.md` AND `/uf.review-council` |
+   | `speckit.constitution.md` | ".specify/memory/" AND `dewey_semantic_search` AND `.specify/memory/constitution.md` |
+   | `speckit.taskstoissues.md` | "GitHub issues via" |
+
+   If EVERY correctness marker IS present in the existing
+   `## Guardrails` section, the guardrails are correct.
+   Report
+   `⊘ <filename>: guardrails already present (skipped)`
+
+   If ANY correctness marker is ABSENT, the guardrails
+   are incorrect (likely the old shared template or a
+   pre-reconciliation block missing the UF references).
+   Replace the entire `## Guardrails` section (from the
+   heading to the next `##` heading or end of file) with
+   the command-specific guardrail block. Report
+   `✅ <filename>: guardrails corrected`
 
 **Spec-phase guardrails block** (with review-rationale):
 
@@ -602,34 +633,67 @@ For each file:
 - The user needs to review the plan before
   implementation begins. Implementing without review
   defeats the purpose of the spec-first workflow.
+- Consult the project constitution
+  (`.specify/memory/constitution.md`) and retrieve prior
+  context via Dewey (`dewey_semantic_search`) before
+  writing spec artifacts.
 ```
 
-**Execution/utility guardrails block** (no
-review-rationale):
+**Implement guardrails block** (`speckit.implement.md`):
 
 ```markdown
 
 ## Guardrails
 
-- **NEVER modify source code** — this command updates
-  spec artifacts ONLY. Implementation changes belong in
-  `/speckit.implement`, `/uf.unleash`, or `/uf.cobalt-crush`.
-- **NEVER modify test files, Go source, Markdown agents,
-  convention packs, or config files** outside the
-  `specs/NNN-*/` feature directory.
-- The ONLY files this command may write are:
-  - `FEATURE_SPEC` (the spec.md file)
-  - Files within `FEATURE_DIR` (spec artifacts:
-    plan.md, tasks.md, research.md, data-model.md,
-    quickstart.md, contracts/, checklists/)
+- This command **writes source code** — implementation
+  is its primary purpose. It executes the tasks defined
+  in the active feature's `tasks.md`.
+- Scope modifications to the active feature's
+  implementation plan. Do not make changes unrelated to
+  the current task group.
+- Mark task checkboxes `[x]` as each task is completed.
+- Consult the project constitution
+  (`.specify/memory/constitution.md`) and retrieve prior
+  context via Dewey (`dewey_semantic_search`) before
+  writing code.
+- Run `/uf.review-council` before completing
+  implementation.
 ```
 
-**Note**: `speckit.implement.md` is an exception — it IS
-allowed to modify source code. However, the guardrails
-section is still injected for consistency. The implement
-command's own instructions override the guardrails where
-they conflict (implement's instructions explicitly say
-to write source code).
+**Constitution guardrails block** (`speckit.constitution.md`):
+
+```markdown
+
+## Guardrails
+
+- This command updates the project constitution and
+  propagates changes to dependent templates.
+- The ONLY files this command may write are:
+  - `.specify/memory/constitution.md`
+  - `.specify/templates/*-template.md` (consistency
+    propagation)
+- Do NOT modify source code, test files, or any files
+  outside the `.specify/` directory.
+- Consult the project constitution
+  (`.specify/memory/constitution.md`) and retrieve prior
+  context via Dewey (`dewey_semantic_search`) before
+  amending governance documents.
+```
+
+**Taskstoissues guardrails block** (`speckit.taskstoissues.md`):
+
+```markdown
+
+## Guardrails
+
+- This command creates **GitHub issues via** the MCP API.
+  It does NOT write local files.
+- Issues MUST only be created in the repository matching
+  the current Git remote. NEVER create issues in
+  unrelated repositories.
+- Do NOT modify source code, spec artifacts, or any
+  local files.
+```
 
 ### Step 7: Speckit UF Customizations
 

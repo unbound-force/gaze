@@ -37,7 +37,7 @@ current feature branch before any branch switch occurs.
   `main`.
 - Before creating a new feature branch (via `/speckit.specify`),
   check `git status --short` for uncommitted changes. If
-  uncommitted changes exist, use the **AskUserQuestion tool**
+  uncommitted changes exist, use the **question tool**
   to confirm before proceeding. Include the `git status --short`
   output in the question so the user can see which files are
   uncommitted:
