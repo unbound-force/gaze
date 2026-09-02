@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/unbound-force/gaze/internal/protocol"
@@ -464,6 +465,176 @@ func TestRoundTrip_Response(t *testing.T) {
 		}
 		if decoded.Error.Message != "Invalid request" {
 			t.Errorf("error.message = %q, want %q", decoded.Error.Message, "Invalid request")
+		}
+	})
+}
+
+// TestRoundTrip_DocCoverageResult verifies JSON marshal/unmarshal
+// round-trip for DocCoverageResult, Capabilities with DocCoverage,
+// and SymbolDocStatus omitempty behavior.
+func TestRoundTrip_DocCoverageResult(t *testing.T) {
+	t.Run("full_result", func(t *testing.T) {
+		original := protocol.DocCoverageResult{
+			Symbols: []protocol.SymbolDocStatus{
+				{
+					Name:       "Calculator",
+					Package:    "math_utils",
+					File:       "math_utils/calc.py",
+					Line:       10,
+					Kind:       "class",
+					Documented: true,
+					DocSnippet: "A simple calculator class.",
+				},
+				{
+					Name:       "add",
+					Package:    "math_utils",
+					File:       "math_utils/calc.py",
+					Line:       25,
+					Kind:       "method",
+					Documented: true,
+					DocSnippet: "Add two numbers.",
+				},
+				{
+					Name:       "MAX_RETRIES",
+					Package:    "math_utils",
+					File:       "math_utils/constants.py",
+					Line:       3,
+					Kind:       "constant",
+					Documented: false,
+					DocSnippet: "",
+				},
+				{
+					Name:       "divide",
+					Package:    "math_utils",
+					File:       "math_utils/calc.py",
+					Line:       40,
+					Kind:       "function",
+					Documented: true,
+					DocSnippet: "Divide a by b.",
+				},
+			},
+		}
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+
+		var decoded protocol.DocCoverageResult
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		if len(decoded.Symbols) != len(original.Symbols) {
+			t.Fatalf("symbols count = %d, want %d", len(decoded.Symbols), len(original.Symbols))
+		}
+
+		for i, s := range decoded.Symbols {
+			orig := original.Symbols[i]
+			if s.Name != orig.Name {
+				t.Errorf("symbols[%d].name = %q, want %q", i, s.Name, orig.Name)
+			}
+			if s.Package != orig.Package {
+				t.Errorf("symbols[%d].package = %q, want %q", i, s.Package, orig.Package)
+			}
+			if s.File != orig.File {
+				t.Errorf("symbols[%d].file = %q, want %q", i, s.File, orig.File)
+			}
+			if s.Line != orig.Line {
+				t.Errorf("symbols[%d].line = %d, want %d", i, s.Line, orig.Line)
+			}
+			if s.Kind != orig.Kind {
+				t.Errorf("symbols[%d].kind = %q, want %q", i, s.Kind, orig.Kind)
+			}
+			if s.Documented != orig.Documented {
+				t.Errorf("symbols[%d].documented = %v, want %v", i, s.Documented, orig.Documented)
+			}
+			if s.DocSnippet != orig.DocSnippet {
+				t.Errorf("symbols[%d].doc_snippet = %q, want %q", i, s.DocSnippet, orig.DocSnippet)
+			}
+		}
+	})
+
+	t.Run("capabilities_doc_coverage", func(t *testing.T) {
+		original := protocol.Capabilities{
+			Discover:        true,
+			TestMapping:     false,
+			ClassifySignals: false,
+			Streaming:       false,
+			DocCoverage:     true,
+		}
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+
+		var decoded protocol.Capabilities
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		if decoded.DocCoverage != true {
+			t.Errorf("doc_coverage = %v, want true", decoded.DocCoverage)
+		}
+		if decoded.Discover != true {
+			t.Errorf("discover = %v, want true", decoded.Discover)
+		}
+		if decoded.TestMapping != false {
+			t.Errorf("test_mapping = %v, want false", decoded.TestMapping)
+		}
+	})
+
+	t.Run("omitempty_doc_snippet", func(t *testing.T) {
+		// Undocumented symbol — DocSnippet should be omitted from JSON.
+		undocumented := protocol.SymbolDocStatus{
+			Name:       "helper",
+			Package:    "utils",
+			File:       "utils/helper.py",
+			Line:       1,
+			Kind:       "function",
+			Documented: false,
+			DocSnippet: "",
+		}
+
+		data, err := json.Marshal(undocumented)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+
+		jsonStr := string(data)
+		if strings.Contains(jsonStr, "doc_snippet") {
+			t.Errorf("JSON contains 'doc_snippet' for undocumented symbol, want omitted; got %s", jsonStr)
+		}
+
+		// Documented symbol — DocSnippet should be present.
+		documented := protocol.SymbolDocStatus{
+			Name:       "Calculator",
+			Package:    "utils",
+			File:       "utils/calc.py",
+			Line:       5,
+			Kind:       "class",
+			Documented: true,
+			DocSnippet: "A calculator.",
+		}
+
+		data, err = json.Marshal(documented)
+		if err != nil {
+			t.Fatalf("marshal documented: %v", err)
+		}
+
+		jsonStr = string(data)
+		if !strings.Contains(jsonStr, "doc_snippet") {
+			t.Errorf("JSON missing 'doc_snippet' for documented symbol; got %s", jsonStr)
+		}
+
+		// Round-trip the documented symbol.
+		var decoded protocol.SymbolDocStatus
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if decoded.DocSnippet != "A calculator." {
+			t.Errorf("doc_snippet = %q, want %q", decoded.DocSnippet, "A calculator.")
 		}
 	})
 }

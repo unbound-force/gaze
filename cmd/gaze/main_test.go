@@ -499,11 +499,22 @@ func TestRunDocscan_OutputsJSON(t *testing.T) {
 		t.Fatalf("runDocscan() error: %v", err)
 	}
 
-	// Output should be a JSON array.
-	var docs interface{}
-	if jsonErr := json.Unmarshal(stdout.Bytes(), &docs); jsonErr != nil {
-		t.Errorf("docscan output is not valid JSON: %v\noutput:\n%s",
+	// Output should be a JSON object with "documents" and
+	// "api_coverage" keys (DocscanOutput envelope).
+	var output DocscanOutput
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &output); jsonErr != nil {
+		t.Fatalf("docscan output is not valid DocscanOutput JSON: %v\noutput:\n%s",
 			jsonErr, stdout.String())
+	}
+
+	// Without --analyzer, api_coverage must be nil (null in JSON).
+	if output.APICoverage != nil {
+		t.Errorf("expected nil APICoverage without analyzer, got %+v", output.APICoverage)
+	}
+
+	// Documents should be populated (the gaze repo has Markdown files).
+	if len(output.Documents) == 0 {
+		t.Error("expected non-empty Documents array")
 	}
 }
 
@@ -518,6 +529,72 @@ func TestRunDocscan_EmptyPkg(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("runDocscan() error: %v", err)
+	}
+}
+
+func TestRunDocscan_JSONStructure_NoAnalyzer(t *testing.T) {
+	// Verify the JSON output has the correct top-level structure:
+	// {"documents": [...], "api_coverage": null}
+	var stdout, stderr bytes.Buffer
+	err := runDocscan(docscanParams{
+		pkgPath: ".",
+		stdout:  &stdout,
+		stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runDocscan() error: %v", err)
+	}
+
+	// Parse as raw JSON to verify key presence.
+	var raw map[string]json.RawMessage
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &raw); jsonErr != nil {
+		t.Fatalf("output is not valid JSON object: %v", jsonErr)
+	}
+
+	// "documents" key must be present.
+	if _, ok := raw["documents"]; !ok {
+		t.Error("missing 'documents' key in JSON output")
+	}
+
+	// "api_coverage" key must be present (as null).
+	apiCov, ok := raw["api_coverage"]
+	if !ok {
+		t.Error("missing 'api_coverage' key in JSON output")
+	} else if string(apiCov) != "null" {
+		t.Errorf("expected api_coverage to be null, got %s", string(apiCov))
+	}
+}
+
+func TestRunDocscan_AnalyzerFlag_InvalidBinary(t *testing.T) {
+	// When --analyzer points to a non-existent binary, runDocscan
+	// should still succeed (non-fatal warning) and produce valid
+	// JSON output with api_coverage: null.
+	var stdout, stderr bytes.Buffer
+	err := runDocscan(docscanParams{
+		pkgPath:      ".",
+		analyzerFlag: "/nonexistent/binary/gaze-analyzer-fake",
+		stdout:       &stdout,
+		stderr:       &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runDocscan() error: %v", err)
+	}
+
+	// Should have a warning on stderr about the analyzer failure.
+	if !strings.Contains(stderr.String(), "Warning") {
+		t.Errorf("expected warning on stderr, got: %s", stderr.String())
+	}
+
+	// Output should still be valid DocscanOutput JSON.
+	var output DocscanOutput
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &output); jsonErr != nil {
+		t.Fatalf("output is not valid DocscanOutput JSON: %v\noutput:\n%s",
+			jsonErr, stdout.String())
+	}
+
+	// api_coverage should be nil since the analyzer failed.
+	if output.APICoverage != nil {
+		t.Errorf("expected nil APICoverage with failed analyzer, got %+v", output.APICoverage)
 	}
 }
 

@@ -23,8 +23,9 @@ gaze crap --analyzer snake-eyes ./src
 +-- 7. coverage --> line coverage per function
 +-- 8. test_mapping --> map assertions to effects (optional)
 +-- 9. classify_signals --> classification signals (optional)
-+-- 10. shutdown --> clean exit
-+-- 11. Gaze computes CRAP, GazeCRAP, quadrants, fix strategies
++-- 10. doc_coverage --> documentation coverage (optional)
++-- 11. shutdown --> clean exit
++-- 12. Gaze computes CRAP, GazeCRAP, quadrants, fix strategies
 ```
 
 ### Discovery
@@ -125,7 +126,8 @@ Handshake method. Must be the first method called. Returns the analyzer's capabi
     "discover": true,
     "test_mapping": true,
     "classify_signals": false,
-    "streaming": false
+    "streaming": false,
+    "doc_coverage": false
   },
   "protocol_version": "1.1.0",
   "analyzer_name": "snake-eyes",
@@ -140,6 +142,7 @@ Handshake method. Must be the first method called. Returns the analyzer's capabi
 | `capabilities.test_mapping` | boolean | Supports the `test_mapping` method |
 | `capabilities.classify_signals` | boolean | Supports the `classify_signals` method |
 | `capabilities.streaming` | boolean | Supports the `analyze/stream` method |
+| `capabilities.doc_coverage` | boolean | Supports the `doc_coverage` method |
 | `protocol_version` | string | Protocol version (semver) |
 | `analyzer_name` | string | Human-readable analyzer name |
 | `language` | string | Primary language (e.g., "python", "rust") |
@@ -567,6 +570,66 @@ Provide raw classification signals for Gaze's scoring engine. When supported, th
 | `weight` | integer | Numeric contribution to confidence score |
 | `reasoning` | string | (optional) Explanation of why this signal was applied |
 
+### `doc_coverage` (optional)
+
+Report documentation coverage for public symbols. When supported, Gaze uses the analyzer's native documentation analysis instead of heuristic backtick scanning.
+
+**Capability**: `doc_coverage`
+
+**Timeout**: 5 minutes
+
+**Request params**:
+
+```json
+{
+  "root_path": "/path/to/project",
+  "patterns": ["./..."]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `root_path` | string | yes | Absolute path to the project root |
+| `patterns` | string[] | yes | Package patterns to analyze |
+
+**Response result**:
+
+```json
+{
+  "symbols": [
+    {
+      "name": "divide",
+      "package": "math_utils",
+      "kind": "function",
+      "file": "math_utils/ops.py",
+      "line": 20,
+      "documented": true,
+      "doc_snippet": "Divide two numbers, raising ZeroDivisionError for zero divisor."
+    },
+    {
+      "name": "add",
+      "package": "math_utils",
+      "kind": "function",
+      "file": "math_utils/ops.py",
+      "line": 1,
+      "documented": false
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `symbols[].name` | string | Symbol name (function, type, constant, etc.) |
+| `symbols[].package` | string | Package/module path |
+| `symbols[].kind` | string | Symbol kind: `"function"`, `"type"`, `"constant"`, `"variable"`, `"class"`, `"method"` |
+| `symbols[].file` | string | Source file path |
+| `symbols[].line` | integer | Line number of symbol declaration |
+| `symbols[].documented` | boolean | Whether the symbol has documentation |
+| `symbols[].doc_snippet` | string | (optional) First line or summary of the documentation. Omitted when empty. |
+
+---
+
 ## Error Handling
 
 ### Required method errors
@@ -575,11 +638,12 @@ When a required method (`analyze`, `complexity`, `coverage`) returns a JSON-RPC 
 
 ### Optional method errors
 
-When an optional method (`discover`, `test_mapping`, `classify_signals`) returns an error, Gaze logs a warning to stderr and degrades gracefully:
+When an optional method (`discover`, `test_mapping`, `classify_signals`, `doc_coverage`) returns an error, Gaze logs a warning to stderr and degrades gracefully:
 
 - `discover` error: no impact (not currently consumed)
 - `test_mapping` error: GazeCRAP is unavailable
 - `classify_signals` error: uses pre-classified effects from `analyze`
+- `doc_coverage` error: falls back to heuristic documentation coverage from `analyze` output
 
 ### Process crashes
 
@@ -616,7 +680,7 @@ To build a Gaze-compatible analyzer:
 
 1. **Accept `--stdio` flag**: Read JSON-RPC requests from stdin, write responses to stdout, diagnostics to stderr.
 2. **Implement the 5 required methods**: `initialize`, `analyze`, `complexity`, `coverage`, `shutdown`.
-3. **Declare capabilities**: In the `initialize` response, set `test_mapping: true` if you can map assertions to effects (enables GazeCRAP).
+3. **Declare capabilities**: In the `initialize` response, set `test_mapping: true` if you can map assertions to effects (enables GazeCRAP), and `doc_coverage: true` if you can report documentation status per symbol.
 4. **Map to Gaze's taxonomy**: Use Gaze's `SideEffectType` constants for the `type` field in `analyze` responses.
 5. **Follow naming convention**: Name your binary `gaze-analyzer-<language>` for automatic PATH discovery.
 
@@ -634,7 +698,7 @@ def handle(request):
 
     if method == "initialize":
         return {"jsonrpc": "2.0", "id": rid, "result": {
-            "capabilities": {"discover": False, "test_mapping": False, "classify_signals": False},
+            "capabilities": {"discover": False, "test_mapping": False, "classify_signals": False, "streaming": False, "doc_coverage": False},
             "protocol_version": "1.1.0",
             "analyzer_name": "minimal-python",
             "language": "python"
@@ -670,4 +734,7 @@ gaze crap --analyzer ./my-analyzer --language python ./src
 
 # Test with JSON output (no AI adapter needed)
 gaze report --analyzer ./my-analyzer --format=json ./src
+
+# Test documentation coverage
+gaze docscan --analyzer ./my-analyzer --language python ./src
 ```

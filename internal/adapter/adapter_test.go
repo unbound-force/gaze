@@ -233,6 +233,38 @@ func TestSessionLifecycle(t *testing.T) {
 	if !providers.Capabilities.ClassifySignals {
 		t.Error("Capabilities.ClassifySignals = false, want true")
 	}
+	if !providers.Capabilities.DocCoverage {
+		t.Error("Capabilities.DocCoverage = false, want true")
+	}
+}
+
+// TestSessionLifecycle_DocCoverageCapability verifies that the
+// doc_coverage capability is correctly reported after Initialize.
+func TestSessionLifecycle_DocCoverageCapability(t *testing.T) {
+	var stderr bytes.Buffer
+	session := adapter.NewSession(
+		fakeBinaryPath, []string{"--stdio"},
+		"/tmp/project", []string{"./..."},
+		&stderr, nil,
+	)
+
+	providers, err := session.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	if !providers.Capabilities.DocCoverage {
+		t.Error("Capabilities.DocCoverage = false, want true")
+	}
+
+	// Verify the capability is correctly deserialized from the
+	// fake analyzer's initialize response alongside other caps.
+	if !providers.Capabilities.Discover {
+		t.Error("Capabilities.Discover = false, want true")
+	}
+	if !providers.Capabilities.TestMapping {
+		t.Error("Capabilities.TestMapping = false, want true")
+	}
 }
 
 // TestSessionLifecycle_NoTestMapping verifies that when test_mapping
@@ -652,6 +684,108 @@ func TestExternalSideEffectAnalyzer_Streaming(t *testing.T) {
 		if len(batchResults[i].SideEffects) != len(streamResults[i].SideEffects) {
 			t.Errorf("result[%d] side effects count mismatch: batch=%d, stream=%d",
 				i, len(batchResults[i].SideEffects), len(streamResults[i].SideEffects))
+		}
+	}
+}
+
+// TestDocCoverage_NotInitialized verifies that DocCoverage returns
+// (nil, nil) when the session has not been initialized.
+func TestDocCoverage_NotInitialized(t *testing.T) {
+	session := adapter.NewSession(
+		fakeBinaryPath, []string{"--stdio"},
+		"/tmp/project", []string{"./..."}, nil, nil,
+	)
+	// Do NOT call Initialize — session.initDone is false.
+
+	result, err := session.DocCoverage(context.Background(), protocol.DocCoverageParams{
+		RootPath: "/tmp/project",
+		Patterns: []string{"./..."},
+	})
+	if err != nil {
+		t.Fatalf("DocCoverage on uninitialized session: %v", err)
+	}
+	if result != nil {
+		t.Errorf("DocCoverage on uninitialized session returned non-nil result: %+v", result)
+	}
+}
+
+// TestDocCoverage_CapabilityDisabled verifies that DocCoverage returns
+// (nil, nil) when the analyzer does not announce doc_coverage capability.
+func TestDocCoverage_CapabilityDisabled(t *testing.T) {
+	var stderr bytes.Buffer
+	session := adapter.NewSession(
+		fakeBinaryPath, []string{"--stdio", "--no-doc-coverage"},
+		"/tmp/project", []string{"./..."},
+		&stderr, nil,
+	)
+
+	_, err := session.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	result, err := session.DocCoverage(context.Background(), protocol.DocCoverageParams{
+		RootPath: "/tmp/project",
+		Patterns: []string{"./..."},
+	})
+	if err != nil {
+		t.Fatalf("DocCoverage with disabled capability: %v", err)
+	}
+	if result != nil {
+		t.Errorf("DocCoverage with disabled capability returned non-nil result: %+v", result)
+	}
+}
+
+// TestDocCoverage_HappyPath verifies that DocCoverage returns the
+// expected symbols from the fake analyzer.
+func TestDocCoverage_HappyPath(t *testing.T) {
+	var stderr bytes.Buffer
+	session := adapter.NewSession(
+		fakeBinaryPath, []string{"--stdio"},
+		"/tmp/project", []string{"./..."},
+		&stderr, nil,
+	)
+
+	_, err := session.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	result, err := session.DocCoverage(context.Background(), protocol.DocCoverageParams{
+		RootPath: "/tmp/project",
+		Patterns: []string{"./..."},
+	})
+	if err != nil {
+		t.Fatalf("DocCoverage: %v", err)
+	}
+	if result == nil {
+		t.Fatal("DocCoverage returned nil result")
+	}
+
+	// Fake analyzer returns 3 symbols: divide (documented), multiply
+	// (documented), add (undocumented).
+	if len(result.Symbols) != 3 {
+		t.Fatalf("got %d symbols, want 3", len(result.Symbols))
+	}
+
+	want := map[string]bool{
+		"divide":   true,
+		"multiply": true,
+		"add":      false,
+	}
+	for _, sym := range result.Symbols {
+		expected, ok := want[sym.Name]
+		if !ok {
+			t.Errorf("unexpected symbol %q", sym.Name)
+			continue
+		}
+		if sym.Documented != expected {
+			t.Errorf("%s documented = %v, want %v", sym.Name, sym.Documented, expected)
+		}
+		if sym.Package != "math_utils" {
+			t.Errorf("%s package = %q, want %q", sym.Name, sym.Package, "math_utils")
 		}
 	}
 }

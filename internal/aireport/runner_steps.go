@@ -1,6 +1,7 @@
 package aireport
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,13 +9,16 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/unbound-force/gaze/internal/adapter"
 	"github.com/unbound-force/gaze/internal/analysis"
 	"github.com/unbound-force/gaze/internal/classify"
 	"github.com/unbound-force/gaze/internal/cliutil"
 	"github.com/unbound-force/gaze/internal/config"
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/internal/docscan/apidoc"
 	"github.com/unbound-force/gaze/internal/loader"
+	"github.com/unbound-force/gaze/internal/protocol"
 	"github.com/unbound-force/gaze/internal/provider/goprovider"
 	"github.com/unbound-force/gaze/internal/quality"
 	"github.com/unbound-force/gaze/internal/report"
@@ -322,8 +326,20 @@ func runClassifyStep(patterns []string, moduleDir string, stderr io.Writer, deps
 	}, nil
 }
 
+// docscanEnvelope wraps the docscan output in a structured envelope
+// with optional API coverage data. This type is local to the report
+// pipeline — the CLI-layer DocscanOutput in cmd/gaze/main.go cannot
+// be imported from internal packages.
+type docscanEnvelope struct {
+	Documents   []docscan.DocumentFile    `json:"documents"`
+	APICoverage *apidoc.APICoverageReport `json:"api_coverage"`
+}
+
 // runDocscanStep runs the documentation scanner and returns the JSON output.
-func runDocscanStep(moduleDir string, stderr io.Writer) (json.RawMessage, error) {
+// When sess is non-nil and initialized, it uses the external analyzer for
+// language-aware documentation coverage analysis. When sess is nil, only
+// the heuristic docscan is performed.
+func runDocscanStep(moduleDir string, sess *adapter.Session, stderr io.Writer) (json.RawMessage, error) {
 	cfg := config.LoadFromDir(moduleDir, stderr)
 	scanOpts := docscan.ScanOptions{Config: cfg}
 
@@ -331,10 +347,65 @@ func runDocscanStep(moduleDir string, stderr io.Writer) (json.RawMessage, error)
 	if err != nil {
 		return nil, fmt.Errorf("docscan: %w", err)
 	}
+
+	var apiCoverage *apidoc.APICoverageReport
+	if sess != nil {
+		apiCoverage = runDocscanAnalyzer(moduleDir, sess, docs, stderr)
+	}
+
+	envelope := docscanEnvelope{
+		Documents:   docs,
+		APICoverage: apiCoverage,
+	}
 	return cliutil.CaptureJSON(func(w io.Writer) error {
 		enc := json.NewEncoder(w)
-		return enc.Encode(docs)
+		return enc.Encode(envelope)
 	})
+}
+
+// runDocscanAnalyzer calls the external analyzer for doc_coverage and
+// analyze data, then runs apidoc.Analyze. Returns nil on any failure
+// (graceful degradation with warning to stderr).
+func runDocscanAnalyzer(moduleDir string, sess *adapter.Session, docs []docscan.DocumentFile, stderr io.Writer) *apidoc.APICoverageReport {
+	ctx := context.Background()
+
+	// Get doc_coverage data (optional capability — returns nil if unsupported).
+	docCovResult, err := sess.DocCoverage(ctx, protocol.DocCoverageParams{
+		RootPath: moduleDir,
+		Patterns: []string{"./..."},
+	})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: doc_coverage call failed, falling back to heuristic: %v\n", err)
+		docCovResult = nil
+	}
+
+	// Get analyze results for function list.
+	analyzeResult, err := sess.Analyze(ctx, protocol.AnalyzeParams{
+		RootPath: moduleDir,
+		Patterns: []string{"./..."},
+	})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: analyze call failed for docscan, skipping API coverage: %v\n", err)
+		return nil
+	}
+
+	var functions []protocol.AnalyzedFunction
+	if analyzeResult != nil {
+		functions = analyzeResult.Functions
+	}
+
+	data := &apidoc.AnalyzerData{
+		Functions:   functions,
+		DocCoverage: docCovResult,
+		Language:    sess.Language(),
+	}
+
+	report, err := apidoc.Analyze(docs, data)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: apidoc.Analyze failed: %v\n", err)
+		return nil
+	}
+	return report
 }
 
 // runClassifyResults runs the mechanical classification pipeline.

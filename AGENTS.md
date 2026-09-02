@@ -320,6 +320,7 @@ internal/
   crap/                CRAP score computation and reporting
   quality/             Test quality assessment (contract coverage)
   docscan/             Documentation file scanner
+    apidoc/            API documentation coverage analysis (analyzer-aware)
   scaffold/            OpenCode file scaffolding (embed.FS)
   aireport/            AI-powered CI quality report pipeline (gaze report)
   protocol/            JSON-RPC 2.0 client for external analyzer communication
@@ -339,7 +340,7 @@ All business logic lives under `internal/` and cannot be imported externally.
 - **Options structs**: Configurable behavior uses options/params structs rather than long parameter lists.
 - **Tiered effect taxonomy**: Side effects are organized into priority tiers P0-P4.
 - **Provider interfaces**: Language-specific data acquisition (complexity, coverage, side effects, contract coverage) is abstracted behind interfaces in `internal/crap/provider.go`. Go implementations live in `internal/provider/goprovider/`, mock implementations in `internal/provider/mockprovider/`. This decouples the universal scoring engine from Go-specific tooling (gocyclo, go/packages, SSA).
-- **External analyzer protocol**: JSON-RPC 2.0 over stdin/stdout for communicating with external language analyzers. Protocol client in `internal/protocol/`, provider adapters in `internal/adapter/`. Adapters implement the same provider interfaces as `goprovider`, enabling the scoring engine to work with any language. Three-tier discovery: `--analyzer` flag → `.gaze.yaml` config → PATH convention (`gaze-analyzer-<language>`).
+- **External analyzer protocol**: JSON-RPC 2.0 over stdin/stdout for communicating with external language analyzers. Protocol client in `internal/protocol/`, provider adapters in `internal/adapter/`. Adapters implement the same provider interfaces as `goprovider`, enabling the scoring engine to work with any language. Three-tier discovery: `--analyzer` flag → `.gaze.yaml` config → PATH convention (`gaze-analyzer-<language>`). Optional `doc_coverage` method enables analyzer-native documentation coverage analysis; when unavailable, `internal/docscan/apidoc/` falls back to heuristic coverage from `analyze` output.
 
 ## Coding Conventions
 

@@ -61,6 +61,7 @@ type Session struct {
 
 	// caps is populated after Initialize.
 	caps     protocol.Capabilities
+	language string
 	initDone bool
 }
 
@@ -114,6 +115,7 @@ func (s *Session) Initialize() (*Providers, error) {
 	}
 
 	s.caps = initResult.Capabilities
+	s.language = initResult.Language
 	s.initDone = true
 
 	// Construct provider adapters.
@@ -142,6 +144,67 @@ func (s *Session) Initialize() (*Providers, error) {
 		Language:         initResult.Language,
 		LanguageVersion:  initResult.LanguageVersion,
 	}, nil
+}
+
+// DocCoverage calls the doc_coverage protocol method on the external
+// analyzer and returns the result. Returns nil when the analyzer does
+// not support doc_coverage (capabilities check) or when the session
+// has not been initialized. Uses AnalysisTimeout for the call context.
+func (s *Session) DocCoverage(ctx context.Context, params protocol.DocCoverageParams) (*protocol.DocCoverageResult, error) {
+	if !s.initDone {
+		return nil, nil
+	}
+	if !s.caps.DocCoverage {
+		return nil, nil
+	}
+
+	// Respect caller-provided deadline; otherwise apply AnalysisTimeout.
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, protocol.AnalysisTimeout)
+		defer cancel()
+	}
+
+	result, err := callAndUnmarshal[protocol.DocCoverageResult](ctx, s.client, protocol.MethodDocCoverage, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// Analyze calls the analyze protocol method on the external analyzer
+// and returns the result. Returns nil when the session has not been
+// initialized. Uses AnalysisTimeout when the caller-provided context
+// has no deadline.
+func (s *Session) Analyze(ctx context.Context, params protocol.AnalyzeParams) (*protocol.AnalyzeResult, error) {
+	if !s.initDone {
+		return nil, nil
+	}
+
+	// Respect caller-provided deadline; otherwise apply AnalysisTimeout.
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, protocol.AnalysisTimeout)
+		defer cancel()
+	}
+
+	result, err := callAndUnmarshal[protocol.AnalyzeResult](ctx, s.client, protocol.MethodAnalyze, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// Language returns the target language declared by the analyzer during
+// initialization. Returns empty string if the session has not been
+// initialized.
+func (s *Session) Language() string {
+	if !s.initDone {
+		return ""
+	}
+	return s.language
 }
 
 // Close sends a shutdown request to the analyzer and waits for the

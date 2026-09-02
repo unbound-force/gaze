@@ -114,7 +114,7 @@ For adapter setup, CI integration, and all flags, see [`gaze report` reference](
 | Command | Description | Reference |
 |---------|-------------|-----------|
 | `gaze self-check` | Run CRAP analysis on Gaze's own source code | [`self-check`](docs/reference/cli/self-check.md) |
-| `gaze docscan` | Scan repository for documentation files (JSON output) | [`docscan`](docs/reference/cli/docscan.md) |
+| `gaze docscan` | Scan repository for documentation files; with `--analyzer`, reports API documentation coverage | [`docscan`](docs/reference/cli/docscan.md) |
 | `gaze schema` | Print the JSON Schema for `gaze analyze --format=json` output | [`schema`](docs/reference/cli/schema.md) |
 | `gaze init` | Scaffold OpenCode agent and command files | [`init`](docs/reference/cli/init.md) |
 
@@ -236,6 +236,10 @@ After running `gaze init`, use the `/gaze` command in OpenCode for AI-assisted q
 ```
 
 For setup details, see the [OpenCode Integration guide](docs/guides/opencode-integration.md).
+
+## Breaking Changes
+
+- **`gaze docscan` JSON output format change.** The JSON output of `gaze docscan` changed from a bare `[]DocumentFile` array to a structured `{"documents": [...], "api_coverage": ...}` object. The `documents` field contains the same data as before; `api_coverage` is `null` when no analyzer is present. If you parse `gaze docscan` JSON output, update your tooling to access the `documents` field. This change enables the new `--analyzer` flag for language-aware documentation coverage analysis.
 
 ## Known Limitations
 

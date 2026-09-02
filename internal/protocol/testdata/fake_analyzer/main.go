@@ -2,12 +2,13 @@
 // binaries used in protocol client integration tests.
 //
 // It reads JSON-RPC 2.0 requests from stdin (line-delimited JSON)
-// and writes canned JSON-RPC responses to stdout. Supports all 8
+// and writes canned JSON-RPC responses to stdout. Supports all 9
 // protocol methods with deterministic test data matching the spec:
 //
 //   - complexity: 3 functions (add/2, multiply/3, divide/5)
 //   - coverage: 3 functions (add/90%, multiply/60%, divide/0%)
 //   - analyze: divide has ReturnValue+ErrorReturn, multiply has ReturnValue
+//   - doc_coverage: 3 symbols (divide/documented, multiply/documented, add/undocumented)
 //
 // Flags:
 //
@@ -16,6 +17,7 @@
 //	--hang            Sleep forever after responding to initialize
 //	--malformed-json  Return invalid JSON for the first non-initialize request
 //	--error-response  Return a JSON-RPC error for the first non-initialize request
+//	--no-doc-coverage Disable doc_coverage capability in initialize response
 package main
 
 import (
@@ -54,6 +56,7 @@ func main() {
 	hangStream := flag.Bool("hang-stream", false, "enable streaming mode and write JSONL for analyze/stream")
 	malformedJSON := flag.Bool("malformed-json", false, "return malformed JSON for first non-initialize request")
 	errorResponse := flag.Bool("error-response", false, "return JSON-RPC error for first non-initialize request")
+	noDocCoverage := flag.Bool("no-doc-coverage", false, "disable doc_coverage capability in initialize response")
 	flag.Parse()
 
 	if !*stdio {
@@ -112,7 +115,7 @@ func main() {
 			continue
 		}
 
-		resp := handleRequest(req, *hangStream)
+		resp := handleRequest(req, *hangStream, *noDocCoverage)
 		writeResponse(resp)
 
 		if req.Method == "initialize" {
@@ -131,7 +134,7 @@ func main() {
 	}
 }
 
-func handleRequest(req request, streaming bool) response {
+func handleRequest(req request, streaming, noDocCoverage bool) response {
 	switch req.Method {
 	case "initialize":
 		return response{
@@ -143,6 +146,7 @@ func handleRequest(req request, streaming bool) response {
 					"test_mapping":     true,
 					"classify_signals": true,
 					"streaming":        streaming,
+					"doc_coverage":     !noDocCoverage,
 				},
 				"protocol_version":  "1.1.0",
 				"analyzer_name":     "fake-analyzer",
@@ -293,6 +297,19 @@ func handleRequest(req request, streaming bool) response {
 						"weight":           -15,
 						"reasoning":        "function name implies pure computation",
 					},
+				},
+			},
+		}
+
+	case "doc_coverage":
+		return response{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result: map[string]any{
+				"symbols": []map[string]any{
+					{"name": "divide", "package": "math_utils", "file": "math_utils/ops.py", "line": 20, "kind": "function", "documented": true, "doc_snippet": "Divides two numbers."},
+					{"name": "multiply", "package": "math_utils", "file": "math_utils/ops.py", "line": 10, "kind": "function", "documented": true, "doc_snippet": "Multiplies two numbers."},
+					{"name": "add", "package": "math_utils", "file": "math_utils/ops.py", "line": 1, "kind": "function", "documented": false, "doc_snippet": ""},
 				},
 			},
 		}

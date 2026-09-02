@@ -371,21 +371,34 @@ func compactClassifyField(raw json.RawMessage) (json.RawMessage, error) {
 	return json.Marshal(compact)
 }
 
-// compactDocscanField unmarshals docscan entries and strips the
-// Content field, keeping only Path and Priority.
+// compactDocscanField unmarshals the docscan envelope and strips the
+// Content field from documents, keeping only Path and Priority. The
+// APICoverage field is passed through unchanged.
 func compactDocscanField(raw json.RawMessage) (json.RawMessage, error) {
-	var full []docscan.DocumentFile
-	if err := json.Unmarshal(raw, &full); err != nil {
+	var envelope struct {
+		Documents   []docscan.DocumentFile `json:"documents"`
+		APICoverage json.RawMessage        `json:"api_coverage"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, fmt.Errorf("unmarshalling docscan: %w", err)
 	}
 
-	compact := make([]compactDocscanEntry, len(full))
-	for i, d := range full {
+	compact := make([]compactDocscanEntry, len(envelope.Documents))
+	for i, d := range envelope.Documents {
 		compact[i] = compactDocscanEntry{
 			Path:     d.Path,
 			Priority: d.Priority,
 		}
 	}
 
-	return json.Marshal(compact)
+	// Build compact envelope preserving the api_coverage field.
+	result := struct {
+		Documents   []compactDocscanEntry `json:"documents"`
+		APICoverage json.RawMessage       `json:"api_coverage,omitempty"`
+	}{
+		Documents:   compact,
+		APICoverage: envelope.APICoverage,
+	}
+
+	return json.Marshal(result)
 }
