@@ -502,6 +502,16 @@ func runCrap(p crapParams) error {
 		return runCrapWithExternalAnalyzer(p)
 	}
 
+	// Resolve Go module root for Go-native analysis.
+	// Skip when analyzeFunc is overridden (test stubs control their own paths).
+	if p.analyzeFunc == nil {
+		moduleDir, err := loader.FindModuleRoot(p.moduleDir)
+		if err != nil {
+			return fmt.Errorf("finding module root: %w", err)
+		}
+		p.moduleDir = moduleDir
+	}
+
 	// Wire the quality pipeline to provide contract coverage for
 	// GazeCRAP scoring via ContractCoverageProvider. This is
 	// best-effort: if quality analysis fails for any package,
@@ -926,10 +936,6 @@ automatically.`,
 			if err != nil {
 				return fmt.Errorf("getting working directory: %w", err)
 			}
-			moduleDir, err := loader.FindModuleRoot(cwd)
-			if err != nil {
-				return fmt.Errorf("finding module root: %w", err)
-			}
 			opts := crap.DefaultOptions()
 			opts.CoverProfile = coverProfile
 			opts.CRAPThreshold = crapThreshold
@@ -945,7 +951,7 @@ automatically.`,
 				opts:            opts,
 				maxCrapload:     maxCrapload,
 				maxGazeCrapload: maxGazeCrapload,
-				moduleDir:       moduleDir,
+				moduleDir:       cwd,
 				aiMapper:        aiMapper,
 				aiMapperModel:   aiMapperModel,
 				baselinePath:    baselinePath,

@@ -123,6 +123,71 @@ func TestCrapWithExternalAnalyzer_NotFound(t *testing.T) {
 	}
 }
 
+// TestCrapWithExternalAnalyzer_BypassesFindModuleRoot verifies that
+// runCrap with --analyzer set does NOT call FindModuleRoot. This is
+// the regression test for issue #250: gaze crap --analyzer fails
+// with 'no go.mod found' for non-Go projects.
+func TestCrapWithExternalAnalyzer_BypassesFindModuleRoot(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	opts := crap.DefaultOptions()
+	opts.Stderr = &stderr
+
+	err := runCrap(crapParams{
+		patterns:     []string{"."},
+		format:       "text",
+		opts:         opts,
+		moduleDir:    t.TempDir(), // directory without go.mod
+		analyzerFlag: "nonexistent-analyzer",
+		stdout:       &stdout,
+		stderr:       &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent analyzer")
+	}
+	errMsg := err.Error()
+
+	// The error must NOT be about FindModuleRoot — that's the bug.
+	if strings.Contains(errMsg, "finding module root") {
+		t.Errorf("error should not mention FindModuleRoot, got: %s", errMsg)
+	}
+	if strings.Contains(errMsg, "no go.mod found") {
+		t.Errorf("error should not mention go.mod, got: %s", errMsg)
+	}
+
+	// The error MUST be about the analyzer binary (proving the
+	// external analyzer path was reached).
+	if !strings.Contains(errMsg, "discovering analyzer") && !strings.Contains(errMsg, "not found") {
+		t.Errorf("error should be about analyzer discovery, got: %s", errMsg)
+	}
+}
+
+// TestRunCrap_GoNativePath_FindModuleRootFailure verifies that runCrap
+// without --analyzer, called from a directory without go.mod, returns
+// an error with the "finding module root" wrapping format. This proves
+// FindModuleRoot was moved into runCrap and the error format is preserved.
+func TestRunCrap_GoNativePath_FindModuleRootFailure(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	opts := crap.DefaultOptions()
+	opts.Stderr = &stderr
+
+	err := runCrap(crapParams{
+		patterns:  []string{"."},
+		format:    "text",
+		opts:      opts,
+		moduleDir: t.TempDir(), // directory without go.mod
+		stdout:    &stdout,
+		stderr:    &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected error when moduleDir has no go.mod")
+	}
+	if !strings.Contains(err.Error(), "finding module root") {
+		t.Errorf("error should contain 'finding module root', got: %s", err)
+	}
+}
+
 // TestQualityWithExternalAnalyzer verifies the full external analyzer
 // quality path: session init → analyze → classify_signals → test_mapping
 // → contract coverage report. The fake analyzer provides:
