@@ -1099,10 +1099,8 @@ func runQuality(p qualityParams) error {
 		return err
 	}
 
-	// External analyzer path: when --analyzer is set, use the
-	// external protocol adapter. The external path produces a
-	// reduced report (contract coverage only — no assertion mapping,
-	// over-specification, or gap hints).
+	// External analyzer path: delegate to the external analyzer pipeline
+	// which bypasses Go-specific test loading and assertion mapping.
 	if p.analyzerFlag != "" {
 		return runQualityWithExternalAnalyzer(p)
 	}
@@ -1171,12 +1169,26 @@ func runQuality(p qualityParams) error {
 	return writeQualityReport(p, allReports, merged)
 }
 
-// runQualityWithExternalAnalyzer runs the quality command using an
-// external analyzer protocol adapter. This produces a reduced report
-// with contract coverage metrics only — no assertion mapping,
-// over-specification, or gap hints (those require Go-native SSA
-// analysis not available from external analyzers).
+// runQualityWithExternalAnalyzer runs the quality pipeline using an
+// external analyzer binary via the JSON-RPC protocol. The analyzer
+// provides side effect analysis and test_mapping data instead of the
+// Go-specific quality.Assess pipeline.
+//
+// Design decisions D6/D7: --target and --ai-mapper are rejected because
+// they depend on Go-specific SSA target inference and AST assertion
+// detection that external analyzers cannot provide.
 func runQualityWithExternalAnalyzer(p qualityParams) error {
+	// Validate flag combinations: --target and --ai-mapper are
+	// Go-specific features incompatible with external analyzers.
+	if p.targetFunc != "" {
+		return fmt.Errorf("--target is not supported with --analyzer; " +
+			"the external analyzer provides its own test-to-target mapping")
+	}
+	if p.aiMapper != "" {
+		return fmt.Errorf("--ai-mapper is not supported with --analyzer; " +
+			"assertion mapping is provided by the external analyzer")
+	}
+
 	moduleDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -1189,30 +1201,29 @@ func runQualityWithExternalAnalyzer(p qualityParams) error {
 	}
 	defer func() { _ = session.Close() }()
 
-	// Contract coverage requires test_mapping capability.
-	if providers.ContractCoverage == nil {
-		_, _ = fmt.Fprintln(p.stderr,
-			"warning: external analyzer does not support test_mapping — "+
-				"quality report will have no contract coverage data")
+	// Graceful degradation: when test_mapping is not supported,
+	// produce a zero-coverage report with a warning instead of failing.
+	if !providers.Capabilities.TestMapping {
+		return handleQualityNoTestMapping(p, providers)
 	}
 
-	// Build the contract coverage lookup. The provider internally
-	// calls Analyze() (which triggers classify_signals when
-	// supported) and fetches test mappings.
-	var lookup func(pkg, fn string) (crap.ContractCoverageInfo, bool)
-	if providers.ContractCoverage != nil {
-		var buildErr error
-		lookup, _, buildErr = providers.ContractCoverage.Build(p.patterns, moduleDir)
-		if buildErr != nil {
-			return fmt.Errorf("building contract coverage: %w", buildErr)
-		}
+	// Fetch side effect analysis results.
+	results, resultsErr := providers.SideEffects.AllResults()
+	if resultsErr != nil {
+		return fmt.Errorf("fetching side effect analysis: %w", resultsErr)
 	}
 
-	// Build quality reports from the external side effect data.
-	// We don't have test function data from the external analyzer,
-	// so we produce one report per analyzed function showing its
-	// contract coverage.
-	reports, summary := buildExternalQualityReports(lookup, providers, p)
+	// Fetch test mapping data.
+	mappings, fetchErr := adapter.FetchTestMappings(
+		session.Client(), p.patterns, moduleDir)
+	if fetchErr != nil {
+		// Graceful degradation on test_mapping method failure:
+		// produce a zero-coverage report with reason.
+		return handleQualityTestMappingError(p, providers, fetchErr)
+	}
+
+	// Build quality reports from external data.
+	reports, summary := adapter.BuildQualityFromMappings(mappings, results)
 
 	if len(reports) == 0 {
 		return handleQualityEmptyResults(p, summary)
@@ -1221,87 +1232,55 @@ func runQualityWithExternalAnalyzer(p qualityParams) error {
 	return writeQualityReport(p, reports, summary)
 }
 
-// buildExternalQualityReports constructs quality reports from
-// external analyzer data. Each analyzed function gets a report
-// entry with its contract coverage. Returns empty reports when
-// no side effect data is available.
-func buildExternalQualityReports(
-	lookup func(pkg, fn string) (crap.ContractCoverageInfo, bool),
-	providers *adapter.Providers,
-	p qualityParams,
-) ([]taxonomy.QualityReport, *taxonomy.PackageSummary) {
-	_, _ = fmt.Fprintln(p.stderr,
-		"note: external analyzer quality report shows contract coverage only "+
-			"(no assertion mapping or over-specification data)")
-
-	if providers.SideEffects == nil {
-		return nil, &taxonomy.PackageSummary{}
-	}
-
-	// Get all analyzed functions. AllResults() triggers the
-	// analyze call (and classify_signals when supported).
-	allResults, err := providers.SideEffects.AllResults()
-	if err != nil {
-		_, _ = fmt.Fprintf(p.stderr, "warning: fetching side effects: %v\n", err)
-		return nil, &taxonomy.PackageSummary{}
-	}
-	if len(allResults) == 0 {
-		return nil, &taxonomy.PackageSummary{}
-	}
-
-	meta := taxonomy.Metadata{
-		Language:        providers.Language,
-		LanguageVersion: providers.LanguageVersion,
-		Timestamp:       time.Now(),
-	}
-
-	var reports []taxonomy.QualityReport
-	var totalCoverage float64
-
-	for _, result := range allResults {
-		cc := taxonomy.ContractCoverage{}
-		if lookup != nil {
-			info, ok := lookup(result.Target.Package, result.Target.Function)
-			if ok {
-				cc.Percentage = info.Percentage
-			}
-		}
-
-		reports = append(reports, taxonomy.QualityReport{
-			TargetFunction:   result.Target,
-			ContractCoverage: cc,
-			Metadata:         meta,
-		})
-		totalCoverage += cc.Percentage
-	}
-
-	var avgCoverage float64
-	if len(reports) > 0 {
-		avgCoverage = totalCoverage / float64(len(reports))
-	}
-
-	// Build summary — worst coverage tests sorted ascending.
-	sortedReports := make([]taxonomy.QualityReport, len(reports))
-	copy(sortedReports, reports)
-	sort.SliceStable(sortedReports, func(i, j int) bool {
-		return sortedReports[i].ContractCoverage.Percentage <
-			sortedReports[j].ContractCoverage.Percentage
-	})
-	worst := sortedReports
-	if len(worst) > 5 {
-		worst = worst[:5]
-	}
+// handleQualityNoTestMapping produces output when the external analyzer
+// does not support the test_mapping capability. Prints a warning and
+// either exits 0 (no thresholds) or returns an error (thresholds set).
+func handleQualityNoTestMapping(p qualityParams, providers *adapter.Providers) error {
+	_, _ = fmt.Fprintf(p.stderr,
+		"warning: analyzer %q does not support test_mapping — "+
+			"contract coverage and over-specification metrics are unavailable\n",
+		providers.AnalyzerName)
 
 	summary := &taxonomy.PackageSummary{
-		// TotalTests is 0 because external analyzers don't provide test
-		// function data. The reports contain per-function contract coverage,
-		// not per-test quality assessments.
-		TotalTests:              0,
-		AverageContractCoverage: avgCoverage,
-		WorstCoverageTests:      worst,
+		Reason: "test_mapping unavailable",
+	}
+	if err := writeQualityEmptyOutput(p, summary); err != nil {
+		return err
 	}
 
-	return reports, summary
+	if p.minContractCoverage > 0 || p.maxOverSpecification > 0 {
+		return fmt.Errorf("quality thresholds cannot be evaluated — " +
+			"analyzer does not support test_mapping")
+	}
+	return nil
+}
+
+// handleQualityTestMappingError produces output when the test_mapping
+// protocol method fails at runtime. The capability was declared but the
+// method returned an error.
+func handleQualityTestMappingError(p qualityParams, providers *adapter.Providers, fetchErr error) error {
+	_, _ = fmt.Fprintf(p.stderr,
+		"warning: test_mapping failed for analyzer %q: %v\n",
+		providers.AnalyzerName, fetchErr)
+
+	summary := &taxonomy.PackageSummary{
+		Reason: fmt.Sprintf("test_mapping error: %v", fetchErr),
+	}
+	if err := writeQualityEmptyOutput(p, summary); err != nil {
+		return err
+	}
+
+	if p.minContractCoverage > 0 || p.maxOverSpecification > 0 {
+		return fmt.Errorf("quality thresholds cannot be evaluated — "+
+			"test_mapping failed: %w", fetchErr)
+	}
+	return nil
+}
+
+// writeQualityEmptyOutput writes an empty quality report in the
+// requested format. Used by degraded/error paths.
+func writeQualityEmptyOutput(p qualityParams, summary *taxonomy.PackageSummary) error {
+	return writeQualityEmptyResults(p.stdout, p.format, summary)
 }
 
 // mergeSummaries combines multiple PackageSummary values into one.
@@ -1740,9 +1719,7 @@ Packages without test files are skipped with a warning.`,
 		"external analyzer binary (e.g., snake-eyes)")
 	cmd.Flags().StringVar(&languageFlag, "language", "",
 		"target language for analyzer discovery (e.g., python)")
-	// Hide analyzer flags on quality until supported (D12 deferral).
-	_ = cmd.Flags().MarkHidden("analyzer")
-	_ = cmd.Flags().MarkHidden("language")
+	// Analyzer flags are now visible — D12 deferral lifted.
 
 	return cmd
 }

@@ -594,6 +594,76 @@ func TestExternalSideEffectAnalyzer_ClassifySignals_Disabled(t *testing.T) {
 	}
 }
 
+// TestFetchTestMappings_Success verifies that FetchTestMappings returns
+// mappings from the fake analyzer's test_mapping response.
+func TestFetchTestMappings_Success(t *testing.T) {
+	client := mustNewClient(t)
+	defer func() { _ = client.Close() }()
+
+	mustInitialize(t, client)
+
+	mappings, err := adapter.FetchTestMappings(client, []string{"./..."}, "/tmp/project")
+	if err != nil {
+		t.Fatalf("FetchTestMappings: %v", err)
+	}
+
+	if len(mappings) == 0 {
+		t.Fatal("expected non-empty mappings")
+	}
+
+	// Verify the canned mapping from the fake analyzer:
+	// test_multiply → multiply:ReturnValue
+	found := false
+	for _, m := range mappings {
+		if m.TestFunction == "test_multiply" && m.TargetFunction == "multiply" {
+			found = true
+			if m.SideEffectType != "ReturnValue" {
+				t.Errorf("SideEffectType = %q, want %q", m.SideEffectType, "ReturnValue")
+			}
+			if m.Confidence != 80 {
+				t.Errorf("Confidence = %d, want 80", m.Confidence)
+			}
+			if m.TargetPackage != "math_utils" {
+				t.Errorf("TargetPackage = %q, want %q", m.TargetPackage, "math_utils")
+			}
+		}
+	}
+	if !found {
+		t.Error("expected mapping for test_multiply → multiply not found")
+	}
+}
+
+// TestFetchTestMappings_ProtocolError verifies that FetchTestMappings
+// returns an error when the protocol call fails.
+func TestFetchTestMappings_ProtocolError(t *testing.T) {
+	// Use --error-response to make the fake analyzer return errors.
+	client, err := protocol.NewClient(fakeBinaryPath, "--stdio", "--error-response")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	// Initialize succeeds even with --error-response (it's handled separately).
+	ctx := context.Background()
+	resp, err := client.Call(ctx, protocol.MethodInitialize, protocol.InitializeParams{
+		RootPath: "/tmp/project",
+	})
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("initialize error: %s", resp.Error.Message)
+	}
+
+	mappings, fetchErr := adapter.FetchTestMappings(client, []string{"./..."}, "/tmp/project")
+	if fetchErr == nil {
+		t.Fatal("expected error from FetchTestMappings with error-response analyzer")
+	}
+	if mappings != nil {
+		t.Errorf("expected nil mappings on error, got %d", len(mappings))
+	}
+}
+
 // TestExternalSideEffectAnalyzer_Streaming verifies that the streaming
 // adapter produces the same results as the batch adapter.
 func TestExternalSideEffectAnalyzer_Streaming(t *testing.T) {

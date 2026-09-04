@@ -7,6 +7,60 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// findSideEffectID tests (table-driven)
+// ---------------------------------------------------------------------------
+
+func TestFindSideEffectID(t *testing.T) {
+	tests := []struct {
+		name    string
+		effects []taxonomy.SideEffect
+		typ     string
+		wantID  string
+	}{
+		{
+			name: "matching type found",
+			effects: []taxonomy.SideEffect{
+				{ID: "se-001", Type: "ReturnValue"},
+				{ID: "se-002", Type: "ErrorReturn"},
+			},
+			typ:    "ErrorReturn",
+			wantID: "se-002",
+		},
+		{
+			name: "no match returns empty string",
+			effects: []taxonomy.SideEffect{
+				{ID: "se-001", Type: "ReturnValue"},
+			},
+			typ:    "MapMutation",
+			wantID: "",
+		},
+		{
+			name:    "empty effects slice",
+			effects: nil,
+			typ:     "ReturnValue",
+			wantID:  "",
+		},
+		{
+			name: "multiple effects with same type returns first match",
+			effects: []taxonomy.SideEffect{
+				{ID: "se-first", Type: "ReturnValue"},
+				{ID: "se-second", Type: "ReturnValue"},
+			},
+			typ:    "ReturnValue",
+			wantID: "se-first",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := findSideEffectID(tt.effects, tt.typ)
+			if got != tt.wantID {
+				t.Errorf("findSideEffectID() = %q, want %q", got, tt.wantID)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // confidenceRange tests (table-driven)
 // ---------------------------------------------------------------------------
 

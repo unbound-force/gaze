@@ -190,8 +190,12 @@ Gaze can analyze non-Go projects by delegating to external analyzer binaries tha
 ```bash
 gaze crap --analyzer snake-eyes ./src              # Explicit binary
 gaze crap --analyzer snake-eyes --language python ./src
+gaze quality --analyzer snake-eyes ./src           # Test quality assessment
+gaze quality --analyzer snake-eyes --language python ./src
 gaze report --analyzer snake-eyes --format=json ./src
 ```
+
+> **Note**: Go-specific flags (`--target`, `--ai-mapper`, `--include-unexported`) are not available with `--analyzer`. The external analyzer provides its own test-to-target mapping and assertion detection.
 
 ### Analyzer Discovery
 
