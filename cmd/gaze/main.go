@@ -1267,11 +1267,23 @@ func buildExternalQualityReports(
 			}
 		}
 
-		reports = append(reports, taxonomy.QualityReport{
+		report := taxonomy.QualityReport{
 			TargetFunction:   result.Target,
 			ContractCoverage: cc,
 			Metadata:         meta,
-		})
+		}
+
+		// COUPLING: Detection confidence is computed and stored in
+		// internal/adapter/contract.go during Build. If QualityReport
+		// construction changes for external analyzers, this must be
+		// updated. See design.md R2.
+		if ecp, ok := providers.ContractCoverage.(*adapter.ExternalContractCoverageProvider); ok {
+			report.AssertionDetectionConfidence = ecp.DetectionConfidence(
+				result.Target.Package, result.Target.Function,
+			)
+		}
+
+		reports = append(reports, report)
 		totalCoverage += cc.Percentage
 	}
 
@@ -1292,13 +1304,27 @@ func buildExternalQualityReports(
 		worst = worst[:5]
 	}
 
+	// Compute summary detection confidence as arithmetic mean
+	// of per-report values (matching the Go-native aggregation
+	// in quality.BuildPackageSummary).
+	var avgDetectionConf int
+	if len(reports) > 0 {
+		totalDetectionConf := 0
+		for _, r := range reports {
+			totalDetectionConf += r.AssertionDetectionConfidence
+		}
+		n := float64(len(reports))
+		avgDetectionConf = int(float64(totalDetectionConf)/n + 0.5)
+	}
+
 	summary := &taxonomy.PackageSummary{
 		// TotalTests is 0 because external analyzers don't provide test
 		// function data. The reports contain per-function contract coverage,
 		// not per-test quality assessments.
-		TotalTests:              0,
-		AverageContractCoverage: avgCoverage,
-		WorstCoverageTests:      worst,
+		TotalTests:                   0,
+		AverageContractCoverage:      avgCoverage,
+		WorstCoverageTests:           worst,
+		AssertionDetectionConfidence: avgDetectionConf,
 	}
 
 	return reports, summary

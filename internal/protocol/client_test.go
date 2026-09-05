@@ -409,11 +409,11 @@ func TestDiscoverAndTestMapping(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &mappingResult); err != nil {
 		t.Fatalf("unmarshal test_mapping result: %v", err)
 	}
-	if len(mappingResult.Mappings) != 1 {
-		t.Fatalf("test_mapping returned %d mappings, want 1", len(mappingResult.Mappings))
+	if len(mappingResult.Mappings) != 3 {
+		t.Fatalf("test_mapping returned %d mappings, want 3", len(mappingResult.Mappings))
 	}
 	if mappingResult.Mappings[0].TestFunction != "test_multiply" {
-		t.Errorf("mapping test_function = %q, want %q", mappingResult.Mappings[0].TestFunction, "test_multiply")
+		t.Errorf("mapping[0] test_function = %q, want %q", mappingResult.Mappings[0].TestFunction, "test_multiply")
 	}
 }
 
