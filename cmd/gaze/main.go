@@ -1943,9 +1943,18 @@ func runReport(p reportParams) error {
 	if err != nil {
 		cwd = "."
 	}
-	moduleDir, findErr := loader.FindModuleRoot(cwd)
-	if findErr != nil {
-		return fmt.Errorf("finding module root: %w", findErr)
+
+	// When --analyzer is set, the project may not be a Go module.
+	// Use cwd directly and skip FindModuleRoot. For Go-native
+	// analysis, resolve the module root. Fix for #257: same bug
+	// pattern as #250 (fixed in runCrap by PR #254).
+	moduleDir := cwd
+	if p.analyzerFlag == "" {
+		var findErr error
+		moduleDir, findErr = loader.FindModuleRoot(cwd)
+		if findErr != nil {
+			return fmt.Errorf("finding module root: %w", findErr)
+		}
 	}
 
 	timeout := p.aiTimeout

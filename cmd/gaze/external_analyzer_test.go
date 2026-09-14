@@ -351,3 +351,81 @@ func TestQualityWithExternalAnalyzer_BinaryNotFound(t *testing.T) {
 		t.Errorf("error should mention analyzer, got: %s", errMsg)
 	}
 }
+
+// TestReportWithExternalAnalyzer_BypassesFindModuleRoot verifies that
+// runReport with --analyzer set does NOT call FindModuleRoot. This is
+// the regression test for issue #257: gaze report --analyzer fails
+// with 'no go.mod found' for non-Go projects (same pattern as #250).
+func TestReportWithExternalAnalyzer_BypassesFindModuleRoot(t *testing.T) {
+	// Run from a temporary directory that has no go.mod, so
+	// FindModuleRoot would fail if it were called.
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir(%q): %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	var stdout, stderr bytes.Buffer
+
+	err = runReport(reportParams{
+		patterns:     []string{"."},
+		format:       "json",
+		analyzerFlag: "nonexistent-analyzer",
+		languageFlag: "python",
+		stdout:       &stdout,
+		stderr:       &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent analyzer")
+	}
+	errMsg := err.Error()
+
+	// The error must NOT be about FindModuleRoot — that's the bug.
+	if strings.Contains(errMsg, "finding module root") {
+		t.Errorf("error should not mention FindModuleRoot, got: %s", errMsg)
+	}
+	if strings.Contains(errMsg, "no go.mod found") {
+		t.Errorf("error should not mention go.mod, got: %s", errMsg)
+	}
+
+	// The error MUST be about the analyzer binary (proving the
+	// external analyzer path was reached).
+	if !strings.Contains(errMsg, "discovering analyzer") && !strings.Contains(errMsg, "not found") {
+		t.Errorf("error should be about analyzer discovery, got: %s", errMsg)
+	}
+}
+
+// TestRunReport_GoNativePath_FindModuleRootFailure verifies that
+// runReport without --analyzer, called from a directory without
+// go.mod, returns an error with the "finding module root" wrapping
+// format. This proves FindModuleRoot runs in the Go-native path.
+func TestRunReport_GoNativePath_FindModuleRootFailure(t *testing.T) {
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir(%q): %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	var stdout, stderr bytes.Buffer
+
+	err = runReport(reportParams{
+		patterns: []string{"."},
+		format:   "json",
+		stdout:   &stdout,
+		stderr:   &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected error when cwd has no go.mod")
+	}
+	if !strings.Contains(err.Error(), "finding module root") {
+		t.Errorf("error should contain 'finding module root', got: %s", err)
+	}
+}
