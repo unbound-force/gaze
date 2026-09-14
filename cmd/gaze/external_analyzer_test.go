@@ -359,19 +359,11 @@ func TestQualityWithExternalAnalyzer_BinaryNotFound(t *testing.T) {
 func TestReportWithExternalAnalyzer_BypassesFindModuleRoot(t *testing.T) {
 	// Run from a temporary directory that has no go.mod, so
 	// FindModuleRoot would fail if it were called.
-	dir := t.TempDir()
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%q): %v", dir, err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	t.Chdir(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
 
-	err = runReport(reportParams{
+	err := runReport(reportParams{
 		patterns:     []string{"."},
 		format:       "json",
 		analyzerFlag: "nonexistent-analyzer",
@@ -404,19 +396,11 @@ func TestReportWithExternalAnalyzer_BypassesFindModuleRoot(t *testing.T) {
 // go.mod, returns an error with the "finding module root" wrapping
 // format. This proves FindModuleRoot runs in the Go-native path.
 func TestRunReport_GoNativePath_FindModuleRootFailure(t *testing.T) {
-	dir := t.TempDir()
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%q): %v", dir, err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	t.Chdir(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
 
-	err = runReport(reportParams{
+	err := runReport(reportParams{
 		patterns: []string{"."},
 		format:   "json",
 		stdout:   &stdout,
