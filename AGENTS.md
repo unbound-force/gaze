@@ -341,6 +341,15 @@ All business logic lives under `internal/` and cannot be imported externally.
 - **Provider interfaces**: Language-specific data acquisition (complexity, coverage, side effects, contract coverage) is abstracted behind interfaces in `internal/crap/provider.go`. Go implementations live in `internal/provider/goprovider/`, mock implementations in `internal/provider/mockprovider/`. This decouples the universal scoring engine from Go-specific tooling (gocyclo, go/packages, SSA).
 - **External analyzer protocol**: JSON-RPC 2.0 over stdin/stdout for communicating with external language analyzers. Protocol client in `internal/protocol/`, provider adapters in `internal/adapter/`. Adapters implement the same provider interfaces as `goprovider`, enabling the scoring engine to work with any language. Three-tier discovery: `--analyzer` flag → `.gaze.yaml` config → PATH convention (`gaze-analyzer-<language>`).
 
+### File Sync Invariants
+
+The following file groups MUST remain byte-identical. Changing one without updating the other breaks CI:
+
+| Source of Truth | Embedded Copy | Enforced By |
+|----------------|---------------|-------------|
+| `.opencode/{agents,commands,references}/*.md`, `.opencode/dcp.jsonc` | `internal/scaffold/assets/` (same relative paths) | `TestEmbeddedAssetsMatchSource` |
+| `internal/scaffold/assets/agents/gaze-reporter.md` | `internal/aireport/assets/agents/gaze-reporter.md` | `TestEmbeddedPromptMatchesScaffold` |
+
 ## Coding Conventions
 
 - **Formatting**: `gofmt` and `goimports` (enforced by golangci-lint).
