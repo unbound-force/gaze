@@ -258,6 +258,7 @@ gh issue create --repo unbound-force/website \
 ```
 
 **Exempt changes** (no website issue needed):
+
 - Internal refactoring with no user-facing behavior
   change
 - Test-only changes
@@ -265,6 +266,7 @@ gh issue create --repo unbound-force/website \
 - Spec artifacts (specs are internal planning documents)
 
 **Examples requiring a website issue**:
+
 - New CLI command or flag added
 - Hero capabilities changed (new agent, removed feature)
 - Installation steps changed (`uf setup` flow)
@@ -387,6 +389,7 @@ metadata that grep cannot match.
 ### When to Fall Back to grep/glob/read
 
 Use direct file operations instead of Dewey when:
+
 - **Dewey is unavailable** — MCP tools return errors or
   are not configured
 - **Exact string matching is needed** — searching for a
@@ -399,6 +402,7 @@ Use direct file operations instead of Dewey when:
 ### Graceful Degradation (3-Tier Pattern)
 
 **Tier 3 (Full Dewey)** — semantic + structured search:
+
 - `dewey_semantic_search` — natural language queries
 - `dewey_search` — keyword queries
 - `dewey_get_page`, `dewey_find_connections`,
@@ -408,6 +412,7 @@ Use direct file operations instead of Dewey when:
 
 **Tier 2 (Graph-only, no embedding model)** — structured
 search only:
+
 - `dewey_search` — keyword queries (no embeddings needed)
 - `dewey_get_page`, `dewey_traverse`,
   `dewey_find_connections` — graph navigation
@@ -416,6 +421,7 @@ search only:
 - Semantic search unavailable — use exact keyword matches
 
 **Tier 1 (No Dewey)** — direct file access:
+
 - Use Read tool for direct file access
 - Use Grep for keyword search across the codebase
 - Use Glob for file pattern matching
@@ -465,6 +471,7 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
+
 - N/A — Markdown files only (no Go code changes) + None — plain Markdown, no static site generator, no build step (037-project-documentation)
 - Filesystem only — `docs/` directory at repository root (037-project-documentation)
 - Go 1.25+ (per `go.mod` directive) + Standard library only (no new dependencies). Existing: `gopkg.in/yaml.v3` (config), `encoding/json` (report output) (039-baseline-gazecrap-threshold)
