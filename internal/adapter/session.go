@@ -144,6 +144,13 @@ func (s *Session) Initialize() (*Providers, error) {
 	}, nil
 }
 
+// Client returns the underlying protocol client. Callers can use this
+// to make direct protocol calls (e.g., FetchTestMappings) outside the
+// provider pipeline.
+func (s *Session) Client() *protocol.Client {
+	return s.client
+}
+
 // Close sends a shutdown request to the analyzer and waits for the
 // subprocess to exit. Safe to call even if Initialize was not called
 // or failed.

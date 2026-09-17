@@ -412,6 +412,10 @@ const QualitySchema = `{
         "total_over_specifications", "assertion_detection_confidence"
       ],
       "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation when quality metrics are unavailable or degraded"
+        },
         "total_tests": { "type": "integer" },
         "average_contract_coverage": {
           "type": "number",

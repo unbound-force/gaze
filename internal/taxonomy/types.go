@@ -438,6 +438,13 @@ type QualityReport struct {
 
 // PackageSummary holds aggregate quality metrics for a package.
 type PackageSummary struct {
+	// Reason provides a human-readable explanation when quality
+	// metrics are unavailable or degraded. Populated by the
+	// external analyzer degraded path (e.g., "test_mapping
+	// unavailable" or "test_mapping error: ..."). Empty when
+	// quality analysis completed normally.
+	Reason string `json:"reason,omitempty"`
+
 	// TotalTests is the number of test functions analyzed.
 	TotalTests int `json:"total_tests"`
 
