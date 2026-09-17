@@ -33,6 +33,11 @@ type ExternalContractCoverageProvider struct {
 	rootDir     string
 	patterns    []string
 	stderr      io.Writer
+
+	// detectionConfidence stores per-target-function assertion
+	// detection confidence, computed during Build. Keyed by
+	// pkg + "/" + function.
+	detectionConfidence map[string]int
 }
 
 // NewExternalContractCoverageProvider creates a contract coverage
@@ -77,6 +82,23 @@ func (p *ExternalContractCoverageProvider) Build(patterns []string, rootDir stri
 	}
 
 	lookup := buildContractLookup(allResults, mappings)
+
+	// Compute and store per-target-function detection confidence.
+	// Iterate unique (TargetPackage, TargetFunction) pairs and call
+	// computeDetectionConfidenceFromMappings for each.
+	type targetKey struct{ pkg, fn string }
+	seen := make(map[targetKey]bool)
+	p.detectionConfidence = make(map[string]int)
+	for _, m := range mappings {
+		tk := targetKey{m.TargetPackage, m.TargetFunction}
+		if seen[tk] {
+			continue
+		}
+		seen[tk] = true
+		conf := computeDetectionConfidenceFromMappings(mappings, m.TargetPackage, m.TargetFunction)
+		p.detectionConfidence[m.TargetPackage+"/"+m.TargetFunction] = conf
+	}
+
 	return lookup, nil, nil
 }
 
@@ -113,6 +135,18 @@ func (p *ExternalContractCoverageProvider) fetchTestMappings(patterns []string, 
 		return nil, err
 	}
 	return result.Mappings, nil
+}
+
+// DetectionConfidence returns the assertion detection confidence
+// for a specific target function, as computed during Build. Returns
+// 0 if the function is not found or if Build has not been called
+// (nil map). The pkg and function parameters refer to the target
+// package and target function.
+func (p *ExternalContractCoverageProvider) DetectionConfidence(pkg, function string) int {
+	if p.detectionConfidence == nil {
+		return 0
+	}
+	return p.detectionConfidence[pkg+"/"+function]
 }
 
 // warn emits a warning to stderr if a writer is configured.
@@ -218,6 +252,31 @@ func confidenceRange(effects []taxonomy.SideEffect) (minConf, maxConf int, found
 		return 0, 0, false
 	}
 	return minConf, maxConf, true
+}
+
+// computeDetectionConfidenceFromMappings computes the assertion
+// detection confidence for a specific target function, mirroring
+// the semantics of quality.computeDetectionConfidence for the
+// Go-native path. It filters mappings to those targeting the given
+// (pkg, fn) pair, counts total and recognized (where AssertionType
+// is non-empty), and returns recognized * 100 / total. Returns 0
+// when no mappings match the target.
+func computeDetectionConfidenceFromMappings(mappings []protocol.AssertionMappingData, pkg, fn string) int {
+	total := 0
+	recognized := 0
+	for _, m := range mappings {
+		if m.TargetPackage != pkg || m.TargetFunction != fn {
+			continue
+		}
+		total++
+		if m.AssertionType != "" {
+			recognized++
+		}
+	}
+	if total == 0 {
+		return 0
+	}
+	return recognized * 100 / total
 }
 
 // findSideEffectID finds the ID of the first side effect matching

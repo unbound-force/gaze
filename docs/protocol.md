@@ -481,7 +481,7 @@ Find source and test files in the project. Reserved for future use -- currently 
 
 ### `test_mapping` (optional)
 
-Map test assertions to side effects. When supported, this enables GazeCRAP scoring (contract coverage).
+Map test assertions to side effects. When supported, this enables GazeCRAP scoring (contract coverage) and assertion detection confidence.
 
 **Capability**: `test_mapping`
 
@@ -518,7 +518,7 @@ Map test assertions to side effects. When supported, this enables GazeCRAP scori
 | `test_function` | string | Test function name |
 | `test_file` | string | Test file path |
 | `assertion_location` | string | Source position of the assertion |
-| `assertion_type` | string | Kind of assertion (e.g., "equality", "error_check") |
+| `assertion_type` | string | Kind of assertion (e.g., "equality", "error_check"). Non-empty values indicate a recognized assertion pattern; empty string means the assertion was not classified, which lowers assertion detection confidence. |
 | `target_function` | string | Function under test |
 | `target_package` | string | Package of the function under test |
 | `side_effect_type` | string | Type of side effect being asserted on |
@@ -578,7 +578,7 @@ When a required method (`analyze`, `complexity`, `coverage`) returns a JSON-RPC 
 When an optional method (`discover`, `test_mapping`, `classify_signals`) returns an error, Gaze logs a warning to stderr and degrades gracefully:
 
 - `discover` error: no impact (not currently consumed)
-- `test_mapping` error: GazeCRAP is unavailable
+- `test_mapping` error: GazeCRAP and assertion detection confidence are unavailable
 - `classify_signals` error: uses pre-classified effects from `analyze`
 
 ### Process crashes
@@ -616,7 +616,7 @@ To build a Gaze-compatible analyzer:
 
 1. **Accept `--stdio` flag**: Read JSON-RPC requests from stdin, write responses to stdout, diagnostics to stderr.
 2. **Implement the 5 required methods**: `initialize`, `analyze`, `complexity`, `coverage`, `shutdown`.
-3. **Declare capabilities**: In the `initialize` response, set `test_mapping: true` if you can map assertions to effects (enables GazeCRAP).
+3. **Declare capabilities**: In the `initialize` response, set `test_mapping: true` if you can map assertions to effects (enables GazeCRAP and assertion detection confidence).
 4. **Map to Gaze's taxonomy**: Use Gaze's `SideEffectType` constants for the `type` field in `analyze` responses.
 5. **Follow naming convention**: Name your binary `gaze-analyzer-<language>` for automatic PATH discovery.
 

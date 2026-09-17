@@ -311,14 +311,15 @@ func TestContractCoverageProvider_WithTestMapping(t *testing.T) {
 		t.Errorf("multiply contract coverage = %g%%, want 100%%", info.Percentage)
 	}
 
-	// divide has 2 contractual effects but no test mappings target
-	// it, so contract coverage should be 0%.
+	// divide has 2 contractual effects (ReturnValue and ErrorReturn).
+	// The fake analyzer maps test_divide_basic → ReturnValue and
+	// test_divide_error → ErrorReturn, so both effects are covered → 100%.
 	info, ok = lookup("math_utils", "divide")
 	if !ok {
 		t.Fatal("lookup returned ok=false for divide")
 	}
-	if info.Percentage != 0.0 {
-		t.Errorf("divide contract coverage = %g%%, want 0%%", info.Percentage)
+	if info.Percentage != 100.0 {
+		t.Errorf("divide contract coverage = %g%%, want 100%%", info.Percentage)
 	}
 }
 
@@ -653,6 +654,46 @@ func TestExternalSideEffectAnalyzer_Streaming(t *testing.T) {
 			t.Errorf("result[%d] side effects count mismatch: batch=%d, stream=%d",
 				i, len(batchResults[i].SideEffects), len(streamResults[i].SideEffects))
 		}
+	}
+}
+
+// TestDetectionConfidence_Integration verifies that
+// ExternalContractCoverageProvider.Build computes and stores
+// per-target-function detection confidence from mapping data, and
+// that the values are accessible via DetectionConfidence.
+func TestDetectionConfidence_Integration(t *testing.T) {
+	client := mustNewClient(t)
+	defer func() { _ = client.Close() }()
+
+	caps := mustInitialize(t, client)
+
+	sideEffects := adapter.NewExternalSideEffectAnalyzer(
+		client, caps, "/tmp/project", []string{"./..."}, nil, nil,
+	)
+
+	provider := adapter.NewExternalContractCoverageProvider(
+		client, caps, sideEffects,
+		"/tmp/project", []string{"./..."}, nil,
+	)
+
+	_, _, err := provider.Build([]string{"./..."}, "/tmp/project")
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	// The fake analyzer returns 3 mappings:
+	//   multiply: 1 mapping with assertion_type="equality" → 100%
+	//   divide:   2 mappings, 1 with assertion_type="equality", 1 with "" → 50%
+	if got := provider.DetectionConfidence("math_utils", "multiply"); got != 100 {
+		t.Errorf("multiply DetectionConfidence = %d, want 100", got)
+	}
+	if got := provider.DetectionConfidence("math_utils", "divide"); got != 50 {
+		t.Errorf("divide DetectionConfidence = %d, want 50", got)
+	}
+
+	// Unknown function returns 0.
+	if got := provider.DetectionConfidence("math_utils", "unknown"); got != 0 {
+		t.Errorf("unknown DetectionConfidence = %d, want 0", got)
 	}
 }
 
