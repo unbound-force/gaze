@@ -51,7 +51,7 @@ func TestRunDocscanStep_RealModuleDir(t *testing.T) {
 		t.Skip("skipping: runs real docscan pipeline")
 	}
 	modRoot := findModuleRoot(t)
-	raw, err := runDocscanStep(modRoot, io.Discard)
+	raw, err := runDocscanStep(modRoot, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("runDocscanStep: %v", err)
 	}
@@ -108,6 +108,7 @@ func TestRunProductionPipeline_RealPackage(t *testing.T) {
 		false, // testShort
 		io.Discard,
 		pipelineStepFuncs{}, // zero value = real step functions
+		nil,                 // no analyzer session
 	)
 	if err != nil {
 		t.Fatalf("runProductionPipeline: %v", err)

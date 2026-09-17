@@ -24,6 +24,7 @@ import (
 	"github.com/unbound-force/gaze/internal/config"
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/internal/docscan/apidoc"
 	"github.com/unbound-force/gaze/internal/loader"
 	"github.com/unbound-force/gaze/internal/provider/goprovider"
 	"github.com/unbound-force/gaze/internal/quality"
@@ -994,12 +995,18 @@ automatically.`,
 	return cmd
 }
 
+// docscanOutput is a type alias for apidoc.DocscanEnvelope,
+// providing the structured JSON output for gaze docscan.
+type docscanOutput = apidoc.DocscanEnvelope
+
 // docscanParams holds the parsed flags for the docscan command.
 type docscanParams struct {
-	pkgPath    string
-	configPath string
-	stdout     io.Writer
-	stderr     io.Writer
+	pkgPath      string
+	configPath   string
+	analyzerFlag string
+	languageFlag string
+	stdout       io.Writer
+	stderr       io.Writer
 }
 
 // runDocscan is the extracted, testable body of the docscan command.
@@ -1040,13 +1047,66 @@ func runDocscan(p docscanParams) error {
 		return fmt.Errorf("scanning documents: %w", err)
 	}
 
+	output := docscanOutput{Documents: docs}
+
+	// External analyzer path: when --analyzer or --language is set,
+	// compute API documentation coverage via the external analyzer.
+	if p.analyzerFlag != "" || p.languageFlag != "" {
+		report, analyzerErr := runDocscanAnalyzer(context.Background(), p, repoRoot, docs)
+		if analyzerErr != nil {
+			// Non-fatal: warn and continue without API coverage.
+			_, _ = fmt.Fprintf(p.stderr, "Warning: analyzer integration failed: %v\n", analyzerErr)
+		} else {
+			output.APICoverage = report
+		}
+	}
+
 	enc := json.NewEncoder(p.stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(docs)
+	return enc.Encode(output)
+}
+
+// runDocscanAnalyzer initializes an external analyzer session and
+// computes API documentation coverage. It calls doc_coverage (when
+// supported) and analyze (for heuristic fallback), then delegates
+// to apidoc.Analyze for the final report.
+func runDocscanAnalyzer(
+	ctx context.Context, p docscanParams, moduleDir string, docs []docscan.DocumentFile,
+) (*apidoc.APICoverageReport, error) {
+	patterns := []string{p.pkgPath}
+
+	session, _, err := initExternalSession(
+		p.analyzerFlag, p.languageFlag, moduleDir, patterns, p.stderr)
+	if err != nil {
+		return nil, fmt.Errorf("initializing analyzer: %w", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	// FetchDocscanData consolidates the DocCoverage + Analyze call
+	// pattern shared with the report pipeline (runner_steps.go).
+	// Analyze failure is non-fatal here — continue with partial data.
+	data, fetchErr := session.FetchDocscanData(ctx, moduleDir, patterns, p.stderr)
+	if fetchErr != nil {
+		_, _ = fmt.Fprintf(p.stderr, "Warning: %v\n", fetchErr)
+	}
+
+	analyzerData := &apidoc.AnalyzerData{
+		Functions:   data.Functions,
+		DocCoverage: data.DocCoverage,
+		Language:    session.Language(),
+	}
+
+	report, err := apidoc.Analyze(docs, analyzerData)
+	if err != nil {
+		return nil, fmt.Errorf("API coverage analysis: %w", err)
+	}
+
+	return report, nil
 }
 
 func newDocscanCmd() *cobra.Command {
 	var configPath string
+	var analyzerFlag, languageFlag string
 
 	cmd := &cobra.Command{
 		Use:   "docscan [package]",
@@ -1055,6 +1115,10 @@ func newDocscanCmd() *cobra.Command {
 output a prioritized list of documents as JSON. Useful as input
 to the gaze-reporter agent's full mode for document-enhanced
 classification.
+
+When --analyzer or --language is provided, gaze also computes API
+documentation coverage by cross-referencing analyzer output against
+the discovered documentation files.
 
 Priority:
   1 = same directory as the target package (highest relevance)
@@ -1067,16 +1131,22 @@ Priority:
 				pkgPath = args[0]
 			}
 			return runDocscan(docscanParams{
-				pkgPath:    pkgPath,
-				configPath: configPath,
-				stdout:     os.Stdout,
-				stderr:     os.Stderr,
+				pkgPath:      pkgPath,
+				configPath:   configPath,
+				analyzerFlag: analyzerFlag,
+				languageFlag: languageFlag,
+				stdout:       os.Stdout,
+				stderr:       os.Stderr,
 			})
 		},
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "",
 		"path to .gaze.yaml config file (default: search CWD)")
+	cmd.Flags().StringVar(&analyzerFlag, "analyzer", "",
+		"external analyzer binary (e.g., snake-eyes)")
+	cmd.Flags().StringVar(&languageFlag, "language", "",
+		"target language for analyzer discovery (e.g., python)")
 
 	return cmd
 }

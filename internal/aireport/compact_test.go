@@ -168,10 +168,13 @@ func buildFullPayload(t *testing.T) *ReportPayload {
 		},
 	})
 
-	// Docscan section with content.
-	docscanJSON := mustMarshal(t, []map[string]interface{}{
-		{"path": "README.md", "content": "# Project\nSome content here.", "priority": 2},
-		{"path": "CONTRIBUTING.md", "content": "# Contributing\nGuidelines.", "priority": 3},
+	// Docscan section with content (envelope format).
+	docscanJSON := mustMarshal(t, map[string]interface{}{
+		"documents": []map[string]interface{}{
+			{"path": "README.md", "content": "# Project\nSome content here.", "priority": 2},
+			{"path": "CONTRIBUTING.md", "content": "# Contributing\nGuidelines.", "priority": 3},
+		},
+		"api_coverage": nil,
 	})
 
 	return &ReportPayload{
@@ -286,12 +289,15 @@ func TestCompactForAI_Summary(t *testing.T) {
 // TestCompactForAI_DocscanContentStripped verifies that docscan entries
 // have their Content field stripped, keeping only Path and Priority.
 func TestCompactForAI_DocscanContentStripped(t *testing.T) {
-	// Build payload with 3 docs, each with 10KB content.
+	// Build payload with 3 docs, each with 10KB content (envelope format).
 	bigContent := strings.Repeat("x", 10*1024)
-	docscanJSON := mustMarshal(t, []map[string]interface{}{
-		{"path": "README.md", "content": bigContent, "priority": 2},
-		{"path": "CONTRIBUTING.md", "content": bigContent, "priority": 3},
-		{"path": "docs/ARCH.md", "content": bigContent, "priority": 3},
+	docscanJSON := mustMarshal(t, map[string]interface{}{
+		"documents": []map[string]interface{}{
+			{"path": "README.md", "content": bigContent, "priority": 2},
+			{"path": "CONTRIBUTING.md", "content": bigContent, "priority": 3},
+			{"path": "docs/ARCH.md", "content": bigContent, "priority": 3},
+		},
+		"api_coverage": nil,
 	})
 
 	payload := &ReportPayload{
@@ -309,19 +315,24 @@ func TestCompactForAI_DocscanContentStripped(t *testing.T) {
 		t.Error("compact output still contains docscan content")
 	}
 
-	// Parse docscan array.
+	// Parse docscan envelope.
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
+	var docscanEnv map[string]json.RawMessage
+	if err := json.Unmarshal(m["docscan"], &docscanEnv); err != nil {
+		t.Fatalf("Unmarshal docscan envelope: %v", err)
+	}
+
 	var docs []map[string]interface{}
-	if err := json.Unmarshal(m["docscan"], &docs); err != nil {
-		t.Fatalf("Unmarshal docscan: %v", err)
+	if err := json.Unmarshal(docscanEnv["documents"], &docs); err != nil {
+		t.Fatalf("Unmarshal docscan documents: %v", err)
 	}
 
 	if len(docs) != 3 {
-		t.Fatalf("docscan length = %d, want 3", len(docs))
+		t.Fatalf("docscan documents length = %d, want 3", len(docs))
 	}
 
 	for i, doc := range docs {
@@ -341,7 +352,7 @@ func TestCompactForAI_DocscanContentStripped(t *testing.T) {
 // stays [] (not null) in compact output.
 func TestCompactForAI_DocscanEmpty(t *testing.T) {
 	payload := &ReportPayload{
-		Docscan: json.RawMessage(`[]`),
+		Docscan: json.RawMessage(`{"documents":[],"api_coverage":null}`),
 		Errors:  PayloadErrors{},
 	}
 
@@ -355,8 +366,13 @@ func TestCompactForAI_DocscanEmpty(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	if string(m["docscan"]) != "[]" {
-		t.Errorf("docscan = %s, want []", m["docscan"])
+	// Docscan should be an envelope with empty documents.
+	var docscanEnv map[string]json.RawMessage
+	if err := json.Unmarshal(m["docscan"], &docscanEnv); err != nil {
+		t.Fatalf("Unmarshal docscan envelope: %v", err)
+	}
+	if string(docscanEnv["documents"]) != "[]" {
+		t.Errorf("docscan.documents = %s, want []", docscanEnv["documents"])
 	}
 }
 
@@ -875,7 +891,7 @@ func TestCompactForAI_SizeBudget(t *testing.T) {
 		},
 	})
 
-	// Build docscan with 30 docs, each with 10KB content.
+	// Build docscan with 30 docs, each with 10KB content (envelope format).
 	docs := make([]map[string]interface{}, 30)
 	bigContent := strings.Repeat("Documentation content. ", 500) // ~11KB
 	for i := range docs {
@@ -885,7 +901,10 @@ func TestCompactForAI_SizeBudget(t *testing.T) {
 			"priority": 3,
 		}
 	}
-	docscanJSON := mustMarshal(t, docs)
+	docscanJSON := mustMarshal(t, map[string]interface{}{
+		"documents":    docs,
+		"api_coverage": nil,
+	})
 
 	// Classify with 200 results, each with 3 signals.
 	classifyResults := make([]map[string]interface{}, 200)
@@ -1108,10 +1127,14 @@ func TestRunTextPath_CompactPayloadReceived(t *testing.T) {
 		t.Fatalf("Unmarshal adapter payload: %v", err)
 	}
 
-	// Assertion 1: no "content" in docscan entries.
+	// Assertion 1: no "content" in docscan document entries.
+	var docscanEnv map[string]json.RawMessage
+	if err := json.Unmarshal(m["docscan"], &docscanEnv); err != nil {
+		t.Fatalf("Unmarshal docscan envelope: %v", err)
+	}
 	var docs []map[string]interface{}
-	if err := json.Unmarshal(m["docscan"], &docs); err != nil {
-		t.Fatalf("Unmarshal docscan: %v", err)
+	if err := json.Unmarshal(docscanEnv["documents"], &docs); err != nil {
+		t.Fatalf("Unmarshal docscan documents: %v", err)
 	}
 	for i, doc := range docs {
 		if _, ok := doc["content"]; ok {

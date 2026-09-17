@@ -1,6 +1,7 @@
 package aireport
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,12 +9,14 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/unbound-force/gaze/internal/adapter"
 	"github.com/unbound-force/gaze/internal/analysis"
 	"github.com/unbound-force/gaze/internal/classify"
 	"github.com/unbound-force/gaze/internal/cliutil"
 	"github.com/unbound-force/gaze/internal/config"
 	"github.com/unbound-force/gaze/internal/crap"
 	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/internal/docscan/apidoc"
 	"github.com/unbound-force/gaze/internal/loader"
 	"github.com/unbound-force/gaze/internal/provider/goprovider"
 	"github.com/unbound-force/gaze/internal/quality"
@@ -322,8 +325,16 @@ func runClassifyStep(patterns []string, moduleDir string, stderr io.Writer, deps
 	}, nil
 }
 
+// docscanEnvelope is a type alias for the shared envelope type
+// in apidoc, providing a consistent JSON structure for the docscan
+// output across the CLI and report pipeline.
+type docscanEnvelope = apidoc.DocscanEnvelope
+
 // runDocscanStep runs the documentation scanner and returns the JSON output.
-func runDocscanStep(moduleDir string, stderr io.Writer) (json.RawMessage, error) {
+// When sess is non-nil and initialized, it uses the external analyzer for
+// language-aware documentation coverage analysis. When sess is nil, only
+// the heuristic docscan is performed.
+func runDocscanStep(moduleDir string, sess *adapter.Session, stderr io.Writer) (json.RawMessage, error) {
 	cfg := config.LoadFromDir(moduleDir, stderr)
 	scanOpts := docscan.ScanOptions{Config: cfg}
 
@@ -331,10 +342,47 @@ func runDocscanStep(moduleDir string, stderr io.Writer) (json.RawMessage, error)
 	if err != nil {
 		return nil, fmt.Errorf("docscan: %w", err)
 	}
+
+	var apiCoverage *apidoc.APICoverageReport
+	if sess != nil {
+		apiCoverage = runDocscanAnalyzer(context.Background(), moduleDir, sess, docs, stderr)
+	}
+
+	envelope := docscanEnvelope{
+		Documents:   docs,
+		APICoverage: apiCoverage,
+	}
 	return cliutil.CaptureJSON(func(w io.Writer) error {
 		enc := json.NewEncoder(w)
-		return enc.Encode(docs)
+		return enc.Encode(envelope)
 	})
+}
+
+// runDocscanAnalyzer calls the external analyzer for doc_coverage and
+// analyze data, then runs apidoc.Analyze. The caller-provided context
+// enables cancellation and timeout control. Returns nil on any failure
+// (graceful degradation with warning to stderr).
+func runDocscanAnalyzer(ctx context.Context, moduleDir string, sess *adapter.Session, docs []docscan.DocumentFile, stderr io.Writer) *apidoc.APICoverageReport {
+	// FetchDocscanData consolidates the DocCoverage + Analyze call
+	// pattern shared with the CLI layer (cmd/gaze/main.go).
+	data, err := sess.FetchDocscanData(ctx, moduleDir, []string{"./..."}, stderr)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: %v for docscan, skipping API coverage\n", err)
+		return nil
+	}
+
+	analyzerData := &apidoc.AnalyzerData{
+		Functions:   data.Functions,
+		DocCoverage: data.DocCoverage,
+		Language:    sess.Language(),
+	}
+
+	report, err := apidoc.Analyze(docs, analyzerData)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: apidoc.Analyze failed: %v\n", err)
+		return nil
+	}
+	return report
 }
 
 // runClassifyResults runs the mechanical classification pipeline.

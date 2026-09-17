@@ -1,8 +1,8 @@
 // Package protocol implements a JSON-RPC 2.0 client for communicating
 // with external analyzer binaries over stdin/stdout. The protocol
-// defines 8 methods for gaze ↔ analyzer communication: 5 required
-// (initialize, analyze, complexity, coverage, shutdown) and 3 optional
-// (discover, test_mapping, classify_signals).
+// defines 10 methods for gaze ↔ analyzer communication: 5 required
+// (initialize, analyze, complexity, coverage, shutdown) and 5 optional
+// (discover, test_mapping, classify_signals, analyze/stream, doc_coverage).
 //
 // Design decision D1: JSON-RPC 2.0 over stdin/stdout, consistent
 // with the LSP transport model. No HTTP, no gRPC — subprocess
@@ -17,7 +17,7 @@ import (
 	"fmt"
 )
 
-// Protocol method constants for the 8 methods defined in Issue #95.
+// Protocol method constants for the 10 methods defined in the protocol.
 const (
 	// Required methods — analyzer must implement all of these.
 	MethodInitialize = "initialize"
@@ -31,6 +31,7 @@ const (
 	MethodTestMapping     = "test_mapping"
 	MethodClassifySignals = "classify_signals"
 	MethodAnalyzeStream   = "analyze/stream"
+	MethodDocCoverage     = "doc_coverage"
 )
 
 // ProtocolVersion is the current protocol version. Included in the
@@ -164,6 +165,12 @@ type Capabilities struct {
 	// results. When true, gaze calls analyze/stream instead of
 	// analyze. When false, the batch analyze method is used.
 	Streaming bool `json:"streaming"`
+
+	// DocCoverage indicates whether the analyzer supports the
+	// "doc_coverage" method for reporting documentation status
+	// of public symbols. When false, gaze uses heuristic
+	// documentation coverage.
+	DocCoverage bool `json:"doc_coverage"`
 }
 
 // --- Analyze method types ---
@@ -438,4 +445,49 @@ type ClassifySignalData struct {
 
 	// Reasoning explains why this signal was applied.
 	Reasoning string `json:"reasoning,omitempty"`
+}
+
+// --- DocCoverage method types (optional) ---
+
+// DocCoverageParams is the params object for the "doc_coverage" method.
+type DocCoverageParams struct {
+	// RootPath is the project root directory.
+	RootPath string `json:"root_path"`
+
+	// Patterns is the list of package/module patterns to analyze.
+	Patterns []string `json:"patterns"`
+}
+
+// DocCoverageResult is the result object for the "doc_coverage" method.
+type DocCoverageResult struct {
+	// Symbols is the documentation status for each public symbol.
+	Symbols []SymbolDocStatus `json:"symbols"`
+}
+
+// SymbolDocStatus represents the documentation status of a single
+// public symbol as reported by an external analyzer.
+type SymbolDocStatus struct {
+	// Name is the fully qualified symbol name.
+	Name string `json:"name"`
+
+	// Package is the package/module path.
+	Package string `json:"package"`
+
+	// File is the source file path.
+	File string `json:"file"`
+
+	// Line is the declaration line number.
+	Line int `json:"line"`
+
+	// Kind is the symbol kind: "function", "type", "constant",
+	// "variable", "class", or "method".
+	Kind string `json:"kind"`
+
+	// Documented indicates whether the symbol has a docstring
+	// or doc comment.
+	Documented bool `json:"documented"`
+
+	// DocSnippet is the first line of documentation. Empty when
+	// the symbol is undocumented.
+	DocSnippet string `json:"doc_snippet,omitempty"`
 }
