@@ -349,8 +349,20 @@ The following file groups MUST remain byte-identical. Changing one without updat
 
 | Source of Truth | Embedded Copy | Enforced By |
 |----------------|---------------|-------------|
-| `.opencode/{agents,commands,references}/*.md`, `.opencode/dcp.jsonc` | `internal/scaffold/assets/` (same relative paths) | `TestEmbeddedAssetsMatchSource` |
+| Subset of `.opencode/` files embedded by `gaze init` (see list below) | `internal/scaffold/assets/` (same relative paths) | `TestEmbeddedAssetsMatchSource` |
 | `internal/scaffold/assets/agents/gaze-reporter.md` | `internal/aireport/assets/agents/gaze-reporter.md` | `TestEmbeddedPromptMatchesScaffold` |
+
+The 9 embedded files (row 1) are:
+
+- `agents/gaze-reporter.md`
+- `agents/gaze-test-generator.md`
+- `agents/reviewer-testing.md`
+- `commands/gaze-fix.md`
+- `commands/gaze.md`
+- `commands/speckit.testreview.md`
+- `dcp.jsonc`
+- `references/doc-scoring-model.md`
+- `references/example-report.md`
 
 ## Coding Conventions
 
