@@ -558,7 +558,6 @@ func TestQualityWithExternalAnalyzer_RejectsIncludeUnexported(t *testing.T) {
 		patterns:          []string{"./..."},
 		format:            "text",
 		analyzerFlag:      "some-analyzer",
-		languageFlag:      "python",
 		includeUnexported: true,
 		stdout:            &stdout,
 		stderr:            &stderr,
