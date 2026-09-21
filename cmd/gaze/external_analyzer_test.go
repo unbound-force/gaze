@@ -549,6 +549,28 @@ func TestQualityWithExternalAnalyzer_RejectsAIMapper(t *testing.T) {
 	}
 }
 
+// TestQualityWithExternalAnalyzer_RejectsIncludeUnexported verifies that
+// --include-unexported is rejected when used with --analyzer (Go-specific feature).
+func TestQualityWithExternalAnalyzer_RejectsIncludeUnexported(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := runQuality(qualityParams{
+		patterns:          []string{"./..."},
+		format:            "text",
+		analyzerFlag:      "some-analyzer",
+		languageFlag:      "python",
+		includeUnexported: true,
+		stdout:            &stdout,
+		stderr:            &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected error for --include-unexported with --analyzer")
+	}
+	if !strings.Contains(err.Error(), "--include-unexported is not supported with --analyzer") {
+		t.Errorf("expected include-unexported rejection error, got: %s", err.Error())
+	}
+}
+
 // TestReportWithExternalAnalyzer_BypassesFindModuleRoot verifies that
 // runReport with --analyzer set does NOT call FindModuleRoot. This is
 // the regression test for issue #257: gaze report --analyzer fails

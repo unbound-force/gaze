@@ -1262,12 +1262,14 @@ func runQuality(p qualityParams) error {
 // provides side effect analysis and test_mapping data instead of the
 // Go-specific quality.Assess pipeline.
 //
-// Design decisions D6/D7: --target and --ai-mapper are rejected because
-// they depend on Go-specific SSA target inference and AST assertion
-// detection that external analyzers cannot provide.
+// Design decisions D6/D7: --target, --ai-mapper, and --include-unexported
+// are rejected because they depend on Go-specific SSA target inference,
+// AST assertion detection, and go/packages visibility filtering that
+// external analyzers cannot provide.
 func runQualityWithExternalAnalyzer(p qualityParams) error {
-	// Validate flag combinations: --target and --ai-mapper are
-	// Go-specific features incompatible with external analyzers.
+	// Validate flag combinations: --target, --ai-mapper, and
+	// --include-unexported are Go-specific features incompatible
+	// with external analyzers.
 	if p.targetFunc != "" {
 		return fmt.Errorf("--target is not supported with --analyzer or --language; " +
 			"the external analyzer provides its own test-to-target mapping")
@@ -1275,6 +1277,10 @@ func runQualityWithExternalAnalyzer(p qualityParams) error {
 	if p.aiMapper != "" {
 		return fmt.Errorf("--ai-mapper is not supported with --analyzer or --language; " +
 			"assertion mapping is provided by the external analyzer")
+	}
+	if p.includeUnexported {
+		return fmt.Errorf("--include-unexported is not supported with --analyzer; " +
+			"the external analyzer controls its own function visibility")
 	}
 
 	moduleDir, err := os.Getwd()
