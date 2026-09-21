@@ -5,17 +5,18 @@
 
 ## Prerequisites
 
-The 5 GitHub secrets from spec 014 must already be configured:
+Configure these 6 GitHub secrets before running a signed release:
 
-| Secret Name | Already configured? |
-|-------------|-------------------|
-| `MACOS_SIGN_P12` | Yes (from spec 014) |
-| `MACOS_SIGN_PASSWORD` | Yes (from spec 014) |
-| `MACOS_NOTARY_KEY` | Yes (from spec 014) |
-| `MACOS_NOTARY_KEY_ID` | Yes (from spec 014) |
-| `MACOS_NOTARY_ISSUER_ID` | Yes (from spec 014) |
+| Secret Name | Purpose |
+|-------------|---------|
+| `MACOS_SIGN_P12` | Base64-encoded Developer ID Application certificate. |
+| `MACOS_SIGN_PASSWORD` | Password for the `.p12` certificate. |
+| `MACOS_SIGN_IDENTITY` | Exact Developer ID Application certificate label displayed in the temporary macOS Keychain; passed to `codesign --sign` to select the imported signing certificate. |
+| `MACOS_NOTARY_KEY` | Base64-encoded App Store Connect API private key. |
+| `MACOS_NOTARY_KEY_ID` | App Store Connect API key ID. |
+| `MACOS_NOTARY_ISSUER_ID` | App Store Connect API issuer ID. |
 
-No new secrets are needed. If you haven't configured these yet, see `specs/014-macos-notarization/quickstart.md` for setup instructions.
+The first five secrets came from spec 014. Add `MACOS_SIGN_IDENTITY` with the certificate label exactly as `security find-identity -v -p codesigning` reports it; the release workflow uses that label to select the imported certificate. If you have not configured the first five secrets, see `specs/014-macos-notarization/quickstart.md` for their setup instructions.
 
 ## Implementation Steps
 
