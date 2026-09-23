@@ -5,18 +5,17 @@
 
 ## Prerequisites
 
-Configure these 6 GitHub secrets before running a signed release:
+The 5 GitHub secrets from spec 014 must already be configured:
 
-| Secret Name | Purpose |
-|-------------|---------|
-| `MACOS_SIGN_P12` | Base64-encoded Developer ID Application certificate. |
-| `MACOS_SIGN_PASSWORD` | Password for the `.p12` certificate. |
-| `MACOS_SIGN_IDENTITY` | Exact Developer ID Application certificate label displayed in the temporary macOS Keychain; passed to `codesign --sign` to select the imported signing certificate. |
-| `MACOS_NOTARY_KEY` | Base64-encoded App Store Connect API private key. |
-| `MACOS_NOTARY_KEY_ID` | App Store Connect API key ID. |
-| `MACOS_NOTARY_ISSUER_ID` | App Store Connect API issuer ID. |
+| Secret Name | Already configured? |
+|-------------|-------------------|
+| `MACOS_SIGN_P12` | Yes (from spec 014) |
+| `MACOS_SIGN_PASSWORD` | Yes (from spec 014) |
+| `MACOS_NOTARY_KEY` | Yes (from spec 014) |
+| `MACOS_NOTARY_KEY_ID` | Yes (from spec 014) |
+| `MACOS_NOTARY_ISSUER_ID` | Yes (from spec 014) |
 
-The first five secrets came from spec 014. Add `MACOS_SIGN_IDENTITY` with the certificate label exactly as `security find-identity -v -p codesigning` reports it; the release workflow uses that label to select the imported certificate. If you have not configured the first five secrets, see `specs/014-macos-notarization/quickstart.md` for their setup instructions.
+No new secrets are needed. If you haven't configured these yet, see `specs/014-macos-notarization/quickstart.md` for setup instructions.
 
 ## Implementation Steps
 
@@ -69,26 +68,21 @@ sign-macos:
       # gh release upload --clobber for signed archives + updated checksums.txt
 ```
 
-A separate `check-signing-secrets` job signals whether signing secrets are available:
+The `release` job needs an output to signal whether signing secrets are available:
 
 ```yaml
-check-signing-secrets:
-  needs: preflight
-  runs-on: ubuntu-latest
+release:
   outputs:
     has_signing_secrets: ${{ steps.check-secrets.outputs.has_secrets }}
   steps:
     - name: Check signing secrets
       id: check-secrets
       run: |
-        if [ -n "$MACOS_SIGN_P12" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
+        if [ -n "${{ secrets.MACOS_SIGN_P12 }}" ]; then
           echo "has_secrets=true" >> "$GITHUB_OUTPUT"
         else
           echo "has_secrets=false" >> "$GITHUB_OUTPUT"
         fi
-      env:
-        MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-        MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
 ```
 
 ## Verification
