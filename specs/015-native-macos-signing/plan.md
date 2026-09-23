@@ -16,7 +16,7 @@ Replace the broken quill-based cross-platform signing (spec 014) with Apple's na
 **Target Platform**: GitHub Actions `ubuntu-latest` (build) + `macos-latest` (sign)
 **Project Type**: Single CLI binary — release pipeline configuration change
 **Performance Goals**: Signing + notarization complete within 30 minutes
-**Constraints**: Public repo (free macOS minutes); same 5 secrets from spec 014; brief unsigned window acceptable
+**Constraints**: Public repo (free macOS minutes); same 6 secrets (5 from spec 014 + `MACOS_SIGN_IDENTITY`); brief unsigned window acceptable
 **Scale/Scope**: 2 files modified (`.goreleaser.yaml`, `.github/workflows/release.yml`); no new files outside specs/
 
 ## Constitution Check

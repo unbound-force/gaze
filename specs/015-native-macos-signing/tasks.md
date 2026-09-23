@@ -170,5 +170,5 @@ Task: "Remove MACOS_* env vars from GoReleaser step in release.yml"
 - This feature modifies 2 files: `.goreleaser.yaml` (removal only) and `.github/workflows/release.yml` (removal + addition)
 - T003-T007 build up the `sign-macos` job incrementally within the same file — they are sequential, not parallel
 - US2 and US3 add small modifications to the job structure created by US1
-- The same 5 GitHub secrets from spec 014 are reused — no new secret configuration needed
+- The same 6 GitHub secrets from spec 014 are reused (including `MACOS_SIGN_IDENTITY`) — no new secret configuration needed
 - Full end-to-end verification requires the Apple credentials already configured from spec 014

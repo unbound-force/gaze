@@ -112,7 +112,7 @@ After the signing job replaces unsigned darwin archives with signed ones, the pu
 
 ## Assumptions
 
-- The project maintainer has an active Apple Developer Program membership and has already configured the 5 required GitHub secrets (from spec 014): `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID`.
+- The project maintainer has an active Apple Developer Program membership and has already configured the 6 required GitHub secrets (5 from spec 014 + `MACOS_SIGN_IDENTITY`): `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_SIGN_IDENTITY`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID`.
 - macOS CI runners provide the `codesign`, `xcrun notarytool`, and `security` tools pre-installed.
 - The repository is public, so macOS CI runner minutes are free.
 - Apple's notary service accepts bare Mach-O binaries submitted as zip archives (it does not accept tar.gz directly).

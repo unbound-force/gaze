@@ -78,13 +78,14 @@ jobs:
       - name: Check signing secrets
         id: check-secrets
         run: |
-          if [ -n "$MACOS_SIGN_P12" ]; then
+          if [ -n "$MACOS_SIGN_P12" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
             echo "has_secrets=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_secrets=false" >> "$GITHUB_OUTPUT"
           fi
         env:
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
 
   push-unsigned-cask:
     name: Push Unsigned Cask
@@ -201,7 +202,7 @@ jobs:
             echo "==> Done: $(basename "$archive")"
           done
         env:
-          MACOS_SIGN_IDENTITY: "${{ vars.MACOS_SIGN_IDENTITY || 'Developer ID Application: John Flowers (PGFWLVZX55)' }}"
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
 

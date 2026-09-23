@@ -62,13 +62,14 @@ This feature has no application-level data model. The "data model" consists of C
 |-------------|---------|-------------|----------|
 | `MACOS_SIGN_P12` | sign-macos (Keychain import) | Binary (.p12 file) | Base64 |
 | `MACOS_SIGN_PASSWORD` | sign-macos (Keychain import) | Plain text | None |
+| `MACOS_SIGN_IDENTITY` | sign-macos (codesign --sign) | Plain text | None |
 | `MACOS_NOTARY_KEY` | sign-macos (notarytool) | Binary (.p8 file) | Base64 |
 | `MACOS_NOTARY_KEY_ID` | sign-macos (notarytool) | Plain text | None |
 | `MACOS_NOTARY_ISSUER_ID` | sign-macos (notarytool) | UUID | None |
 | `GITHUB_TOKEN` | release + sign-macos | Auto-generated | N/A |
 | `HOMEBREW_TAP_GITHUB_TOKEN` | release (GoReleaser) | PAT | N/A |
 
-**Changes from spec 014**: The 5 `MACOS_*` secrets are no longer passed to the GoReleaser step. They are only used by the `sign-macos` job. `GITHUB_TOKEN` is used by both jobs (build publishes release, sign-macos downloads/uploads assets).
+**Changes from spec 014**: The 6 `MACOS_*` secrets are no longer passed to the GoReleaser step. They are only used by the `sign-macos` job. `GITHUB_TOKEN` is used by both jobs (build publishes release, sign-macos downloads/uploads assets).
 
 ## Temporary Artifacts
 

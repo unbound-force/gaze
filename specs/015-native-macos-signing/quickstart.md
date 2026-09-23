@@ -69,21 +69,26 @@ sign-macos:
       # gh release upload --clobber for signed archives + updated checksums.txt
 ```
 
-The `release` job needs an output to signal whether signing secrets are available:
+A separate `check-signing-secrets` job signals whether signing secrets are available:
 
 ```yaml
-release:
+check-signing-secrets:
+  needs: preflight
+  runs-on: ubuntu-latest
   outputs:
     has_signing_secrets: ${{ steps.check-secrets.outputs.has_secrets }}
   steps:
     - name: Check signing secrets
       id: check-secrets
       run: |
-        if [ -n "${{ secrets.MACOS_SIGN_P12 }}" ]; then
+        if [ -n "$MACOS_SIGN_P12" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
           echo "has_secrets=true" >> "$GITHUB_OUTPUT"
         else
           echo "has_secrets=false" >> "$GITHUB_OUTPUT"
         fi
+      env:
+        MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+        MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
 ```
 
 ## Verification

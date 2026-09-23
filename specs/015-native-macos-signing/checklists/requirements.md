@@ -34,4 +34,4 @@
 - All items pass validation. Spec is ready for `/speckit.clarify` or `/speckit.plan`.
 - The Context section documents why this spec exists (quill bugs from spec 014) to provide continuity. This is background, not implementation detail.
 - SC-007 references `codesign --verify` and `spctl --assess` as verification tools. These are Apple's standard verification commands, analogous to "the user can verify the download" — they describe what to check, not how to build.
-- The same 5 GitHub secrets from spec 014 are reused. No new secrets needed.
+- The same 6 GitHub secrets from spec 014 are reused (including `MACOS_SIGN_IDENTITY`). No new secrets needed.
