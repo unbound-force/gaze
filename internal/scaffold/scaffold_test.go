@@ -677,6 +677,158 @@ func TestInsertMarkerAfterFrontmatter(t *testing.T) {
 	}
 }
 
+// TestInsertMarkerAfterFrontmatter_ReplacesExistingMarker verifies
+// that re-scaffolding a file with a different version replaces the
+// existing marker instead of appending a second one (regression test
+// for issue #279).
+func TestInsertMarkerAfterFrontmatter_ReplacesExistingMarker(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "replaces marker after frontmatter",
+			input: "---\ntitle: test\n---\n<!-- scaffolded by gaze dev -->\n# Agent\n",
+			want:  "---\ntitle: test\n---\n<!-- scaffolded by gaze v1.8.0 -->\n# Agent\n",
+		},
+		{
+			name:  "replaces marker without frontmatter",
+			input: "# Ref\ncontent\n<!-- scaffolded by gaze dev -->\n",
+			want:  "# Ref\ncontent\n<!-- scaffolded by gaze v1.8.0 -->\n",
+		},
+		{
+			name:  "removes duplicate markers",
+			input: "---\nk: v\n---\n<!-- scaffolded by gaze dev -->\n<!-- scaffolded by gaze v1.7.0 -->\n# Body\n",
+			want:  "---\nk: v\n---\n<!-- scaffolded by gaze v1.8.0 -->\n# Body\n",
+		},
+		{
+			name:  "no existing marker",
+			input: "---\nk: v\n---\n# Body\n",
+			want:  "---\nk: v\n---\n<!-- scaffolded by gaze v1.8.0 -->\n# Body\n",
+		},
+	}
+	newMarker := "<!-- scaffolded by gaze v1.8.0 -->\n"
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := string(insertMarkerAfterFrontmatter([]byte(tc.input), newMarker))
+			if result != tc.want {
+				t.Errorf("got:\n%s\nwant:\n%s", result, tc.want)
+			}
+			count := strings.Count(result, "<!-- scaffolded by gaze")
+			if count != 1 {
+				t.Errorf("expected exactly 1 marker, got %d", count)
+			}
+		})
+	}
+}
+
+// TestRemoveExistingMarker verifies the marker stripping helper.
+func TestRemoveExistingMarker(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "strips single marker",
+			input: "---\nk: v\n---\n<!-- scaffolded by gaze dev -->\n# Body\n",
+			want:  "---\nk: v\n---\n# Body\n",
+		},
+		{
+			name:  "strips multiple markers",
+			input: "---\nk: v\n---\n<!-- scaffolded by gaze dev -->\n<!-- scaffolded by gaze v1.8.0 -->\n# Body\n",
+			want:  "---\nk: v\n---\n# Body\n",
+		},
+		{
+			name:  "no marker present",
+			input: "---\nk: v\n---\n# Body\n",
+			want:  "---\nk: v\n---\n# Body\n",
+		},
+		{
+			name:  "marker at end of file",
+			input: "# Ref\ncontent\n<!-- scaffolded by gaze v1.0.0 -->\n",
+			want:  "# Ref\ncontent\n",
+		},
+		{
+			name:  "preserves non-marker HTML comments",
+			input: "<!-- not a gaze marker -->\n<!-- scaffolded by gaze dev -->\n",
+			want:  "<!-- not a gaze marker -->\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(removeExistingMarker([]byte(tc.input)))
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRun_ReScaffoldSingleMarker verifies the end-to-end scenario
+// from issue #279: running gaze init twice with different versions
+// produces exactly one marker per file, not two.
+func TestRun_ReScaffoldSingleMarker(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	// First run with version "dev".
+	var buf1 bytes.Buffer
+	_, err := Run(Options{
+		TargetDir: dir,
+		Version:   "dev",
+		Stdout:    &buf1,
+	})
+	if err != nil {
+		t.Fatalf("first Run() returned error: %v", err)
+	}
+
+	// Second run with version "v1.8.0" and --force to overwrite
+	// user-owned files too.
+	var buf2 bytes.Buffer
+	_, err = Run(Options{
+		TargetDir: dir,
+		Force:     true,
+		Version:   "v1.8.0",
+		Stdout:    &buf2,
+	})
+	if err != nil {
+		t.Fatalf("second Run() returned error: %v", err)
+	}
+
+	// Every Markdown file must have exactly one marker with the
+	// new version, and zero markers with the old version.
+	paths, err := assetPaths()
+	if err != nil {
+		t.Fatalf("assetPaths() returned error: %v", err)
+	}
+	for _, relPath := range paths {
+		if !strings.HasSuffix(relPath, ".md") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(dir, ".opencode", relPath))
+		if err != nil {
+			t.Fatalf("reading %s: %v", relPath, err)
+		}
+		s := string(content)
+
+		count := strings.Count(s, "<!-- scaffolded by gaze")
+		if count != 1 {
+			t.Errorf("file %s: expected exactly 1 marker, got %d", relPath, count)
+		}
+		if !strings.Contains(s, "<!-- scaffolded by gaze v1.8.0 -->") {
+			t.Errorf("file %s: expected v1.8.0 marker, not found", relPath)
+		}
+		if strings.Contains(s, "gaze dev -->") {
+			t.Errorf("file %s: old dev marker should have been replaced", relPath)
+		}
+	}
+}
+
 // TestProtectTagPlacement verifies that embedded command files
 // contain correctly placed <protect> tags for DCP context
 // preservation. Asserts tag count per file, balanced pairs, no
