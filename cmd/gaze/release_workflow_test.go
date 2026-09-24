@@ -16,7 +16,7 @@ func TestReleaseWorkflow_MacOSSigningIdentity(t *testing.T) {
 
 	contents := string(workflow)
 	for _, expected := range []string{
-		`if [ -n "$MACOS_SIGN_P12" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then`,
+		`if [ -n "$MACOS_SIGN_P12" ] && [ -n "$MACOS_SIGN_PASSWORD" ] && [ -n "$MACOS_SIGN_IDENTITY" ] && [ -n "$MACOS_NOTARY_KEY" ] && [ -n "$MACOS_NOTARY_KEY_ID" ] && [ -n "$MACOS_NOTARY_ISSUER_ID" ]; then`,
 		`MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}`,
 		`needs.check-signing-secrets.outputs.has_signing_secrets == 'true'`,
 		`needs.check-signing-secrets.outputs.has_signing_secrets == 'false'`,
