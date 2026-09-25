@@ -44,7 +44,7 @@
   release that a complete secret set runs `sign-macos` and that removing the
   identity secret selects the unsigned-cask path. Do not create a test release
   solely for this change.
-- [ ] 3.4 Re-check the proposal's Constitution Alignment: secret-based
+- [x] 3.4 Re-check the proposal's Constitution Alignment: secret-based
   configuration preserves autonomous collaboration and composability, the
   workflow state remains observable, and the added static test remains
   isolated from external services. Also verify the Gaze Constitution assessment

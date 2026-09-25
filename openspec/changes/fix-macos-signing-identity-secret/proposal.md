@@ -83,6 +83,15 @@ for complete and incomplete signing configuration. It will assert observable
 workflow expressions and branch behavior without requiring GitHub secrets or
 Apple signing services.
 
+### V. Security by Default
+
+**Assessment**: PASS
+
+The signing identity is sourced only from a GitHub Actions secret, and the
+readiness check validates presence without printing secret values. Requiring
+the complete six-secret set prevents partially configured signing jobs from
+starting and failing after privileged release work begins.
+
 ### Gaze Constitution Alignment
 
 The repository's Gaze Constitution also governs this implementation.
