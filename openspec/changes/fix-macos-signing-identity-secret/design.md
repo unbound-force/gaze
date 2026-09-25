@@ -17,9 +17,9 @@ graph, and uses isolated static validation rather than Apple services.
 ### Goals
 - Source the macOS signing identity exclusively from
   `secrets.MACOS_SIGN_IDENTITY`.
-- Treat the P12 certificate and signing identity as one complete signing
+- Treat all six secrets consumed by the signing job as one complete signing
   configuration at the existing release branch point.
-- Preserve unsigned releases when either required signing secret is absent.
+- Preserve unsigned releases when any required signing secret is absent.
 - Make the sixth required secret clear in maintainer-facing documentation.
 - Verify the workflow contract without exposing secret values or invoking
   `codesign` or `notarytool`.
@@ -36,10 +36,10 @@ graph, and uses isolated static validation rather than Apple services.
 
 ### Require the identity in the existing readiness check
 
-The `check-signing-secrets` job will map both required secret names into its
-environment and report signing credentials available only when both values are
+The `check-signing-secrets` job will map all six required secret names into its
+environment and report signing credentials available only when every value is
 non-empty. This keeps the existing release branch decision in one place and
-avoids a late `codesign` failure for an incomplete identity configuration.
+avoids a late signing or notarization failure for incomplete configuration.
 
 ### Remove the variable and hardcoded fallback
 
@@ -51,7 +51,7 @@ coupling releases to a named developer identity.
 ### Validate statically and in CI
 
 Implementation will add an isolated regression check that reads the workflow
-as configuration and asserts the two-secret condition, direct identity mapping,
+as configuration and asserts the six-secret condition, direct identity mapping,
 and absence of the variable/fallback expression. It will not load or print
 secret values. The existing CI YAML linting and the project's mandated local
 CI-parity commands remain the syntax and integration gate. A release run with
@@ -60,9 +60,8 @@ configured repository secrets is the operational acceptance check.
 ### Documentation location
 
 The implementation will update the README macOS code-signing maintainer
-section, including its link from superseded spec 014 to the native macOS-
-signing quickstart in spec 015, which lists the five current secrets.
-Historical spec 014 records remain out of scope.
+section with the sixth required secret. Historical spec records remain
+unchanged as point-in-time design artifacts.
 
 ## Risks / Trade-offs
 
@@ -70,6 +69,9 @@ Historical spec 014 records remain out of scope.
   artifacts after this change rather than silently use the historical
   fallback. This is intentional and requires administrator provisioning
   before the next signed release.
+- Checking the certificate password and notary credentials expands the narrow
+  identity fix slightly, but all six values serve the same signing path and
+  validating the complete set avoids predictable late failures.
 - GitHub masks secrets and does not expose their values to local tests, so the
   automated regression check validates configuration structure rather than a
   real signing operation.

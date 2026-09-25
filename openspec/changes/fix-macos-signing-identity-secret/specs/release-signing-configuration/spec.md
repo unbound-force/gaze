@@ -3,21 +3,28 @@
 ### Requirement: Complete macOS signing-secret gate
 
 The release workflow MUST consider macOS signing credentials available only
-when both `MACOS_SIGN_P12` and `MACOS_SIGN_IDENTITY` are non-empty GitHub
-Actions secrets. The workflow MUST route releases with an incomplete signing
-secret set through the existing unsigned-cask path and MUST NOT run the
-`sign-macos` job.
+when `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_SIGN_IDENTITY`,
+`MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, and `MACOS_NOTARY_ISSUER_ID` are
+non-empty GitHub Actions secrets. The workflow MUST route releases with an
+incomplete signing secret set through the existing unsigned-cask path and MUST
+NOT run the `sign-macos` job.
 
 #### Scenario: Complete signing configuration runs macOS signing
-- **GIVEN** the repository provides non-empty `MACOS_SIGN_P12` and
-  `MACOS_SIGN_IDENTITY` secrets
+- **GIVEN** the repository provides all six non-empty signing secrets
 - **WHEN** a release reaches the signing stage
 - **THEN** the signing-secret check reports signing credentials available and
   the `sign-macos` job is eligible to run
 
 #### Scenario: Missing signing identity preserves unsigned release
-- **GIVEN** the repository provides `MACOS_SIGN_P12` but does not provide
-  `MACOS_SIGN_IDENTITY`
+- **GIVEN** the repository provides the other five signing secrets but does
+  not provide `MACOS_SIGN_IDENTITY`
+- **WHEN** a release reaches the signing stage
+- **THEN** the signing-secret check reports signing credentials unavailable,
+  the `sign-macos` job is skipped, and the unsigned-cask job remains eligible
+
+#### Scenario: Another missing signing secret preserves unsigned release
+- **GIVEN** the repository does not provide one of the other five signing
+  secrets
 - **WHEN** a release reaches the signing stage
 - **THEN** the signing-secret check reports signing credentials unavailable,
   the `sign-macos` job is skipped, and the unsigned-cask job remains eligible

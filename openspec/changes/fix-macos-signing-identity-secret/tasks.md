@@ -17,21 +17,19 @@
 ## 2. Release Signing Configuration
 
 - [x] 2.1 Update `.github/workflows/release.yml` so
-  `check-signing-secrets` requires non-empty `MACOS_SIGN_P12` and
-  `MACOS_SIGN_IDENTITY`, and map the sign-macos identity directly from
-  `secrets.MACOS_SIGN_IDENTITY` with no variable or hardcoded fallback.
+  `check-signing-secrets` requires all six secrets consumed by `sign-macos`,
+  and map the signing identity directly from `secrets.MACOS_SIGN_IDENTITY`
+  with no variable or hardcoded fallback.
 - [x] 2.2 [P] Add `TestReleaseWorkflow_MacOSSigningIdentity` in
   `cmd/gaze/release_workflow_test.go`. Read the workflow as configuration and
-  assert that the readiness check maps P12 and identity secrets and requires
-  both values; that `sign-macos` depends on the readiness check and runs only
+  assert that the readiness check maps and requires all six values; that
+  `sign-macos` depends on the readiness check and runs only
   when its output is `true`; that `push-unsigned-cask` depends on the check and
   runs only when its output is `false`; direct identity mapping; and absence of
   the variable/fallback expression without accessing secret values.
 - [x] 2.3 [P] Update the macOS-signing prerequisite documentation in
-  `README.md` and `specs/015-native-macos-signing/quickstart.md` to list the
-  sixth secret and its certificate-label value. Update adjacent current
-  prerequisite tables that still state five required secrets, and replace the
-  README maintainer link from superseded spec 014 with the spec 015 quickstart.
+  `README.md` to list the sixth secret and its certificate-label value.
+  Preserve completed feature specs as point-in-time design artifacts.
 
 ## 3. Verification
 

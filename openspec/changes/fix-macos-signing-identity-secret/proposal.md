@@ -11,9 +11,9 @@ signing credentials are unavailable.
 
 - Replace the `vars.MACOS_SIGN_IDENTITY` expression and hardcoded fallback in
   the `sign-macos` job with `secrets.MACOS_SIGN_IDENTITY`.
-- Extend the signing-secret availability check to require the signing identity
-  as well as the P12 certificate so a partially configured secret set takes
-  the existing unsigned-cask path.
+- Extend the signing-secret availability check to require all six secrets used
+  by the signing job so a partially configured secret set takes the existing
+  unsigned-cask path.
 - Document the required repository secret in the macOS signing maintainer
   guidance.
 - Add a workflow-focused regression check that verifies the signing job uses
@@ -37,6 +37,8 @@ signing credentials are unavailable.
 
 - `.github/workflows/release.yml` changes the signing-identity source and the
   secret-readiness condition.
+- The readiness condition now validates the existing certificate password and
+  notary credentials together with the P12 certificate and signing identity.
 - macOS-signing maintainer documentation gains `MACOS_SIGN_IDENTITY` as a
   required secret.
 - CI validation gains a focused regression check for the workflow contract.
@@ -89,30 +91,30 @@ The repository's Gaze Constitution also governs this implementation.
 
 **Assessment**: PASS
 
-The release gate accurately selects the signed macOS path only when
-`MACOS_SIGN_P12` and `MACOS_SIGN_IDENTITY` are present. Validation of the
-other existing notarization secrets remains unchanged and out of scope.
+The release gate accurately selects the signed macOS path only when all six
+secrets consumed by the signing job are present. Extending the existing check
+to the certificate password and notary credentials is a minor defensive scope
+expansion that prevents predictable late signing failures.
 
 #### II. Minimal Assumptions
 
 **Assessment**: PASS
 
-The workflow adds the identity to its existing P12 readiness check using a
-GitHub Actions secret. It introduces no developer-specific identity or
-external runtime dependency.
+The workflow validates all six required values using GitHub Actions secrets.
+It introduces no developer-specific identity or external runtime dependency.
 
 #### III. Actionable Output
 
 **Assessment**: PASS
 
-When either the P12 certificate or signing identity is unavailable, the
-existing unsigned-cask path remains eligible and the signing job is skipped.
+When any required signing secret is unavailable, the existing unsigned-cask
+path remains eligible and the signing job is skipped.
 
 #### IV. Testability
 
 **Assessment**: PASS
 
 The workflow contract is verified by an isolated static test that reads only
-repository configuration and checks the two-secret gate, direct identity
+repository configuration and checks the six-secret gate, direct identity
 mapping, and signed-versus-unsigned job routing without live credentials or
 Apple services.
