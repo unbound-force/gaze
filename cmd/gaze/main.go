@@ -1279,7 +1279,7 @@ func runQualityWithExternalAnalyzer(p qualityParams) error {
 			"assertion mapping is provided by the external analyzer")
 	}
 	if p.includeUnexported {
-		return fmt.Errorf("--include-unexported is not supported with --analyzer; " +
+		return fmt.Errorf("--include-unexported is not supported with --analyzer or --language; " +
 			"the external analyzer controls its own function visibility")
 	}
 
