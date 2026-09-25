@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newOllamaTestServer creates an httptest.Server that simulates the ollama
@@ -123,12 +124,24 @@ func TestOllamaAdapter_OLLAMAHOSTEnvVar(t *testing.T) {
 }
 
 func TestOllamaAdapter_ContextCancellation(t *testing.T) {
-	// Server that blocks indefinitely.
+	// started signals that the HTTP request has arrived at the server,
+	// ensuring cancellation doesn't race ahead of the round-trip.
+	started := make(chan struct{})
+	// handlerDone unblocks the server handler. We use an explicit channel
+	// instead of r.Context().Done() because Go 1.24's httptest.Server
+	// does not reliably cancel the request context when the client
+	// disconnects — the handler blocks forever and srv.Close() deadlocks
+	// waiting for it.
+	handlerDone := make(chan struct{})
+	defer close(handlerDone) // Unblock handler before t.Cleanup calls srv.Close.
+
 	srv, client := newOllamaTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
+		close(started)
+		<-handlerDone
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	adapter := &OllamaAdapter{
 		config:     AdapterConfig{Name: "ollama", Model: "llama3.2", OllamaHost: srv.URL},
@@ -141,10 +154,17 @@ func TestOllamaAdapter_ContextCancellation(t *testing.T) {
 		done <- err
 	}()
 
+	// Wait for the HTTP request to reach the server before cancelling.
+	<-started
 	cancel()
-	err := <-done
-	if err == nil {
-		t.Fatal("expected error on cancelled context")
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error on cancelled context")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Format did not return after context cancellation")
 	}
 }
 
