@@ -94,9 +94,30 @@ func versionMarker(version string) string {
 	return fmt.Sprintf("<!-- scaffolded by gaze %s -->\n", version)
 }
 
+// removeExistingMarker strips any "<!-- scaffolded by gaze ... -->"
+// line from content. This prevents marker duplication when
+// re-scaffolding with a different version (issue #279).
+func removeExistingMarker(content []byte) []byte {
+	const prefix = "<!-- scaffolded by gaze "
+	lines := strings.Split(string(content), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, prefix) && strings.HasSuffix(trimmed, "-->") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return []byte(strings.Join(out, "\n"))
+}
+
 // insertMarkerAfterFrontmatter inserts the version marker after
 // the YAML frontmatter closing delimiter (---). If no frontmatter
 // is found, the marker is appended to the end of the content.
+//
+// Any existing "<!-- scaffolded by gaze ... -->" marker is removed
+// first to prevent duplication when re-scaffolding with a different
+// version.
 //
 // YAML frontmatter must start with "---\n" on the very first line
 // and end with "\n---\n". Prepending a marker before the opening
@@ -109,6 +130,9 @@ func versionMarker(version string) string {
 // incorrectly treated as the closing delimiter. All current
 // embedded assets satisfy this constraint.
 func insertMarkerAfterFrontmatter(content []byte, marker string) []byte {
+	// Strip any existing version marker to avoid duplication when
+	// re-scaffolding with a different version (issue #279).
+	content = removeExistingMarker(content)
 	s := string(content)
 
 	// Check for YAML frontmatter: must start with "---\n".
