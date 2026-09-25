@@ -550,7 +550,7 @@ func TestQualityWithExternalAnalyzer_RejectsAIMapper(t *testing.T) {
 }
 
 // TestQualityWithExternalAnalyzer_RejectsIncludeUnexported verifies that
-// --include-unexported is rejected when used with --analyzer (Go-specific feature).
+// --include-unexported is rejected when used with --analyzer or --language (Go-specific feature).
 func TestQualityWithExternalAnalyzer_RejectsIncludeUnexported(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
@@ -565,7 +565,7 @@ func TestQualityWithExternalAnalyzer_RejectsIncludeUnexported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for --include-unexported with --analyzer")
 	}
-	if !strings.Contains(err.Error(), "--include-unexported is not supported with --analyzer") {
+	if !strings.Contains(err.Error(), "--include-unexported is not supported with --analyzer or --language") {
 		t.Errorf("expected include-unexported rejection error, got: %s", err.Error())
 	}
 }
