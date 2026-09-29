@@ -221,13 +221,17 @@ Branch names follow the same numbering pattern for Speckit (e.g., `001-side-effe
 ### Spec Artifact Immutability
 
 Completed spec artifacts (`spec.md`, `plan.md`, `tasks.md`,
-`research.md`, `quickstart.md`, `data-model.md`, `checklists/`)
-are **point-in-time design records**. They document the decisions
-and context as they existed when the spec was written. They MUST
-NOT be retroactively updated when implementation evolves beyond
-the original spec — the git history and subsequent specs/PRs
-serve as the record of that evolution. Review agents MUST NOT
-flag completed spec artifacts as stale documentation.
+`research.md`, `quickstart.md`, `data-model.md`, `checklists/`,
+and any other artifacts in the spec directory) are
+**point-in-time design records**. They document the decisions
+and context as they existed when the spec was written. They
+**must not** be retroactively updated when implementation
+evolves beyond the original spec — the git history and
+subsequent specs/PRs serve as the record of that evolution.
+Review agents **must not** flag completed spec artifacts as
+stale documentation. (Note: `tasks.md` checkbox updates during
+the active implementation phase are permitted per Task
+Completion Bookkeeping below.)
 
 ### Task Completion Bookkeeping
 
@@ -240,7 +244,7 @@ Before marking any task complete, you **must** validate whether the change requi
 - `README.md` — new/changed commands, flags, output formats, or architecture
 - `AGENTS.md` — new conventions, packages, patterns, or workflow changes
 - GoDoc comments — new or modified exported functions, types, and packages
-- Spec artifacts under `specs/` — if the change affects planned behavior
+- Spec artifacts under `specs/` — if the spec is still in-flight and the change affects planned behavior (completed specs are immutable per Spec Artifact Immutability above)
 
 A task is not complete until its documentation impact has been assessed and any necessary updates have been made. Skipping this step causes documentation drift, which compounds over time and erodes project accuracy.
 
