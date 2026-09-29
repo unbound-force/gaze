@@ -67,15 +67,19 @@ Before running any gaze command, locate the `gaze` binary:
 1. **Build from source** (preferred when in the Gaze repo): If
    `cmd/gaze/main.go` exists in the current project, build from
    source to ensure the binary reflects the latest local changes:
+
    ```bash
     go build -o "${TMPDIR:-/tmp}/gaze-reporter" ./cmd/gaze
    ```
+
     Use the built binary path as the binary.
 2. **Check `$PATH`**: Run `which gaze`. If found, use it.
 3. **Install from module**: As a last resort, run:
+
    ```bash
    go install github.com/unbound-force/gaze/v2/cmd/gaze@latest
    ```
+
    Then use `gaze` from `$GOPATH/bin`.
 
 If all three methods fail, report the error clearly and suggest
@@ -123,6 +127,7 @@ selected; do not reimplement discovery.
 ## CRAP Mode
 
 Run:
+
 ```bash
 <gaze-binary> crap [--analyzer <cmd>] [--language <lang>] --format=json <package>
 ```
@@ -173,6 +178,7 @@ Produce a summary containing:
 ## Quality Mode
 
 Run:
+
 ```bash
 <gaze-binary> quality [--analyzer <cmd>] [--language <lang>] --format=json <package>
 ```
@@ -206,6 +212,7 @@ a side effect of the target function — even though the mechanical
 mapping pipeline could not trace the variable flow.
 
 For each unmapped assertion:
+
 1. Use the Read tool to examine the assertion's source location
    and the surrounding test function body
 2. Read the target function's side effects from the quality JSON
@@ -232,6 +239,7 @@ assertions. Note the adjusted coverage clearly:
 `Contract Coverage: 85% (mechanical) → 95% (with AI mapping)`
 
 Skip this evaluation if:
+
 - There are no unmapped assertions
 - The quality JSON has no `unmapped_assertions` field
 - The unmapped assertions are clearly unrelated to the target
@@ -266,14 +274,17 @@ metadata format (see Output Format).
 Produce a combined report with these sections in this order:
 
 ### 📊 CRAP Summary
+
 (Same format as CRAP mode, including quadrant distribution and
 GazeCRAPload interpretation line)
 
 ### 🧪 Quality Summary
+
 (Same format as quality mode. Omit entirely if unavailable. Use
 `> ⚠️ <message>` for warnings.)
 
 ### 🏷️ Classification Summary
+
 - Distribution of side effects by classification: contractual,
   ambiguous, incidental — as a markdown table with columns
   Classification, Count, %
@@ -383,6 +394,7 @@ is conversational and approachable — contractions are fine, natural
 sentence structure is encouraged.
 
 **Banned anti-patterns**:
+
 - Excessive exclamation marks (at most one per full report)
 - Slang or meme references
 - Puns on metric names
@@ -395,6 +407,7 @@ paragraphs.
 ### Title
 
 Mode-specific emoji-prefixed title:
+
 ```
 🔍 Gaze Full Quality Report
 🔍 Gaze CRAP Report
@@ -404,6 +417,7 @@ Mode-specific emoji-prefixed title:
 ### Metadata
 
 Two lines immediately after the title:
+
 ```
 Project: <module-path> · Branch: <branch-name>
 Gaze Version: <version> · Go: <go-version> · Date: <date>
@@ -435,6 +449,7 @@ is warranted, use the `> ⚠️ <message>` callout format.
 ### Warning Callouts
 
 Use blockquote with ⚠️ prefix for advisory notices:
+
 ```
 > ⚠️ Module-level quality analysis returned 0 tests — run per-package analysis instead.
 ```
@@ -504,6 +519,7 @@ above as your formatting guide and include:
 ## Graceful Degradation
 
 If any individual command fails:
+
 - Report which command failed and why
 - Continue with the commands that succeeded
 - Produce a partial report with the available data
@@ -514,11 +530,13 @@ Do NOT fail silently. Always tell the developer what happened.
 ## Error Handling
 
 If the gaze binary cannot be found or built:
+
 - Report the error clearly
 - Suggest installation methods
 - Do NOT attempt to analyze code manually
 
 If a gaze command returns an error:
+
 - Show the error message
 - Suggest remediation (e.g., "Fix build errors before running
   CRAP analysis")
