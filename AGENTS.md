@@ -218,6 +218,17 @@ openspec/
 
 Branch names follow the same numbering pattern for Speckit (e.g., `001-side-effect-detection`) or kebab-case for OpenSpec (e.g., `assess-graceful-degradation`).
 
+### Spec Artifact Immutability
+
+Completed spec artifacts (`spec.md`, `plan.md`, `tasks.md`,
+`research.md`, `quickstart.md`, `data-model.md`, `checklists/`)
+are **point-in-time design records**. They document the decisions
+and context as they existed when the spec was written. They MUST
+NOT be retroactively updated when implementation evolves beyond
+the original spec — the git history and subsequent specs/PRs
+serve as the record of that evolution. Review agents MUST NOT
+flag completed spec artifacts as stale documentation.
+
 ### Task Completion Bookkeeping
 
 When a task from `tasks.md` is completed during implementation, its checkbox **must** be updated from `- [ ]` to `- [x]` immediately. Do not defer this — mark tasks complete as they are finished, not in a batch after all work is done. This keeps the task list an accurate, real-time view of progress and prevents drift between the codebase and the plan.
