@@ -1,7 +1,7 @@
 package quality
 
 import (
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // ComputeContractCoverage computes the Contract Coverage metric:

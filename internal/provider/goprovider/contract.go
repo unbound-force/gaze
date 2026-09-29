@@ -11,13 +11,13 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/classify"
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/loader"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/classify"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/loader"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // GoContractCoverageProvider implements crap.ContractCoverageProvider
@@ -472,7 +472,7 @@ func firstAIMapper(fns []quality.AIMapperFunc) quality.AIMapperFunc {
 }
 
 // extractShortPkgName returns the short package name from a full
-// import path. For "github.com/unbound-force/gaze/internal/crap", it
+// import path. For "github.com/unbound-force/gaze/v2/internal/crap", it
 // returns "crap".
 func extractShortPkgName(importPath string) string {
 	if idx := strings.LastIndex(importPath, "/"); idx >= 0 {

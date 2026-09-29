@@ -10,7 +10,7 @@ import (
 	"regexp"
 
 	"github.com/fzipp/gocyclo"
-	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/crap"
 )
 
 // testFileRegexp matches Go test files by suffix. Moved from

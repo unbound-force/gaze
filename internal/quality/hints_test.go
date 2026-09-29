@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestHintForEffect_AllTypes verifies that hintForEffect returns a non-empty

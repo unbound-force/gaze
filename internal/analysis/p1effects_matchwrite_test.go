@@ -4,7 +4,7 @@ import (
 	"go/types"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
 )
 
 func TestMatchesWriteSignature(t *testing.T) {

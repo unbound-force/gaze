@@ -8,7 +8,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/crap"
 )
 
 // fakeSteps returns a pipelineStepFuncs with all four steps returning

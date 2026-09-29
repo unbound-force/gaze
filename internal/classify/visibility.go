@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // maxVisibilityWeight is the maximum total weight for API surface

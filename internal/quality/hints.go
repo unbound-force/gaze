@@ -3,7 +3,7 @@ package quality
 import (
 	"fmt"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // hintForEffect returns a Go code snippet suggesting how to write an

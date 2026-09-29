@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestWriteContractCoverage_Thresholds verifies the style threshold boundaries

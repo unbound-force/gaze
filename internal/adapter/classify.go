@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/unbound-force/gaze/internal/classify"
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/protocol"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/classify"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // fetchClassifySignals calls the classify_signals protocol method on

@@ -1253,8 +1253,8 @@ func TestAnalyze_WithPrebuiltProfile(t *testing.T) {
 	// Build a minimal coverage profile referencing the actual
 	// positions of Formula and ClassifyQuadrant in crap.go.
 	profileContent := fmt.Sprintf("mode: set\n"+
-		"github.com/unbound-force/gaze/internal/crap/crap.go:%d.1,%d.2 2 1\n"+
-		"github.com/unbound-force/gaze/internal/crap/crap.go:%d.1,%d.2 3 1\n",
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:%d.1,%d.2 2 1\n"+
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:%d.1,%d.2 3 1\n",
 		fStart, fEnd, cStart, cEnd)
 
 	profileFile := filepath.Join(t.TempDir(), "cover.out")
@@ -1326,7 +1326,7 @@ func TestAnalyze_ContractCoverageProvider(t *testing.T) {
 	fStart, fEnd := findFuncLines(t, crapGoPath, "Formula")
 
 	profileContent := fmt.Sprintf("mode: set\n"+
-		"github.com/unbound-force/gaze/internal/crap/crap.go:%d.1,%d.2 2 1\n",
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:%d.1,%d.2 2 1\n",
 		fStart, fEnd)
 	profileFile := filepath.Join(t.TempDir(), "cover.out")
 	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {
@@ -1631,7 +1631,7 @@ func TestAnalyze_RelativizesFilePaths(t *testing.T) {
 
 	// Build a minimal coverage profile so Analyze can run.
 	profileContent := "mode: set\n" +
-		"github.com/unbound-force/gaze/internal/crap/crap.go:152.55,156.2 2 1\n"
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:152.55,156.2 2 1\n"
 
 	profileFile := filepath.Join(t.TempDir(), "cover.out")
 	if err := os.WriteFile(profileFile, []byte(profileContent), 0o644); err != nil {

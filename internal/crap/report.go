@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 
-	"github.com/unbound-force/gaze/internal/report"
+	"github.com/unbound-force/gaze/v2/internal/report"
 )
 
 // WriteJSON writes the CRAP report as formatted JSON to w.

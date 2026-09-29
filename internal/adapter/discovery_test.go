@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/adapter"
-	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/adapter"
+	"github.com/unbound-force/gaze/v2/internal/config"
 )
 
 // TestDiscover_CLIFlagOverridesConfig verifies that --analyzer flag

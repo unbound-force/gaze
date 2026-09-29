@@ -6,8 +6,8 @@
 package mockprovider
 
 import (
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // MockComplexityProvider implements crap.ComplexityProvider with

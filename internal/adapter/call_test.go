@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 // callTestBinaryPath is the path to the compiled fake_analyzer binary used

@@ -3,8 +3,8 @@ package docscan_test
 import (
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
 )
 
 func TestFilter(t *testing.T) {

@@ -9,19 +9,19 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/unbound-force/gaze/internal/adapter"
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/classify"
-	"github.com/unbound-force/gaze/internal/cliutil"
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/docscan"
-	"github.com/unbound-force/gaze/internal/docscan/apidoc"
-	"github.com/unbound-force/gaze/internal/loader"
-	"github.com/unbound-force/gaze/internal/provider/goprovider"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/report"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/adapter"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/classify"
+	"github.com/unbound-force/gaze/v2/internal/cliutil"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/docscan/apidoc"
+	"github.com/unbound-force/gaze/v2/internal/loader"
+	"github.com/unbound-force/gaze/v2/internal/provider/goprovider"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/report"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // qualityPipelineDeps holds injectable function dependencies for

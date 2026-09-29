@@ -22,7 +22,7 @@ Homebrew binaries for macOS are code-signed with an Apple Developer ID certifica
 If you have Go 1.25.0+ installed:
 
 ```bash
-go install github.com/unbound-force/gaze/cmd/gaze@latest
+go install github.com/unbound-force/gaze/v2/cmd/gaze@latest
 ```
 
 This places the `gaze` binary in your `$GOPATH/bin` (or `$GOBIN` if set). Make sure that directory is on your `$PATH`.

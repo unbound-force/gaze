@@ -7,7 +7,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // p2SelectorEffects maps import path → function name →

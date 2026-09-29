@@ -9,11 +9,11 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestExtractShortPkgName_WithSlash(t *testing.T) {
-	got := extractShortPkgName("github.com/unbound-force/gaze/internal/crap")
+	got := extractShortPkgName("github.com/unbound-force/gaze/v2/internal/crap")
 	if got != "crap" {
 		t.Errorf("extractShortPkgName(...crap) = %q, want %q", got, "crap")
 	}
@@ -59,7 +59,7 @@ func TestAnalyzePackageCoverage_ValidPackage(t *testing.T) {
 	gazeConfig := config.DefaultConfig()
 	var stderr bytes.Buffer
 	reports, _ := analyzePackageCoverage(
-		"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested",
 		".",
 		gazeConfig,
 		&stderr,
@@ -113,7 +113,7 @@ func TestBuildContractCoverageFunc_WelltestedPackage(t *testing.T) {
 		t.Skip("skipping: runs quality pipeline (package loading)")
 	}
 
-	pattern := "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"
+	pattern := "github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"
 
 	var buf bytes.Buffer
 	fn, _ := BuildContractCoverageFunc([]string{pattern}, ".", &buf)
@@ -609,7 +609,7 @@ func TestBuildCoverageMap_EmptyPaths(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoadTestPackage_WithTests(t *testing.T) {
-	pkg, err := LoadTestPackage("github.com/unbound-force/gaze/internal/quality/testdata/src/welltested")
+	pkg, err := LoadTestPackage("github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested")
 	if err != nil {
 		t.Fatalf("expected no error for package with tests, got: %v", err)
 	}
@@ -619,7 +619,7 @@ func TestLoadTestPackage_WithTests(t *testing.T) {
 }
 
 func TestLoadTestPackage_WithoutTests(t *testing.T) {
-	_, err := LoadTestPackage("github.com/unbound-force/gaze/internal/analysis/testdata/src/returns")
+	_, err := LoadTestPackage("github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns")
 	if err == nil {
 		t.Fatal("expected error for package without test files")
 	}

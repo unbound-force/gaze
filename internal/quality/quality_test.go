@@ -16,9 +16,9 @@ import (
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // testdataPath returns the absolute path to a testdata fixture package.

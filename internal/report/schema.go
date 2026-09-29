@@ -5,7 +5,7 @@ package report
 // JSON output. It documents the structure returned by WriteJSON.
 const Schema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/unbound-force/gaze/analysis-report.schema.json",
+  "$id": "https://github.com/unbound-force/gaze/v2/analysis-report.schema.json",
   "title": "Gaze Analysis Report",
   "description": "Output schema for gaze analyze --format=json",
   "type": "object",
@@ -211,7 +211,7 @@ const Schema = `{
 // by quality.WriteJSON.
 const QualitySchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/unbound-force/gaze/quality-report.schema.json",
+  "$id": "https://github.com/unbound-force/gaze/v2/quality-report.schema.json",
   "title": "Gaze Quality Report",
   "description": "Output schema for gaze quality --format=json",
   "type": "object",

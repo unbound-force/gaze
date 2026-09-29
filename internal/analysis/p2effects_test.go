@@ -5,8 +5,8 @@ import (
 	"go/token"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestAnalyzeP2Effects_Direct_GoroutineSpawn verifies that AnalyzeP2Effects

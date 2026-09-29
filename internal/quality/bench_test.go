@@ -5,9 +5,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // BenchmarkAssess_SinglePair benchmarks quality assessment for

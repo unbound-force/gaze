@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/adapter"
-	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/adapter"
+	"github.com/unbound-force/gaze/v2/internal/crap"
 )
 
 // TestCrapWithExternalAnalyzer verifies that runCrap correctly uses

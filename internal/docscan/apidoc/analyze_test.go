@@ -3,8 +3,8 @@ package apidoc
 import (
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/docscan"
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 func TestAnalyze_NilData(t *testing.T) {

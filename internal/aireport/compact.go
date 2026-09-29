@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/docscan"
-	"github.com/unbound-force/gaze/internal/report"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/report"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // compactPayload mirrors ReportPayload but includes the summary with JSON

@@ -1,4 +1,4 @@
-module github.com/unbound-force/gaze
+module github.com/unbound-force/gaze/v2
 
 go 1.25.0
 

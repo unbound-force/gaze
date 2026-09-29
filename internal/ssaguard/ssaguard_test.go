@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/ssaguard"
+	"github.com/unbound-force/gaze/v2/internal/ssaguard"
 )
 
 // Coverage strategy: unit tests only. These three cases achieve 100%

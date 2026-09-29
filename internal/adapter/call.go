@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 // callAndUnmarshal issues a JSON-RPC call for method with params on

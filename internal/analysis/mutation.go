@@ -12,8 +12,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 
-	"github.com/unbound-force/gaze/internal/ssaguard"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/ssaguard"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // BuildSSA constructs the SSA representation for a loaded package.

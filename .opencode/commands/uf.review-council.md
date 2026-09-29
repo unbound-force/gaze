@@ -244,7 +244,7 @@ Review the current codebase for compliance with the Behavioral Constraints in `A
        > analysis. Install with
        > `brew install unbound-force/tap/gaze`
        > (or on Fedora/RHEL:
-       > `go install github.com/unbound-force/gaze/cmd/gaze@latest`)."
+       > `go install github.com/unbound-force/gaze/v2/cmd/gaze@latest`)."
 
       Proceed to step 2 without Gaze data.
 

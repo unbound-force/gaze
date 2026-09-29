@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/config"
 )
 
 // Priority defines the scanning priority of a document file,

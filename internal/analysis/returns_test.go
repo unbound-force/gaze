@@ -3,8 +3,8 @@ package analysis_test
 import (
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestAnalyzeReturns_Direct_SingleReturn verifies that AnalyzeReturns

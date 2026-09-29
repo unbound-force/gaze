@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 // Providers holds the constructed provider adapters ready to be

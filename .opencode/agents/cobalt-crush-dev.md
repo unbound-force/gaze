@@ -108,7 +108,7 @@ After writing code, check for Gaze quality feedback:
 
 4. **Re-validate**: After addressing all findings, run the project's test suite. Proceed to review only when all tests pass and quality metrics are acceptable.
 
-5. **No Gaze available**: If Gaze is not installed or no artifacts exist, note this: "Quality validation is not available — Gaze is not installed. Recommend running `brew install unbound-force/tap/gaze` (or on Fedora/RHEL: `go install github.com/unbound-force/gaze/cmd/gaze@latest`) for automated quality feedback." Proceed with implementation using best-effort test coverage.
+5. **No Gaze available**: If Gaze is not installed or no artifacts exist, note this: "Quality validation is not available — Gaze is not installed. Recommend running `brew install unbound-force/tap/gaze` (or on Fedora/RHEL: `go install github.com/unbound-force/gaze/v2/cmd/gaze@latest`) for automated quality feedback." Proceed with implementation using best-effort test coverage.
 
 ## Divisor Review Preparation
 

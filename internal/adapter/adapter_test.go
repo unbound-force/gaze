@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/adapter"
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/adapter"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 // fakeBinaryPath is the path to the compiled fake_analyzer binary.

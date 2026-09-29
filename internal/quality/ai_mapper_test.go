@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestAssess_AIMapperMatch verifies that when the AI mapper returns a valid

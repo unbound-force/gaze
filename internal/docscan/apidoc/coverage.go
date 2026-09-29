@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
 )
 
 // ComputeCoverage computes documentation coverage from analyzer output.

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
 )
 
 // backtickRe matches single-backtick-quoted content. It captures the

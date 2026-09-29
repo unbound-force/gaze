@@ -74,13 +74,13 @@ Before running any gaze command, locate the `gaze` binary:
 2. **Check `$PATH`**: Run `which gaze`. If found, use it.
 3. **Install from module**: As a last resort, run:
    ```bash
-   go install github.com/unbound-force/gaze/cmd/gaze@latest
+   go install github.com/unbound-force/gaze/v2/cmd/gaze@latest
    ```
    Then use `gaze` from `$GOPATH/bin`.
 
 If all three methods fail, report the error clearly and suggest
 the developer install gaze via `brew install unbound-force/tap/gaze`
-or `go install github.com/unbound-force/gaze/cmd/gaze@latest`.
+or `go install github.com/unbound-force/gaze/v2/cmd/gaze@latest`.
 
 ## Mode Parsing
 

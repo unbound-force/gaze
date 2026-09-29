@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
 )
 
 // ---------------------------------------------------------------------------

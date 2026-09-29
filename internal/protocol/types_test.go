@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 // TestRoundTrip_InitializeResult verifies JSON marshal/unmarshal

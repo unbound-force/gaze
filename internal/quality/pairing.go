@@ -12,7 +12,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 
-	"github.com/unbound-force/gaze/internal/ssaguard"
+	"github.com/unbound-force/gaze/v2/internal/ssaguard"
 )
 
 // TestFunc represents a test function found in a test package.

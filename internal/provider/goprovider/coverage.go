@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/crap"
 )
 
 // GoLineCoverageProvider implements crap.LineCoverageProvider by

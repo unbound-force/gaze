@@ -38,7 +38,7 @@ brew install unbound-force/tap/gaze
 ### Go Install
 
 ```bash
-go install github.com/unbound-force/gaze/cmd/gaze@latest
+go install github.com/unbound-force/gaze/v2/cmd/gaze@latest
 ```
 
 ### Build from Source

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/provider/goprovider"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/provider/goprovider"
 )
 
 // RunnerOptions configures the report pipeline runner.

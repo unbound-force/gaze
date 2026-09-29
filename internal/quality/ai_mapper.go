@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/tools/go/ssa"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // AIMapperContext contains the context needed for AI-assisted

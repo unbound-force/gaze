@@ -56,7 +56,7 @@ gaze analyze ./internal/crap
 
 ```
 Function: Formula
-  Package: github.com/unbound-force/gaze/internal/crap
+  Package: github.com/unbound-force/gaze/v2/internal/crap
   Signature: func Formula(complexity int, coveragePct float64) float64
   Location: internal/crap/crap.go:152:1
   Side Effects:

@@ -8,7 +8,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // AnalyzeReturns detects return value and error return side effects

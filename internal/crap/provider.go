@@ -15,7 +15,7 @@
 // the crap package.
 package crap
 
-import "github.com/unbound-force/gaze/internal/taxonomy"
+import "github.com/unbound-force/gaze/v2/internal/taxonomy"
 
 // FunctionComplexity is a language-neutral representation of
 // per-function cyclomatic complexity. It replaces gocyclo.Stat in

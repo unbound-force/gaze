@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/loader"
+	"github.com/unbound-force/gaze/v2/internal/loader"
 )
 
 func TestLoad_ValidPackage(t *testing.T) {
 	// Load the loader package itself (it's a valid Go package).
-	result, err := loader.Load("github.com/unbound-force/gaze/internal/loader")
+	result, err := loader.Load("github.com/unbound-force/gaze/v2/internal/loader")
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
 	}
@@ -22,8 +22,8 @@ func TestLoad_ValidPackage(t *testing.T) {
 	if result.Fset == nil {
 		t.Fatal("expected non-nil Fset")
 	}
-	if result.Pkg.PkgPath != "github.com/unbound-force/gaze/internal/loader" {
-		t.Errorf("expected pkg path 'github.com/unbound-force/gaze/internal/loader', got %q",
+	if result.Pkg.PkgPath != "github.com/unbound-force/gaze/v2/internal/loader" {
+		t.Errorf("expected pkg path 'github.com/unbound-force/gaze/v2/internal/loader', got %q",
 			result.Pkg.PkgPath)
 	}
 }
@@ -146,7 +146,7 @@ func TestResolvePackagePaths_Wildcard(t *testing.T) {
 func TestResolvePackagePaths_SinglePackage(t *testing.T) {
 	root := findModuleRoot(t)
 	paths, err := loader.ResolvePackagePaths(
-		[]string{"github.com/unbound-force/gaze/internal/loader"}, root, nil,
+		[]string{"github.com/unbound-force/gaze/v2/internal/loader"}, root, nil,
 	)
 	if err != nil {
 		t.Fatalf("ResolvePackagePaths failed: %v", err)
@@ -154,7 +154,7 @@ func TestResolvePackagePaths_SinglePackage(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatalf("expected 1 package, got %d: %v", len(paths), paths)
 	}
-	if paths[0] != "github.com/unbound-force/gaze/internal/loader" {
+	if paths[0] != "github.com/unbound-force/gaze/v2/internal/loader" {
 		t.Errorf("unexpected path: %q", paths[0])
 	}
 }
@@ -198,7 +198,7 @@ func TestResolvePackagePaths_MixedValidAndInvalid(t *testing.T) {
 	var buf bytes.Buffer
 	paths, err := loader.ResolvePackagePaths(
 		[]string{
-			"github.com/unbound-force/gaze/internal/loader",
+			"github.com/unbound-force/gaze/v2/internal/loader",
 			"github.com/nonexistent/does/not/exist",
 		}, root, &buf,
 	)
@@ -208,9 +208,9 @@ func TestResolvePackagePaths_MixedValidAndInvalid(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatalf("expected 1 valid path, got %d: %v", len(paths), paths)
 	}
-	if paths[0] != "github.com/unbound-force/gaze/internal/loader" {
+	if paths[0] != "github.com/unbound-force/gaze/v2/internal/loader" {
 		t.Errorf("expected valid path %q, got %q",
-			"github.com/unbound-force/gaze/internal/loader", paths[0])
+			"github.com/unbound-force/gaze/v2/internal/loader", paths[0])
 	}
 
 	// Verify warning was emitted for the invalid pattern only.
@@ -222,7 +222,7 @@ func TestResolvePackagePaths_MixedValidAndInvalid(t *testing.T) {
 		t.Errorf("expected invalid package path in stderr warning, got %q", stderr)
 	}
 	// The valid package should not appear in warnings.
-	if strings.Contains(stderr, "github.com/unbound-force/gaze/internal/loader") {
+	if strings.Contains(stderr, "github.com/unbound-force/gaze/v2/internal/loader") {
 		t.Errorf("valid package should not appear in warnings, got %q", stderr)
 	}
 }
@@ -234,7 +234,7 @@ func TestResolvePackagePaths_NilStderrWithErrors(t *testing.T) {
 	// ResolvePackagePaths must not panic when stderr is nil.
 	paths, err := loader.ResolvePackagePaths(
 		[]string{
-			"github.com/unbound-force/gaze/internal/loader",
+			"github.com/unbound-force/gaze/v2/internal/loader",
 			"nonexistent/invalid/pkg",
 		}, root, nil,
 	)
@@ -254,8 +254,8 @@ func TestResolvePackagePaths_DuplicatePatterns(t *testing.T) {
 	root := findModuleRoot(t)
 	paths, err := loader.ResolvePackagePaths(
 		[]string{
-			"github.com/unbound-force/gaze/internal/loader",
-			"github.com/unbound-force/gaze/internal/loader",
+			"github.com/unbound-force/gaze/v2/internal/loader",
+			"github.com/unbound-force/gaze/v2/internal/loader",
 		}, root, nil,
 	)
 	if err != nil {
@@ -264,7 +264,7 @@ func TestResolvePackagePaths_DuplicatePatterns(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatalf("expected exactly 1 deduplicated path, got %d: %v", len(paths), paths)
 	}
-	if paths[0] != "github.com/unbound-force/gaze/internal/loader" {
+	if paths[0] != "github.com/unbound-force/gaze/v2/internal/loader" {
 		t.Errorf("unexpected path: %q", paths[0])
 	}
 }
@@ -273,7 +273,7 @@ func TestIsMainPkg_Library(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping slow test: loads package via go/packages")
 	}
-	if loader.IsMainPkg("github.com/unbound-force/gaze/internal/loader") {
+	if loader.IsMainPkg("github.com/unbound-force/gaze/v2/internal/loader") {
 		t.Error("expected library package to return false")
 	}
 }
@@ -282,7 +282,7 @@ func TestIsMainPkg_Main(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping slow test: loads package via go/packages")
 	}
-	if !loader.IsMainPkg("github.com/unbound-force/gaze/cmd/gaze") {
+	if !loader.IsMainPkg("github.com/unbound-force/gaze/v2/cmd/gaze") {
 		t.Error("expected main package to return true")
 	}
 }

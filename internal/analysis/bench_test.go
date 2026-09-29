@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 func BenchmarkAnalyzeFunction_Returns(b *testing.B) {

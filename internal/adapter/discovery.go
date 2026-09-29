@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"regexp"
 
-	"github.com/unbound-force/gaze/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/config"
 )
 
 // validLanguage matches language identifiers: lowercase letters,

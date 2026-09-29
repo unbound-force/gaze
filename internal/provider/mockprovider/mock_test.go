@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/provider/mockprovider"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/provider/mockprovider"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // testdataDir returns the absolute path to the testdata directory

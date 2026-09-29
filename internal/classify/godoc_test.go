@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/classify"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/classify"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // makeFuncDeclWithDoc constructs a minimal *ast.FuncDecl with the

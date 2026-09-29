@@ -16,11 +16,11 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/unbound-force/gaze/internal/adapter"
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/adapter"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestRunCRAPStep_RealPackage verifies that runCRAPStep successfully runs on
@@ -32,7 +32,7 @@ func TestRunCRAPStep_RealPackage(t *testing.T) {
 	}
 	modRoot := findModuleRoot(t)
 	res, err := runCRAPStep(
-		[]string{"github.com/unbound-force/gaze/internal/config"},
+		[]string{"github.com/unbound-force/gaze/v2/internal/config"},
 		modRoot,
 		"", // no pre-generated profile — use internal generation
 		io.Discard,
@@ -82,7 +82,7 @@ func TestRunCRAPStep_WithCoverProfile(t *testing.T) {
 
 	modRoot := findModuleRoot(t)
 	res, err := runCRAPStep(
-		[]string{"github.com/unbound-force/gaze/internal/crap"},
+		[]string{"github.com/unbound-force/gaze/v2/internal/crap"},
 		modRoot,
 		fixture,
 		io.Discard,
@@ -110,7 +110,7 @@ func TestRunProductionPipeline_RealPackage(t *testing.T) {
 	modRoot := findModuleRoot(t)
 	payload, err := runProductionPipeline(
 		context.Background(),
-		[]string{"github.com/unbound-force/gaze/internal/config"},
+		[]string{"github.com/unbound-force/gaze/v2/internal/config"},
 		modRoot,
 		"",    // no pre-generated profile — use internal generation
 		false, // testShort

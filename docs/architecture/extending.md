@@ -107,7 +107,7 @@ Create a new file in `internal/classify/` (e.g., `doccomment.go`):
 package classify
 
 import (
-    "github.com/unbound-force/gaze/internal/taxonomy"
+    "github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // maxDocCommentWeight is the maximum weight for doc comment signals.
@@ -198,7 +198,7 @@ package report
 import (
     "io"
 
-    "github.com/unbound-force/gaze/internal/taxonomy"
+    "github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // WriteCSV writes analysis results as CSV to the writer.

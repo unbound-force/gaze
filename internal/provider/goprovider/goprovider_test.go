@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/provider/goprovider"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/provider/goprovider"
 )
 
 // Compile-time interface satisfaction checks. These verify that all
@@ -31,7 +31,7 @@ func TestGoLineCoverageProvider_PreGeneratedProfile(t *testing.T) {
 	tmpDir := t.TempDir()
 	profilePath := filepath.Join(tmpDir, "cover.out")
 	profileData := "mode: set\n" +
-		"github.com/unbound-force/gaze/internal/crap/crap.go:245.55,247.2 1 1\n"
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:245.55,247.2 1 1\n"
 	if err := os.WriteFile(profilePath, []byte(profileData), 0644); err != nil {
 		t.Fatalf("writing test profile: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestCoverage_ShortWithCoverProfile(t *testing.T) {
 	tmpDir := t.TempDir()
 	profilePath := filepath.Join(tmpDir, "cover.out")
 	profileData := "mode: set\n" +
-		"github.com/unbound-force/gaze/internal/crap/crap.go:245.55,247.2 1 1\n"
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:245.55,247.2 1 1\n"
 	if err := os.WriteFile(profilePath, []byte(profileData), 0644); err != nil {
 		t.Fatalf("writing test profile: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestCoverage_ShortWithCoverProfile(t *testing.T) {
 // (< 2s to load and analyze).
 func TestGoSideEffectAnalyzer_WellTestedFixture(t *testing.T) {
 	analyzer := goprovider.NewSideEffectAnalyzer(nil, nil, false)
-	results, err := analyzer.Analyze("github.com/unbound-force/gaze/internal/quality/testdata/src/welltested")
+	results, err := analyzer.Analyze("github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested")
 	if err != nil {
 		t.Fatalf("Analyze returned error: %v", err)
 	}

@@ -3,7 +3,7 @@ package apidoc
 import (
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
 )
 
 // Analyze orchestrates the three API documentation analysis sub-functions:

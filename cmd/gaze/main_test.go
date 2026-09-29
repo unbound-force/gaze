@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/aireport"
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/crap"
-	"github.com/unbound-force/gaze/internal/docscan/apidoc"
-	"github.com/unbound-force/gaze/internal/provider/goprovider"
-	"github.com/unbound-force/gaze/internal/quality"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/aireport"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/crap"
+	"github.com/unbound-force/gaze/v2/internal/docscan/apidoc"
+	"github.com/unbound-force/gaze/v2/internal/provider/goprovider"
+	"github.com/unbound-force/gaze/v2/internal/quality"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ func TestRunAnalyze_InvalidFormat(t *testing.T) {
 func TestRunAnalyze_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -61,7 +61,7 @@ func TestRunAnalyze_TextFormat(t *testing.T) {
 func TestRunAnalyze_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "json",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -83,7 +83,7 @@ func TestRunAnalyze_JSONFormat(t *testing.T) {
 func TestRunAnalyze_FunctionFilter(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		function: "SingleReturn",
 		stdout:   &stdout,
@@ -105,7 +105,7 @@ func TestRunAnalyze_FunctionFilter(t *testing.T) {
 func TestRunAnalyze_FunctionNotFound(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		function: "NonExistentFunc",
 		stdout:   &stdout,
@@ -124,7 +124,7 @@ func TestRunAnalyze_IncludeUnexported(t *testing.T) {
 	// so this just verifies the flag passes through without error.
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns:          []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns:          []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:            "text",
 		includeUnexported: true,
 		stdout:            &stdout,
@@ -138,7 +138,7 @@ func TestRunAnalyze_IncludeUnexported(t *testing.T) {
 func TestRunAnalyze_BadPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/nonexistent/package"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/nonexistent/package"},
 		format:   "text",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -155,8 +155,8 @@ func TestRunAnalyze_MultiPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
 		patterns: []string{
-			"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
-			"github.com/unbound-force/gaze/internal/analysis/testdata/src/mutation",
+			"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns",
+			"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/mutation",
 		},
 		format: "text",
 		stdout: &stdout,
@@ -606,7 +606,7 @@ func TestRunDocscan_AnalyzerFlag_InvalidBinary(t *testing.T) {
 func TestRunAnalyze_ClassifyFlag_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		classify: true,
 		stdout:   &stdout,
@@ -625,7 +625,7 @@ func TestRunAnalyze_ClassifyFlag_TextFormat(t *testing.T) {
 func TestRunAnalyze_ClassifyFlag_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "json",
 		classify: true,
 		stdout:   &stdout,
@@ -646,7 +646,7 @@ func TestRunAnalyze_VerboseImpliesClassify(t *testing.T) {
 	// --verbose without --classify should still produce classification output.
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "text",
 		verbose:  true,
 		stdout:   &stdout,
@@ -1338,7 +1338,7 @@ func TestRunSelfCheck_ModuleRootError(t *testing.T) {
 
 func TestRunQuality_InvalidFormat(t *testing.T) {
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:   "yaml",
 		stdout:   &bytes.Buffer{},
 		stderr:   &bytes.Buffer{},
@@ -1354,7 +1354,7 @@ func TestRunQuality_InvalidFormat(t *testing.T) {
 func TestRunQuality_TextFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:   "text",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -1371,7 +1371,7 @@ func TestRunQuality_TextFormat(t *testing.T) {
 func TestRunQuality_JSONFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:   "json",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -1396,7 +1396,7 @@ func TestRunQuality_JSONFormat(t *testing.T) {
 func TestRunQuality_TargetFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:   []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns:   []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:     "text",
 		targetFunc: "Add",
 		stdout:     &stdout,
@@ -1414,7 +1414,7 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 	// with mapping improvements (TODO #6), so coverage thresholds
 	// are not yet stable enough for CI enforcement.
 	err := runQuality(qualityParams{
-		patterns:             []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns:             []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:               "text",
 		maxOverSpecification: 100, // very high — should pass
 		stdout:               &stdout,
@@ -1428,7 +1428,7 @@ func TestRunQuality_ThresholdPass(t *testing.T) {
 func TestRunQuality_ThresholdFail(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:            []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns:            []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:              "text",
 		minContractCoverage: 100, // strict — contract coverage is below 100%
 		stdout:              &stdout,
@@ -1463,8 +1463,8 @@ func TestRunQuality_MultiPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
 		patterns: []string{
-			"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
-			"github.com/unbound-force/gaze/internal/quality/testdata/src/helpers",
+			"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested",
+			"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/helpers",
 		},
 		format: "text",
 		stdout: &stdout,
@@ -1488,8 +1488,8 @@ func TestRunQuality_MultiPackage_SkipsNoTests(t *testing.T) {
 	// returns has no test files — should be skipped with a warning.
 	err := runQuality(qualityParams{
 		patterns: []string{
-			"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
-			"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+			"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested",
+			"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns",
 		},
 		format: "text",
 		stdout: &stdout,
@@ -1650,7 +1650,7 @@ func TestMergeSummaries_SkippedTests(t *testing.T) {
 func TestRunQuality_EmptyResults_NoThreshold_ExitsZero(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:   "text",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -1670,7 +1670,7 @@ func TestRunQuality_EmptyResults_NoThreshold_ExitsZero(t *testing.T) {
 func TestRunQuality_EmptyResults_MinCoverageThreshold_ExitsNonZero(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:            []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns:            []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:              "text",
 		minContractCoverage: 10,
 		stdout:              &stdout,
@@ -1687,7 +1687,7 @@ func TestRunQuality_EmptyResults_MinCoverageThreshold_ExitsNonZero(t *testing.T)
 func TestRunQuality_EmptyResults_MaxOverSpecThreshold_ExitsNonZero(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:             []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns:             []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:               "text",
 		maxOverSpecification: 5,
 		stdout:               &stdout,
@@ -1706,7 +1706,7 @@ func TestRunQuality_EmptyResults_BothThresholds_ExitsNonZero(t *testing.T) {
 	// and results are empty, the || gate at line 1210 must trigger.
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:             []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns:             []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:               "text",
 		minContractCoverage:  10,
 		maxOverSpecification: 5,
@@ -1733,7 +1733,7 @@ func TestRunQuality_EmptyResults_ZeroThreshold_ExitsZero(t *testing.T) {
 	// zero-means-disabled per the > 0 check.
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:            []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns:            []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:              "text",
 		minContractCoverage: 0,
 		stdout:              &stdout,
@@ -1747,7 +1747,7 @@ func TestRunQuality_EmptyResults_ZeroThreshold_ExitsZero(t *testing.T) {
 func TestRunQuality_EmptyResults_JSON_ProducesValidJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:   "json",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -1800,7 +1800,7 @@ func TestRunQuality_EmptyResults_JSON_ProducesValidJSON(t *testing.T) {
 func TestRunQuality_EmptyResults_StdoutListsSkippedTests(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle"},
 		format:   "text",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -1832,8 +1832,8 @@ func TestRunQuality_MixedBDDAndNormalPackages(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
 		patterns: []string{
-			"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
-			"github.com/unbound-force/gaze/internal/quality/testdata/src/bddstyle",
+			"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested",
+			"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/bddstyle",
 		},
 		format: "text",
 		stdout: &stdout,
@@ -1868,7 +1868,7 @@ func TestRunQualityPerPackage_Success(t *testing.T) {
 	opts := analysis.Options{Version: version}
 	cfg, _ := loadConfig("", -1, -1)
 	reports, summary, err := runQualityPerPackage(
-		"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested",
+		"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested",
 		p, opts, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1891,7 +1891,7 @@ func TestRunQualityPerPackage_NoTests(t *testing.T) {
 	cfg, _ := loadConfig("", -1, -1)
 	// The "returns" package has no *_test.go files.
 	reports, summary, err := runQualityPerPackage(
-		"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns",
+		"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns",
 		p, opts, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -2982,7 +2982,7 @@ func TestSC002_GazeCRAPloadMatchBetweenCrapAndReport(t *testing.T) {
 
 	// Use the welltested fixture — it has known contractual functions
 	// that produce non-nil GazeCRAPload, ensuring SC-002 is not vacuous.
-	pattern := "github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"
+	pattern := "github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"
 	moduleDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)
@@ -3271,7 +3271,7 @@ func TestRunReport_CoverProfile_UnparseableContent(t *testing.T) {
 	// The real production pipeline runs; CRAP step fails with parse error,
 	// which is stored in payload.Errors.CRAP (partial-failure mode).
 	err := runReport(reportParams{
-		patterns:     []string{"github.com/unbound-force/gaze/internal/config"},
+		patterns:     []string{"github.com/unbound-force/gaze/v2/internal/config"},
 		format:       "json",
 		coverProfile: profilePath,
 		stdout:       &stdout,
@@ -3326,7 +3326,7 @@ func TestReportCmd_CoverprofileInHelp(t *testing.T) {
 func TestRunQuality_IncludeUnexported_PackageMain(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:          []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/mainpkg"},
+		patterns:          []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/mainpkg"},
 		format:            "json",
 		includeUnexported: false, // NOT set — auto-detect should kick in
 		contractualThresh: -1,
@@ -3360,7 +3360,7 @@ func TestRunQuality_IncludeUnexported_PackageMain(t *testing.T) {
 func TestRunQuality_IncludeUnexported_LibraryPackage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns:          []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns:          []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:            "json",
 		includeUnexported: false,
 		contractualThresh: -1,
@@ -3622,7 +3622,7 @@ func TestAutoDetectMainPkg_MainPackage(t *testing.T) {
 func TestAutoDetectMainPkg_LibraryPackage(t *testing.T) {
 	// A library package path — should leave includeUnexported unchanged.
 	enabled := false
-	autoDetectMainPkg("github.com/unbound-force/gaze/internal/cliutil", &enabled)
+	autoDetectMainPkg("github.com/unbound-force/gaze/v2/internal/cliutil", &enabled)
 	if enabled {
 		t.Error("autoDetectMainPkg incorrectly enabled includeUnexported for library package")
 	}
@@ -3648,7 +3648,7 @@ func TestAutoDetectMainPkg_AlreadyEnabled(t *testing.T) {
 func TestRunAnalyze_HTMLFormat_CompleteReport(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "html",
 		stdout:   &stdout,
 		stderr:   &stderr,
@@ -3709,7 +3709,7 @@ func TestRunAnalyze_HTMLFormat_CompleteReport(t *testing.T) {
 func TestRunAnalyze_HTMLFormat_WithClassify(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "html",
 		classify: true,
 		stdout:   &stdout,
@@ -3733,7 +3733,7 @@ func TestRunAnalyze_HTMLFormat_WithClassify(t *testing.T) {
 func TestRunAnalyze_HTMLFormat_FunctionFilter(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAnalyze(analyzeParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 		format:   "html",
 		function: "SingleReturn",
 		stdout:   &stdout,
@@ -3759,7 +3759,7 @@ func TestRunAnalyze_HTMLFormat_Deterministic(t *testing.T) {
 	run := func() string {
 		var stdout, stderr bytes.Buffer
 		err := runAnalyze(analyzeParams{
-			patterns: []string{"github.com/unbound-force/gaze/internal/analysis/testdata/src/returns"},
+			patterns: []string{"github.com/unbound-force/gaze/v2/internal/analysis/testdata/src/returns"},
 			format:   "html",
 			stdout:   &stdout,
 			stderr:   &stderr,
@@ -3788,7 +3788,7 @@ func TestRunAnalyze_HTMLFormat_Deterministic(t *testing.T) {
 // (spec: "Another command selects HTML output").
 func TestRunQuality_HTMLFormat_Rejected(t *testing.T) {
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:   "html",
 		stdout:   &bytes.Buffer{},
 		stderr:   &bytes.Buffer{},
@@ -3808,7 +3808,7 @@ func TestRunQuality_HTMLFormat_Rejected(t *testing.T) {
 func TestRunQuality_HTMLFormat_DoesNotFallThroughToText(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/internal/quality/testdata/src/welltested"},
+		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
 		format:   "html",
 		stdout:   &stdout,
 		stderr:   &bytes.Buffer{},

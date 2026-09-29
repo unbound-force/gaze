@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 //go:embed analyze.html.tmpl

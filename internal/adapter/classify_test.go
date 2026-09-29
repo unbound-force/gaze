@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/config"
-	"github.com/unbound-force/gaze/internal/protocol"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/config"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // mustInternalFakeBinary reuses the lazy fake analyzer binary from call_test.go.

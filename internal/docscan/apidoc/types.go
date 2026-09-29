@@ -6,8 +6,8 @@
 package apidoc
 
 import (
-	"github.com/unbound-force/gaze/internal/docscan"
-	"github.com/unbound-force/gaze/internal/protocol"
+	"github.com/unbound-force/gaze/v2/internal/docscan"
+	"github.com/unbound-force/gaze/v2/internal/protocol"
 )
 
 // AnalyzerData is the input struct that carries analyzer output

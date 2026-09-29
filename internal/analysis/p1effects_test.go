@@ -5,8 +5,8 @@ import (
 	"go/token"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/analysis"
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/analysis"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 // TestAnalyzeP1Effects_Direct_GlobalMutation verifies that AnalyzeP1Effects
