@@ -12,7 +12,7 @@
 
 ## 0. Pre-Implementation Gate
 
-- [ ] 0.1 Confirm `proposal.md`, `design.md`, `specs/quality-crap-report-html-output/spec.md`, and `tasks.md` are committed and pushed on `opsx/add-html-output-quality-crap-report` before modifying production or test code.
+- [x] 0.1 Confirm `proposal.md`, `design.md`, `specs/quality-crap-report-html-output/spec.md`, and `tasks.md` are committed and pushed on `opsx/add-html-output-quality-crap-report` before modifying production or test code.
 - [x] 0.2 Report the required outcome, expected changed files, planned new template/formatter/test files, explicit non-goals, and any scope expansion awaiting approval; stop for explicit approval before adding any capability, package, service, protocol, abstraction, generalized test infrastructure, persistent runtime artifact, or follow-up work outside the Statement of Intent.
 
 ## 1. Native HTML Formatters
