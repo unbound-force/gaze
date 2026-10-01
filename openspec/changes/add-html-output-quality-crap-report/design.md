@@ -25,7 +25,7 @@ Today `gaze quality` dispatches typed `QualityReport` and `PackageSummary` value
 
 ### D1: Keep report-specific formatters in their existing packages
 
-Add quality HTML rendering under `internal/quality`, CRAP and comparison HTML rendering under `internal/crap`, and combined HTML rendering under `internal/aireport`. Each formatter accepts its package's existing typed boundary values plus a version and writes to an `io.Writer`.
+Add quality HTML rendering under `internal/quality`, CRAP and comparison HTML rendering under `internal/crap`, and combined HTML rendering under `internal/aireport`. Each formatter accepts its package's existing typed boundary values and writes to an `io.Writer`.
 
 This is smaller than introducing a universal view model or a new presentation package. The templates may follow the analyze report's visual language, but report-specific structures remain independent because their semantics differ. No new cross-package abstraction is introduced.
 
@@ -43,13 +43,13 @@ Formatters do not cast dynamic values to `template.HTML`, `template.JS`, `templa
 
 ### D4: Render quality states from existing typed data
 
-Add `quality.WriteHTML(w, reports, summary, version)`. Its view model represents each test-target pair and available gaps, hints, discarded returns, suggestions, ambiguous effects, unmapped assertions, and summary diagnostics. Nil or empty optional fields omit their sections. Empty output retains skipped-test, SSA-degraded, and reason data instead of falling through to text.
+Add `quality.WriteHTML(w, reports, summary)`. Its view model represents each test-target pair and available gaps, hints, discarded returns, suggestions, ambiguous effects, unmapped assertions, and summary diagnostics. Nil or empty optional fields omit their sections. Empty output retains skipped-test, SSA-degraded, and reason data instead of falling through to text.
 
 The formatter reuses the existing skipped-test display limit rather than creating a new truncation policy. It does not add or infer metrics.
 
 ### D5: Render normal and comparison CRAP through one report model
 
-Add `crap.WriteHTML(w, report, version)` and `crap.WriteComparisonHTML(w, comparison, version)`. Both build the same top-level HTML view; the comparison entry point adds baseline summary and categorized function data. The CLI keeps its existing decision between normal and comparison writers, preserving baseline gate ordering.
+Add `crap.WriteHTML(w, report)` and `crap.WriteComparisonHTML(w, comparison)`. Both build the same top-level HTML view; the comparison entry point adds baseline summary and categorized function data. The CLI keeps its existing decision between normal and comparison writers, preserving baseline gate ordering.
 
 Optional pointers for contract coverage, GazeCRAP, quadrants, reasons, and deltas remain optional in the view model. Maps use the existing canonical quadrant and fix-strategy ordering. The implementation does not alter score sorting or threshold rules.
 
@@ -69,7 +69,7 @@ The report CLI treats only `text` as AI-backed. JSON and HTML skip adapter and p
 
 Formatter tests use synthetic existing domain models and assert complete document structure, required semantic sections, accurate optional-state behavior, contextual escaping, no external resources, deterministic bytes, and writer-error propagation. They do not add golden snapshots, pixel assertions, generalized HTML test harnesses, broad ratchets, or new fake systems.
 
-CLI tests verify format acceptance and correct writer dispatch for normal, empty/degraded, comparison, external-analyzer-compatible, and no-AI combined paths. Existing text and JSON tests remain the regression boundary for unchanged behavior.
+CLI tests verify format acceptance and correct writer dispatch for normal, empty/degraded, comparison, external-analyzer-compatible, and no-AI combined paths. Existing text and JSON tests remain the regression boundary for unchanged behavior; this change does not add byte-for-byte tests for paths it does not modify.
 
 ### D9: Update user-facing documentation and required tracking
 
@@ -77,14 +77,15 @@ Update the README output-format summary and the quality, CRAP, and report CLI re
 
 ## Coverage Strategy
 
-- Unit-test each `WriteHTML` entry point with representative populated data and at least one empty, degraded, unavailable, comparison, or partial-failure case appropriate to that formatter.
+- Unit-test all three report-family `WriteHTML` entry points with representative populated data and the empty, degraded, unavailable, comparison, or partial-failure states applicable to each formatter.
 - Add adversarial strings to names, locations, descriptions, hints, analyzer data, and step errors to prove contextual escaping.
 - Verify each document has a doctype, identifying title, semantic section labels, inline styling, no executable script, and no external resource references.
 - Render identical input twice and compare complete byte sequences.
 - Use an erroring `io.Writer` to verify template execution errors propagate with context.
-- Exercise `runQuality`, `runCrap`, and `runReport` format selection with existing dependency-injection seams and fixtures; do not create a generalized harness.
+- Integration-test HTML format selection in `runQuality`, `runCrap`, and `runReport` with existing dependency-injection seams and fixtures; do not create a generalized harness.
 - Verify report HTML runs without an adapter or prompt and retains threshold evaluation and partial-failure output.
 - Retain existing text and JSON tests unchanged as non-regression coverage.
+- Do not add a feature-specific e2e suite: formatter unit tests and command integration tests cover the changed boundaries, while the repository's existing e2e and coverage ratchets continue unchanged.
 - During implementation, derive and run the exact CI-equivalent build, race-enabled tests, and lint commands from `.github/workflows/` before completion.
 
 ## Risks / Trade-offs

@@ -32,35 +32,35 @@ This change implements issue #261 with the smallest user-visible outcome: users 
 - `internal/aireport/`: native combined HTML rendering and runner dispatch tests.
 - `cmd/gaze/`: explicit HTML validation and dispatch for the three commands.
 - `docs/reference/cli/` and `README.md`: supported-format documentation and examples.
-- Existing text and JSON bytes, analysis/scoring behavior, thresholds, and JSON schemas remain unchanged.
+- Existing text and JSON behavior, analysis/scoring behavior, thresholds, and JSON schemas remain unchanged.
 - No browser application, JavaScript, external assets, third-party charting library, new service, protocol, package, generalized formatter framework, snapshot suite, or fake infrastructure is added.
 - Because this is user-facing CLI behavior, the website documentation gate requires the user to create a tracking issue in `unbound-force/website` before the implementing PR is merged.
 
 ## Constitution Alignment
 
-Assessed against the Unbound Force org constitution.
+Assessed against the Gaze constitution.
 
-### I. Autonomous Collaboration
-
-**Assessment**: PASS
-
-Each HTML document is a self-describing artifact that can move from a local run to CI or review without runtime coupling. The change does not introduce coordination between heroes or services.
-
-### II. Composability First
+### I. Accuracy
 
 **Assessment**: PASS
 
-HTML remains an optional CLI format implemented with the Go standard library. Each command remains independently usable, and text and JSON retain their existing standalone behavior.
+HTML renders existing typed analysis data without changing analysis or scoring and distinguishes unavailable, degraded, and failed results from measured values.
 
-### III. Observable Quality
+### II. Minimal Assumptions
 
 **Assessment**: PASS
 
-JSON remains the unchanged machine-parseable contract with existing provenance. HTML adds a deterministic human-readable representation, identifies the report type and Gaze version, and accurately distinguishes available, unavailable, degraded, and failed analysis data.
+HTML is an optional CLI format implemented with the Go standard library. It requires no source annotations, external services, network resources, or new dependencies.
+
+### III. Actionable Output
+
+**Assessment**: PASS
+
+The reports retain the existing test, target, function, diagnostic, and remediation details in a portable human-readable document while JSON remains the machine-readable format.
 
 ### IV. Testability
 
 **Assessment**: PASS
 
-Each formatter accepts an `io.Writer` and typed report data, enabling isolated tests without external services. Tests cover changed behavior through semantic structure, contextual escaping, deterministic bytes, self-containment, optional states, writer failures, and CLI dispatch while existing CI gates protect unchanged text and JSON paths.
+Each formatter accepts an `io.Writer` and existing report data, enabling isolated unit tests. Existing command seams cover HTML dispatch, and existing CI gates protect unchanged text and JSON paths without adding a new ratchet or test framework.
 <!-- scaffolded by uf v0.17.0 -->

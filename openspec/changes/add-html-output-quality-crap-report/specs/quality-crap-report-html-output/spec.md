@@ -126,16 +126,25 @@ The formatters MUST use Go's `html/template` package. All source-derived, analyz
 
 ### Requirement: Deterministic Rendering
 
-Each formatter MUST produce byte-identical output when called repeatedly with the same ordered input and version. The output MUST NOT contain timestamps, random identifiers, environment-derived values, or nondeterministic map iteration.
+Each formatter MUST produce byte-identical output when called repeatedly with the same ordered input. The output MUST NOT contain timestamps, random identifiers, environment-derived values, or nondeterministic map iteration.
 
 #### Scenario: Identical input is rendered twice
-- **GIVEN** identical ordered report data and version values
+- **GIVEN** identical ordered report data
 - **WHEN** an HTML formatter renders them in two independent calls
 - **THEN** the resulting byte sequences MUST be identical
 
+### Requirement: Rendering Failures
+
+If an HTML formatter cannot write its document, it MUST return an operation-specific error and MUST NOT substitute text, JSON, or a fabricated successful HTML document.
+
+#### Scenario: The output writer fails
+- **GIVEN** an output writer that returns an error
+- **WHEN** an HTML formatter writes a document
+- **THEN** the formatter MUST return an error identifying the failed HTML rendering operation
+
 ### Requirement: Existing Format Compatibility
 
-Adding HTML output MUST NOT alter the accepted behavior or rendered bytes of existing `text` and `json` output paths. HTML output MUST NOT change analysis, scoring, classification, thresholds, baseline gate ordering, partial-failure handling, or JSON schemas.
+Adding HTML output MUST NOT alter the accepted behavior of existing `text` and `json` output paths. HTML output MUST NOT change analysis, scoring, classification, thresholds, baseline gate ordering, partial-failure handling, or JSON schemas.
 
 #### Scenario: Existing formats are selected
 - **GIVEN** input supported before this change
