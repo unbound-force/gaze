@@ -22,7 +22,7 @@ At least one package pattern is required. Use `./...` to analyze the entire modu
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--format` | `string` | `text` | Output format: `text` or `json` |
+| `--format` | `string` | `text` | Output format: `text`, `json`, or `html` |
 | `--analyzer` | `string` | `""` | External analyzer binary (e.g., `snake-eyes`) for language-neutral side effect and CRAP analysis |
 | `--language` | `string` | `""` | Target language for analyzer discovery (e.g., `python`) |
 | `--coverprofile` | `string` | `""` (generate via `go test`) | Path to a pre-generated Go coverage profile. When omitted, Gaze runs `go test -coverprofile` automatically. |
@@ -103,6 +103,16 @@ gaze crap ./... --format=json | jq '.summary.crapload'
 ```
 
 See [JSON Schemas](../json-schemas.md) for the full output structure.
+
+### HTML output
+
+```bash
+gaze crap ./... --format=html --coverprofile=coverage.out > crap-report.html
+```
+
+HTML output is a complete, self-contained document with inline styling. It has no external stylesheets, fonts, images, scripts, or other network resources, and its core content does not require JavaScript. The resulting single file can be opened offline or uploaded as a CI artifact.
+
+When a baseline is loaded, the HTML report includes the comparison result, aggregate counts, and categorized function changes alongside the current CRAP results. Without a baseline, it omits the comparison section rather than reporting an implied pass or fail. Baseline and threshold gates behave the same in HTML as they do in text and JSON output.
 
 ### Baseline comparison
 
