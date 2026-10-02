@@ -24,7 +24,7 @@ At least one package argument is required. Wildcard patterns like `./...` are ex
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--format` | | `string` | `text` | Output format: `text` or `json` |
+| `--format` | | `string` | `text` | Output format: `text`, `json`, or `html` |
 | `--analyzer` | | `string` | `""` | External analyzer binary (e.g., `snake-eyes`) for language-neutral test-to-target mapping |
 | `--language` | | `string` | `""` | Target language for analyzer discovery (e.g., `python`) |
 | `--target` | | `string` | `""` (all) | Restrict analysis to tests that exercise this specific function |
@@ -61,6 +61,14 @@ See [Configuration Reference](../configuration.md) for all `.gaze.yaml` options.
 The `--min-contract-coverage` and `--max-over-specification` thresholds are evaluated **per test-target pair**, not on the package average. This means every individual test must meet the threshold, not just the average across all tests.
 
 When SSA construction fails (degraded mode), CI thresholds are automatically skipped to avoid false-positive failures from zero-valued metrics. A warning is printed to stderr.
+
+## HTML Output
+
+Select `--format=html` to write a complete quality report as HTML. The report represents each resolved test-target pair and its package summary, including identities, contract coverage, over-specification, and assertion-detection confidence. When available, it also includes gaps and hints, discarded returns, remediation suggestions, ambiguous effects, unmapped assertions and their reasons, skipped-test diagnostics, lowest-coverage tests, and SSA degradation details.
+
+Empty and degraded analyses remain explicit. The report states when no test-target pairs were resolved and includes available skipped-test, SSA degradation, or unavailable-analysis reasons without inventing findings or presenting unavailable metrics as measured zeroes.
+
+HTML reports are self-contained files with inline styling. They do not load external stylesheets, fonts, images, scripts, or other network resources, and their content remains readable offline without JavaScript.
 
 ## Examples
 
@@ -118,6 +126,12 @@ gaze quality ./internal/crap --format=json | jq '.quality_summary'
 ```
 
 See [JSON Schemas](../json-schemas.md) for the full output structure.
+
+### Write an HTML report to a file
+
+```bash
+gaze quality ./... --format=html > quality-report.html
+```
 
 ## See Also
 
