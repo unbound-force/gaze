@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 func TestWriteHTML_CompleteStructureAndAvailableFields(t *testing.T) {

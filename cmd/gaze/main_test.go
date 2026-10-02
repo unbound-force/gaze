@@ -1435,7 +1435,7 @@ func TestWriteCrapOutputAndSummary_HTMLComparison(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 
-	err := writeCrapOutputAndSummary(&stdout, &stderr, "html", rpt, comparison, 0, 0)
+	err := writeCrapOutputAndSummary(&stdout, &stderr, "html", rpt, comparison, nil, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("writeCrapOutputAndSummary: %v", err)
 	}

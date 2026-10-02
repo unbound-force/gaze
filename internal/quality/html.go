@@ -6,7 +6,7 @@ import (
 	"html/template"
 	"io"
 
-	"github.com/unbound-force/gaze/internal/taxonomy"
+	"github.com/unbound-force/gaze/v2/internal/taxonomy"
 )
 
 //go:embed quality.html.tmpl
