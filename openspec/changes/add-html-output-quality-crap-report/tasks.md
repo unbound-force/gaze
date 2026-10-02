@@ -46,8 +46,9 @@
 - [x] 4.3 Run every CI-equivalent check discovered in task 4.1; treat any failure as blocking and do not weaken protected gate values.
 - [x] 4.4 Verify every scenario in `specs/quality-crap-report-html-output/spec.md`, including semantic states, contextual escaping, no external resources, deterministic output, and unchanged text/JSON behavior.
 - [x] 4.5 Re-check all four Gaze constitution assessments from `proposal.md`: analysis accuracy is unchanged, no new host-project assumptions or dependencies were added, output remains actionable, and formatters remain isolated and testable without external services.
-- [ ] 4.6 Classify every review finding as Required, Optional hardening, or Unrelated; implement only Required findings, provide concise follow-up issue text for Optional findings, and stop for approval if a Required finding would expand the confirmed scope.
-- [ ] 4.7 Run the required review council on the final implementation and resolve all Required REQUEST CHANGES findings before PR submission; do not repeat an unchanged review cycle or make substantive changes after approval.
-- [ ] 4.8 Before finalization, report the required outcome, actual changed and new files, explicit non-goals, deferred optional findings, and any scope expansion awaiting approval.
+- [x] 4.6 Classify every review finding as Required, Optional hardening, or Unrelated; implement only Required findings, provide concise follow-up issue text for Optional findings, and stop for approval if a Required finding would expand the confirmed scope.
+- [x] 4.7 Run the required review council on the final implementation and resolve all Required REQUEST CHANGES findings before PR submission; do not repeat an unchanged review cycle or make substantive changes after approval.
+- [x] 4.8 Before finalization, report the required outcome, actual changed and new files, explicit non-goals, deferred optional findings, and any scope expansion awaiting approval.
 <!-- scaffolded by uf v0.17.0 -->
 <!-- spec-review: passed -->
+<!-- code-review: passed -->
