@@ -1,12 +1,12 @@
 # gaze report
 
-Orchestrate Gaze's four analysis operations (CRAP, quality, classification, docscan) and pipe the combined JSON payload to an external AI CLI for formatting into a human-readable markdown report.
+Run Gaze's CRAP, quality, classification, and docscan operations together to produce a text, JSON, or HTML report. Text output uses an external AI adapter. Gaze generates JSON and HTML directly.
 
 The formatted report is written to stdout and optionally appended to `$GITHUB_STEP_SUMMARY` for GitHub Actions Step Summary integration.
 
 ## Synopsis
 
-```
+```text
 gaze report [packages] [flags]
 ```
 
@@ -22,7 +22,7 @@ When no package arguments are provided, `./...` is used automatically (the entir
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--format` | `string` | `text` | Output format: `text` (AI-formatted markdown) or `json` (raw analysis payload) |
+| `--format` | `string` | `text` | Output format: `text` (AI-formatted markdown), `json` (raw analysis payload), or `html` (native combined report) |
 | `--ai` | `string` | `""` | AI adapter: `claude`, `gemini`, `ollama`, or `opencode`. **Required in text mode.** |
 | `--model` | `string` | `""` | Model name for the AI adapter. **Required for `ollama`**; optional for other adapters. |
 | `--ai-timeout` | `duration` | `10m` | Maximum time to wait for the AI adapter to respond. Uses Go duration format (e.g., `5m`, `30s`, `2m30s`). |
@@ -50,7 +50,15 @@ The `--coverprofile` flag is the key CI optimization — pass a coverage profile
 | `ollama` | HTTP API | `system` field in JSON body | `prompt` field in JSON body |
 | `opencode` | `opencode` | `.opencode/agents/gaze-reporter.md` in temp dir via `--dir` | stdin |
 
-Before the analysis pipeline starts, Gaze validates that the adapter binary exists on `PATH` (or that the Ollama HTTP API is reachable). An invalid binary produces a hard exit before any analysis runs.
+For text output, Gaze validates that the adapter binary exists on `PATH` (or that the Ollama HTTP API is reachable) before analysis starts. An invalid binary produces a hard exit before any analysis runs.
+
+## Native HTML Output
+
+Select `--format=html` to generate a complete combined report without an AI adapter. In HTML mode, `--ai` is optional: Gaze does not validate or invoke an adapter, and it does not load an AI prompt.
+
+The report includes typed summary metrics and separate CRAP, quality, classification, and documentation sections. Successful steps show their available pipeline data as formatted JSON. If a step fails, its section shows the recorded error while output from successful steps remains available. Metrics that were not computed are shown as unavailable rather than as measured zero values.
+
+HTML output is a self-contained file with inline styling. It does not load scripts, stylesheets, fonts, images, or other network resources. Its content remains readable with JavaScript disabled.
 
 ## Environment Variables
 
@@ -73,6 +81,14 @@ gaze report ./... --format=json > report.json
 ```
 
 In JSON mode, the `--ai` flag is not required. The raw analysis payload is written directly to stdout.
+
+### Native HTML report written to a file
+
+```bash
+gaze report ./... --format=html > gaze-report.html
+```
+
+No `--ai` flag is needed. Open `gaze-report.html` directly in a browser; the file does not require network access.
 
 ### CI integration with thresholds
 
