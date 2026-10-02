@@ -12,12 +12,12 @@ Gaze is a single-binary CLI tool that performs static analysis on Go source code
 | `internal/analysis/` | Core side effect detection engine. Uses AST and SSA analysis to detect observable side effects in Go functions. | `taxonomy`, `loader`, `go/ast`, `go/types`, `x/tools/go/ssa` |
 | `internal/classify/` | Contractual classification engine. Five signal analyzers (interface, visibility, caller, naming, godoc) produce weighted confidence scores. Classifies each effect as contractual, ambiguous, or incidental. | `taxonomy`, `config`, `go/types`, `go/packages` |
 | `internal/config/` | Configuration file handling. Loads and validates `.gaze.yaml` files with classification thresholds and other settings. | None (leaf package) |
-| `internal/crap/` | CRAP score computation. Combines cyclomatic complexity with line coverage (CRAP) and contract coverage (GazeCRAP). Quadrant classification, fix strategies, CRAPload counting. | `taxonomy`, `quality`, `analysis`, `classify`, `loader`, `config` |
-| `internal/quality/` | Test quality assessment. Test-target pairing via SSA call graphs, assertion detection, four-pass assertion-to-effect mapping, contract coverage, over-specification scoring. | `taxonomy`, `analysis`, `classify`, `loader`, `config`, `go/ast`, `x/tools/go/ssa` |
+| `internal/crap/` | CRAP score computation and report formatting. Combines cyclomatic complexity with line coverage (CRAP) and contract coverage (GazeCRAP). Produces text, JSON, and self-contained HTML, including baseline comparisons. | `taxonomy`, `quality`, `analysis`, `classify`, `loader`, `config`, `html/template` |
+| `internal/quality/` | Test quality assessment and report formatting. Performs test-target pairing, assertion detection and mapping, contract coverage, and over-specification scoring. Produces text, JSON, and self-contained HTML. | `taxonomy`, `analysis`, `classify`, `loader`, `config`, `go/ast`, `html/template`, `x/tools/go/ssa` |
 | `internal/report/` | Output formatters for analysis results. JSON, styled text, and self-contained analyze HTML formatters. Embeds the JSON Schema (Draft 2020-12) and analyze HTML template. | `taxonomy`, `lipgloss`, `html/template` |
 | `internal/docscan/` | Documentation file scanner. Finds Markdown files in the repository, prioritized by proximity to the target package. | None (leaf package) |
 | `internal/docscan/apidoc/` | API documentation coverage analysis. Cross-references analyzer output (`doc_coverage` + `analyze`) against documentation files; computes coverage, stale references, and code-block language validation. | `docscan`, `protocol` |
-| `internal/aireport/` | AI-powered CI quality report pipeline. Orchestrates all four analysis operations, pipes JSON to external AI CLIs (Claude, Gemini, Ollama, OpenCode), threshold enforcement, GitHub Step Summary integration. | `taxonomy`, `crap`, `quality`, `analysis`, `classify`, `docscan`, `loader`, `config` |
+| `internal/aireport/` | Combined CI quality report pipeline. Orchestrates all four analysis operations, emits native JSON or self-contained HTML, or pipes JSON to external AI CLIs for text output. Also handles threshold enforcement and GitHub Step Summary integration. | `taxonomy`, `crap`, `quality`, `analysis`, `classify`, `docscan`, `loader`, `config`, `html/template` |
 | `internal/scaffold/` | OpenCode file scaffolding. Uses `embed.FS` to scaffold agent and command files into user projects via [`gaze init`](../reference/cli/init.md). | None (uses `embed.FS`) |
 
 ## Data Flow
@@ -64,7 +64,7 @@ The following diagram shows how data flows through Gaze from CLI invocation to o
               +-----------+  +-----------+     |
                     |             |             |
                     v             v             v
-                  stdout       stdout     AI adapter → stdout
+                  stdout       stdout     native JSON/HTML or AI adapter → stdout
                                           (+ $GITHUB_STEP_SUMMARY)
 ```
 
@@ -86,7 +86,7 @@ The following diagram shows how data flows through Gaze from CLI invocation to o
 3. **CRAP scores**: `crap.Formula(complexity, coverage)` for each function
 4. **Contract coverage** (optional): `quality.Assess` computes contract coverage per function, enabling GazeCRAP and quadrant classification
 5. **Fix strategies**: `assignFixStrategy` labels each CRAPload function with a remediation action
-6. **Format**: Text table or JSON output
+6. **Format**: Text, JSON, or self-contained HTML output
 
 ### Step-by-step flow for [`gaze report`](../reference/cli/report.md)
 
@@ -97,8 +97,8 @@ The following diagram shows how data flows through Gaze from CLI invocation to o
    - Docscan step — documentation file inventory
 2. **Payload**: Results are assembled into a `ReportPayload` JSON structure
 3. **Threshold check**: If threshold flags are set, enforce quality gates (exit non-zero on violation)
-4. **AI formatting**: Payload is piped to the selected AI adapter (Claude/Gemini/Ollama/OpenCode)
-5. **Output**: Formatted markdown to stdout; optionally appended to `$GITHUB_STEP_SUMMARY`
+4. **Format**: JSON and self-contained HTML are rendered natively; text output is produced by the selected AI adapter (Claude/Gemini/Ollama/OpenCode)
+5. **Output**: The selected format is written to stdout; AI-formatted text can also be appended to `$GITHUB_STEP_SUMMARY`
 
 ## Key Patterns
 

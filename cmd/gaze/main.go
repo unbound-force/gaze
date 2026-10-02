@@ -545,7 +545,7 @@ validating output or generating client types.`,
 
 // runCrap is the extracted, testable body of the crap command.
 func runCrap(p crapParams) error {
-	if err := cliutil.ValidateFormat(p.format); err != nil {
+	if err := cliutil.ValidateFormat(p.format, "html"); err != nil {
 		return err
 	}
 
@@ -799,6 +799,8 @@ func writeCrapReport(w io.Writer, format string, rpt *crap.Report, cgr *crap.Cha
 			return crap.WriteJSONWithChangeGate(w, rpt, cgr)
 		}
 		return crap.WriteJSON(w, rpt)
+	case "html":
+		return crap.WriteHTML(w, rpt)
 	default:
 		return crap.WriteText(w, rpt)
 	}
@@ -841,6 +843,8 @@ func writeCrapComparisonReport(w io.Writer, format string, result *crap.Comparis
 	switch format {
 	case "json":
 		return crap.WriteComparisonJSON(w, result, cgr)
+	case "html":
+		return crap.WriteComparisonHTML(w, result)
 	default:
 		return crap.WriteComparisonText(w, result)
 	}
@@ -1346,7 +1350,7 @@ type qualityParams struct {
 
 // runQuality is the extracted, testable body of the quality command.
 func runQuality(p qualityParams) error {
-	if err := cliutil.ValidateFormat(p.format); err != nil {
+	if err := cliutil.ValidateFormat(p.format, "html"); err != nil {
 		return err
 	}
 
@@ -1700,7 +1704,7 @@ func handleQualityEmptyResults(p qualityParams, merged *taxonomy.PackageSummary)
 	return nil
 }
 
-// writeQualityReport writes the quality report output (JSON or text)
+// writeQualityReport writes the quality report output
 // and then checks CI thresholds. Returns an error if writing fails
 // or if a threshold is violated.
 func writeQualityReport(p qualityParams, reports []taxonomy.QualityReport, summary *taxonomy.PackageSummary) error {
@@ -1708,6 +1712,10 @@ func writeQualityReport(p qualityParams, reports []taxonomy.QualityReport, summa
 	case "json":
 		if err := quality.WriteJSON(p.stdout, reports, summary); err != nil {
 			return fmt.Errorf("writing quality JSON: %w", err)
+		}
+	case "html":
+		if err := quality.WriteHTML(p.stdout, reports, summary); err != nil {
+			return fmt.Errorf("writing quality HTML: %w", err)
 		}
 	default:
 		if err := quality.WriteText(p.stdout, reports, summary); err != nil {
@@ -1777,8 +1785,9 @@ func runQualityPerPackage(
 
 // writeQualityEmptyResults writes the empty-result output when no
 // test-target pairs were resolved. For JSON format, it writes a valid
-// JSON object with an empty quality_reports array. For text format, it
-// prints a summary line, skipped test names (truncated at
+// JSON object with an empty quality_reports array. HTML uses the native
+// formatter so degraded diagnostics remain available. Text prints a
+// summary line, skipped test names (truncated at
 // MaxSkippedTestDisplay), and a --target hint.
 // This function does NOT evaluate thresholds — that is the caller's
 // responsibility.
@@ -1792,6 +1801,10 @@ func writeQualityEmptyResults(w io.Writer, format string, merged *taxonomy.Packa
 		emptyReports := make([]taxonomy.QualityReport, 0)
 		if err := quality.WriteJSON(w, emptyReports, merged); err != nil {
 			return fmt.Errorf("writing empty quality JSON: %w", err)
+		}
+	case "html":
+		if err := quality.WriteHTML(w, nil, merged); err != nil {
+			return fmt.Errorf("writing empty quality HTML: %w", err)
 		}
 	default:
 		totalTestFuncs := merged.TotalTests + merged.SkippedTests
@@ -2132,21 +2145,25 @@ type reportParams struct {
 //
 // In text mode it validates the --ai flag, resolves the adapter, loads the
 // system prompt, and calls the 4-step analysis pipeline via aireport.Run.
-// In json mode it skips AI adapter validation entirely (FR-015).
+// JSON and HTML modes skip AI adapter validation entirely (FR-015).
 // Threshold evaluation runs after the pipeline and may set exit code 1.
 // validateReportParams checks pre-flight conditions for gaze report:
 // adapter requirement in text mode, ollama model requirement, and
 // coverprofile path validity.
 func validateReportParams(p reportParams) error {
+	if err := cliutil.ValidateFormat(p.format, "html"); err != nil {
+		return err
+	}
+
 	// In text mode, --ai is required (FR-002).
-	if p.format != "json" && p.adapterName == "" {
+	if p.format == "text" && p.adapterName == "" {
 		return fmt.Errorf(
 			"--ai is required in text mode: must be one of \"claude\", \"gemini\", \"ollama\", or \"opencode\"",
 		)
 	}
 
 	// In text mode, validate ollama requires --model (FR-003).
-	if p.format != "json" && p.adapterName == "ollama" && p.modelName == "" {
+	if p.format == "text" && p.adapterName == "ollama" && p.modelName == "" {
 		return fmt.Errorf("--model is required when using ollama (FR-003)")
 	}
 
@@ -2207,14 +2224,14 @@ func runReport(p reportParams) error {
 	// via ValidateAdapterBinary.
 	var aiAdapter aireport.AIAdapter
 	var systemPrompt string
-	if p.format != "json" {
+	if p.format == "text" {
 		var adapterErr error
 		aiAdapter, adapterErr = aireport.NewAdapter(adapterCfg)
 		if adapterErr != nil {
 			return fmt.Errorf("invalid --ai value: %w", adapterErr)
 		}
 
-		// Load system prompt only in text mode (FR-015): in json mode the
+		// Load system prompt only in text mode (FR-015): in JSON and HTML modes the
 		// prompt file is never needed and a permission error must not block output.
 		var promptErr error
 		systemPrompt, promptErr = aireport.LoadPrompt(moduleDir)
@@ -2420,7 +2437,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
+	cmd.Flags().StringVar(&format, "format", "text", "output format: text, json, or html")
 	cmd.Flags().StringVar(&adapterName, "ai", "", "AI adapter: claude, gemini, ollama, or opencode")
 	cmd.Flags().StringVar(&modelName, "model", "", "model name (required for ollama)")
 	cmd.Flags().DurationVar(&aiTimeout, "ai-timeout", 10*time.Minute, "AI adapter timeout")

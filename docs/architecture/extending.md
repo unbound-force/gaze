@@ -186,11 +186,11 @@ The signal is automatically included in `ComputeScore` (in `score.go`), which su
 
 ## Adding a New Output Format
 
-Output formatters live in `internal/report/`. Currently supported: JSON (`json.go`), styled text (`text.go`), and self-contained HTML for `gaze analyze` (`html.go`).
+Output formatters live with the command's existing report model. Analyze formatters live in `internal/report/`; CRAP formatters in `internal/crap/`; quality formatters in `internal/quality/`; and combined report formatters in `internal/aireport/`. Each family supports its existing text or JSON paths plus self-contained HTML where the command explicitly accepts it.
 
 ### 1. Create the Formatter
 
-Create a new file in `internal/report/` (e.g., `csv.go`):
+Create a new file in the package that owns the command's report model. For example, an analyze CSV formatter belongs in `internal/report/csv.go`:
 
 ```go
 package report
@@ -211,7 +211,7 @@ func WriteCSV(w io.Writer, results []taxonomy.AnalysisResult) error {
 Follow the existing pattern:
 
 - Accept `io.Writer` as the first parameter (enables testing with `bytes.Buffer`)
-- Accept `[]taxonomy.AnalysisResult` as the data source
+- Accept the command's existing typed report model as the data source (`[]taxonomy.AnalysisResult` in this example)
 - Return `error`
 
 ### 2. Wire into the CLI

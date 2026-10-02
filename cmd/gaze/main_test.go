@@ -1427,6 +1427,24 @@ func TestWriteCrapOutputAndSummary_WithoutComparison(t *testing.T) {
 	}
 }
 
+func TestWriteCrapOutputAndSummary_HTMLComparison(t *testing.T) {
+	rpt := stubReport()
+	comparison := &crap.ComparisonResult{
+		Report:  rpt,
+		Summary: crap.ComparisonSummary{Passed: true},
+	}
+	var stdout, stderr bytes.Buffer
+
+	err := writeCrapOutputAndSummary(&stdout, &stderr, "html", rpt, comparison, 0, 0)
+	if err != nil {
+		t.Fatalf("writeCrapOutputAndSummary: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "<!DOCTYPE html>") || !strings.Contains(out, "Baseline Comparison") {
+		t.Fatalf("expected HTML comparison report, got: %s", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // runSelfCheck fast unit tests (US3 — T017)
 // ---------------------------------------------------------------------------
@@ -2152,6 +2170,33 @@ func TestWriteQualityEmptyResults_JSONFormat(t *testing.T) {
 	}
 }
 
+func TestWriteQualityEmptyResults_HTMLDegradedFormat(t *testing.T) {
+	merged := &taxonomy.PackageSummary{
+		SSADegraded:         true,
+		SSADegradedPackages: []string{"example.com/degraded"},
+		SkippedTests:        1,
+		SkippedTestNames:    []string{"TestDynamicSuite"},
+	}
+	var buf bytes.Buffer
+
+	err := writeQualityEmptyResults(&buf, "html", merged)
+	if err != nil {
+		t.Fatalf("writeQualityEmptyResults: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"<!DOCTYPE html>",
+		"No test-target pairs were resolved.",
+		"SSA analysis degraded.",
+		"example.com/degraded",
+		"TestDynamicSuite",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected degraded HTML output to contain %q", want)
+		}
+	}
+}
+
 func TestWriteQualityEmptyResults_TextNoSkipped(t *testing.T) {
 	// Text format with 0 skipped → summary only, no names or hint.
 	merged := &taxonomy.PackageSummary{
@@ -2861,6 +2906,54 @@ func TestRunReport_JSONFormat_ValidOutput(t *testing.T) {
 	var decoded aireport.ReportPayload
 	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
 		t.Fatalf("stdout is not valid ReportPayload JSON: %v\noutput: %s", err, stdout.String())
+	}
+}
+
+func TestRunReport_HTMLFormat_NoAIRequired(t *testing.T) {
+	var stdout bytes.Buffer
+	err := runReport(reportParams{
+		patterns: []string{"./..."},
+		format:   "html",
+		stdout:   &stdout,
+		stderr:   &bytes.Buffer{},
+		runnerFunc: func(opts aireport.RunnerOptions) error {
+			if opts.Adapter != nil {
+				t.Error("HTML report unexpectedly configured an AI adapter")
+			}
+			if opts.SystemPrompt != "" {
+				t.Error("HTML report unexpectedly loaded a system prompt")
+			}
+			if opts.Format != "html" {
+				t.Errorf("runner format = %q, want html", opts.Format)
+			}
+			return aireport.WriteHTML(opts.Stdout, &aireport.ReportPayload{})
+		},
+	})
+	if err != nil {
+		t.Fatalf("runReport html without --ai: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "<title>Gaze Combined Report</title>") {
+		t.Fatalf("expected combined HTML output, got: %s", stdout.String())
+	}
+}
+
+func TestRunReport_InvalidFormat(t *testing.T) {
+	runnerCalled := false
+	err := runReport(reportParams{
+		patterns: []string{"./..."},
+		format:   "yaml",
+		stdout:   &bytes.Buffer{},
+		stderr:   &bytes.Buffer{},
+		runnerFunc: func(aireport.RunnerOptions) error {
+			runnerCalled = true
+			return nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), `invalid format "yaml"`) {
+		t.Fatalf("expected invalid-format error, got: %v", err)
+	}
+	if runnerCalled {
+		t.Error("runner called after invalid format")
 	}
 }
 
@@ -3938,34 +4031,7 @@ func TestRunAnalyze_HTMLFormat_Deterministic(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Out-of-scope command HTML rejection tests (task 2.3)
-// ---------------------------------------------------------------------------
-
-// TestRunQuality_HTMLFormat_Rejected verifies that runQuality rejects
-// format=html with an invalid-format error, confirming that HTML is
-// not silently accepted by commands that have not implemented it
-// (spec: "Another command selects HTML output").
-func TestRunQuality_HTMLFormat_Rejected(t *testing.T) {
-	err := runQuality(qualityParams{
-		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
-		format:   "html",
-		stdout:   &bytes.Buffer{},
-		stderr:   &bytes.Buffer{},
-	})
-	if err == nil {
-		t.Fatal("expected error for format=html on quality command, got nil")
-	}
-	if !strings.Contains(err.Error(), `invalid format "html"`) {
-		t.Errorf("expected invalid format error mentioning html, got: %s", err)
-	}
-}
-
-// TestRunQuality_HTMLFormat_DoesNotFallThroughToText verifies that the
-// quality command does not silently produce text output when html is
-// requested. This guards against a dispatch switch that falls through
-// to the default text case.
-func TestRunQuality_HTMLFormat_DoesNotFallThroughToText(t *testing.T) {
+func TestRunQuality_HTMLFormat(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runQuality(qualityParams{
 		patterns: []string{"github.com/unbound-force/gaze/v2/internal/quality/testdata/src/welltested"},
@@ -3973,30 +4039,38 @@ func TestRunQuality_HTMLFormat_DoesNotFallThroughToText(t *testing.T) {
 		stdout:   &stdout,
 		stderr:   &bytes.Buffer{},
 	})
-	// Must return an error (covered above), but also verify no output was written.
-	if err == nil {
-		t.Fatal("expected error for format=html on quality command")
+	if err != nil {
+		t.Fatalf("runQuality html: %v", err)
 	}
-	if stdout.Len() != 0 {
-		t.Errorf("quality command with format=html should not produce stdout output, got %d bytes: %s",
-			stdout.Len(), stdout.String())
+	out := stdout.String()
+	if !strings.Contains(out, "<title>Gaze Quality Report</title>") || !strings.Contains(out, "Test Results") {
+		t.Fatalf("expected quality HTML report, got: %s", out)
+	}
+	if strings.Contains(out, "Tests analyzed:") {
+		t.Error("HTML request fell through to the text writer")
 	}
 }
 
-// TestRunCrap_HTMLFormat_Rejected verifies that runCrap also rejects
-// format=html, confirming the per-command opt-in design.
-func TestRunCrap_HTMLFormat_Rejected(t *testing.T) {
+func TestRunCrap_HTMLFormat(t *testing.T) {
+	var stdout bytes.Buffer
 	err := runCrap(crapParams{
-		patterns: []string{"./..."},
-		format:   "html",
-		stdout:   &bytes.Buffer{},
-		stderr:   &bytes.Buffer{},
+		patterns:    []string{"./..."},
+		format:      "html",
+		opts:        crap.DefaultOptions(),
+		moduleDir:   ".",
+		stdout:      &stdout,
+		stderr:      &bytes.Buffer{},
+		analyzeFunc: stubAnalyze,
 	})
-	if err == nil {
-		t.Fatal("expected error for format=html on crap command, got nil")
+	if err != nil {
+		t.Fatalf("runCrap html: %v", err)
 	}
-	if !strings.Contains(err.Error(), `invalid format "html"`) {
-		t.Errorf("expected invalid format error mentioning html, got: %s", err)
+	out := stdout.String()
+	if !strings.Contains(out, "<title>Gaze CRAP Report</title>") || !strings.Contains(out, "Foo") {
+		t.Fatalf("expected CRAP HTML report, got: %s", out)
+	}
+	if strings.Contains(out, "CRAP Analysis") {
+		t.Error("HTML request fell through to the text writer")
 	}
 }
 

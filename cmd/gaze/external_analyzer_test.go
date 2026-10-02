@@ -151,6 +151,35 @@ func TestCrapWithExternalAnalyzer(t *testing.T) {
 	}
 }
 
+func TestCrapWithExternalAnalyzer_HTML(t *testing.T) {
+	moduleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte("module fake\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	opts := crap.DefaultOptions()
+	opts.Stderr = &stderr
+
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "html",
+		opts:         opts,
+		moduleDir:    moduleDir,
+		analyzerFlag: fakeBinaryPath,
+		stdout:       &stdout,
+		stderr:       &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runCrap HTML with external analyzer: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"<title>Gaze CRAP Report</title>", "add", "multiply", "divide"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected external-analyzer HTML to contain %q", want)
+		}
+	}
+}
+
 // TestCrapWithExternalAnalyzer_NotFound verifies that a nonexistent
 // analyzer binary produces a clear error.
 func TestCrapWithExternalAnalyzer_NotFound(t *testing.T) {
@@ -393,6 +422,37 @@ func TestQualityWithExternalAnalyzer_HappyPath(t *testing.T) {
 	stderrStr := stderr.String()
 	if !strings.Contains(stderrStr, "fake-analyzer") {
 		t.Errorf("stderr should mention analyzer name, got: %s", stderrStr)
+	}
+}
+
+func TestQualityWithExternalAnalyzer_HTMLTypedOutput(t *testing.T) {
+	moduleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte("module fake\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	err := runQuality(qualityParams{
+		patterns:     []string{"./..."},
+		format:       "html",
+		analyzerFlag: fakeBinaryPath,
+		stdout:       &stdout,
+		stderr:       &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runQuality HTML with external analyzer: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"<title>Gaze Quality Report</title>",
+		"Classification Counts",
+		"test_multiply",
+		"test_divide_basic",
+		"test_divide_error",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected typed external-analyzer HTML to contain %q", want)
+		}
 	}
 }
 
