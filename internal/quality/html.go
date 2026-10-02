@@ -105,7 +105,7 @@ func WriteHTML(w io.Writer, reports []taxonomy.QualityReport, summary *taxonomy.
 
 func buildQualityHTMLData(reports []taxonomy.QualityReport, summary *taxonomy.PackageSummary) qualityHTMLData {
 	data := qualityHTMLData{Summary: buildQualityHTMLSummary(summary, len(reports))}
-	metricsAvailable := summary == nil || (!summary.SSADegraded && summary.Reason == "")
+	metricsAvailable := summary == nil || summary.Reason == ""
 
 	for _, report := range reports {
 		targetAvailable := report.TargetFunction.Function != ""

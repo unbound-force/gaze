@@ -181,6 +181,44 @@ func TestWriteHTML_EmptyDegradedDiagnostics(t *testing.T) {
 	}
 }
 
+func TestWriteHTML_MixedDegradedAndHealthyReportsPreserveAvailableMetrics(t *testing.T) {
+	reports := []taxonomy.QualityReport{
+		{
+			TestFunction: "TestHealthy",
+			TargetFunction: taxonomy.FunctionTarget{
+				Function: "Healthy",
+			},
+			ContractCoverage: taxonomy.ContractCoverage{
+				Percentage:       75,
+				CoveredCount:     3,
+				TotalContractual: 4,
+			},
+			OverSpecification: taxonomy.OverSpecificationScore{Count: 1, Ratio: 0.25},
+		},
+		{TestFunction: "TestDegraded"},
+	}
+	summary := &taxonomy.PackageSummary{
+		SSADegraded:         true,
+		SSADegradedPackages: []string{"example.com/degraded"},
+	}
+
+	var output bytes.Buffer
+	if err := WriteHTML(&output, reports, summary); err != nil {
+		t.Fatalf("WriteHTML failed: %v", err)
+	}
+
+	html := output.String()
+	if !strings.Contains(html, "Contract coverage</span><strong>75% (3/4)") {
+		t.Error("healthy report metrics must remain visible when another package is degraded")
+	}
+	if !strings.Contains(html, "Target unavailable.") {
+		t.Error("degraded report without a target must retain unavailable behavior")
+	}
+	if strings.Contains(html, "Contract coverage</span><strong>0% (0/0)") {
+		t.Error("report without a target must not render unavailable metrics as zero")
+	}
+}
+
 func TestWriteHTML_AdversarialEscapingAndSelfContainment(t *testing.T) {
 	adversarial := `<script>alert("quality")</script>&<img src=x onerror=alert(1)>`
 	report := taxonomy.QualityReport{

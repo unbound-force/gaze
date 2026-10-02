@@ -3703,6 +3703,24 @@ func TestCrapCmd_TestShortFlag(t *testing.T) {
 	}
 }
 
+func TestFormatFlagHelp_AdvertisesHTMLForCrapAndQuality(t *testing.T) {
+	crapFlag := newCrapCmd().Flags().Lookup("format")
+	if crapFlag == nil {
+		t.Fatal("expected --format flag on crap command")
+	}
+	if crapFlag.Usage != "output format: text, json, or html" {
+		t.Errorf("unexpected crap --format help: %q", crapFlag.Usage)
+	}
+
+	qualityFlag := newQualityCmd().Flags().Lookup("format")
+	if qualityFlag == nil {
+		t.Fatal("expected --format flag on quality command")
+	}
+	if qualityFlag.Usage != "output format: text, json, or html" {
+		t.Errorf("unexpected quality --format help: %q", qualityFlag.Usage)
+	}
+}
+
 // TestRunCrap_TestShortThreadsToAnalyze verifies that when
 // crapParams.opts.LineCoverageProvider is a *GoLineCoverageProvider
 // with Short=true, the value reaches the analyzeFunc unchanged.

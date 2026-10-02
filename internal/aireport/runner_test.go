@@ -118,6 +118,37 @@ func TestRun_HTMLFormat_WritesNativeReportWithoutAdapter(t *testing.T) {
 	}
 }
 
+func TestRun_HTMLFormat_WritesReportBeforeReturningThresholdError(t *testing.T) {
+	maxCrapload := 5
+	payload := &ReportPayload{
+		Summary: ReportSummary{TotalFunctions: 20, CRAPload: intPtr(10)},
+		CRAP:    json.RawMessage(`{"scores":[{"function":"Risky"}]}`),
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "html",
+		Stdout:      &stdout,
+		Stderr:      &stderr,
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+		Thresholds: ThresholdConfig{
+			MaxCrapload: &maxCrapload,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when HTML report threshold is breached")
+	}
+	if !strings.Contains(stdout.String(), "<title>Gaze Combined Report</title>") ||
+		!strings.Contains(stdout.String(), "Risky") {
+		t.Errorf("expected HTML report to be written before threshold failure, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "(FAIL)") {
+		t.Errorf("expected threshold failure on stderr, got %q", stderr.String())
+	}
+}
+
 // TestRun_CRAPStepFailure_PartialPayload verifies that a CRAP step failure
 // produces a partial payload with a non-null errors.crap field, and that the
 // command does not abort (exit 0 / nil error).
