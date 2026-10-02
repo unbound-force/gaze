@@ -103,6 +103,7 @@ gaze crap --coverprofile=cover.out ./...            # Use existing coverage
 gaze crap --max-crapload=5 ./...                    # CI mode: fail on threshold
 gaze crap --gate-on-change=origin/main ./...        # Fail if changed functions exceed CRAP threshold
 gaze crap --gate-on-change=staged ./...             # Check staged changes only
+gaze crap --format=html ./... > crap-report.html    # Offline HTML report
 ```
 
 `gaze crap` also reports each function's **cognitive complexity** (SonarSource-style, AST-based) and a **GazeCRAP-CC** score (a GazeCRAP variant substituting cognitive complexity for cyclomatic complexity). Enforce an upper bound with `--max-cognitive-complexity=<N>`. `gaze analyze` accepts the same flag as a gate-only check.
@@ -117,18 +118,20 @@ Assess how well a package's tests assert on contractual side effects.
 gaze quality ./internal/analysis                    # Analyze test quality
 gaze quality --target=LoadAndAnalyze ./internal/analysis  # Specific function
 gaze quality --verbose ./internal/analysis          # Detailed mapping info
+gaze quality --format=html ./... > quality-report.html  # Offline HTML report
 ```
 
 For all flags, see [`gaze quality` reference](docs/reference/cli/quality.md).
 
-### `gaze report` -- AI-Powered Quality Report
+### `gaze report` -- Combined Quality Report
 
-Orchestrate all analysis operations and pipe the results to an AI model for formatting.
+Orchestrate CRAP, quality, classification, and documentation analysis. Text output uses an AI adapter; JSON and native HTML do not.
 
 ```bash
 gaze report ./... --ai=claude                       # Claude adapter
 gaze report ./... --ai=opencode                     # OpenCode adapter
 gaze report ./... --format=json                     # JSON only (no AI needed)
+gaze report ./... --format=html > gaze-report.html  # Offline HTML (no AI needed)
 gaze report ./... --ai=claude --coverprofile=coverage.out  # Reuse coverage
 ```
 
@@ -250,7 +253,9 @@ For the full protocol specification (message format, methods, capability negotia
 
 ## Output Formats
 
-The `analyze`, `crap`, `quality`, and `self-check` commands support `--format=text` (default) and `--format=json`. The `analyze` command additionally supports `--format=html`, which produces a self-contained single-file HTML report with inline CSS and native collapsible sections — no network access, JavaScript, or external assets required.
+The `analyze`, `crap`, and `quality` commands support `text` (default), `json`, and `html`. `self-check` supports `text` and `json`. `report` supports AI-formatted `text`, native `json`, and native `html`; JSON and HTML need no AI adapter.
+
+HTML output is a self-contained single file designed for offline viewing. It uses inline styling and requires no network access, JavaScript, or external assets.
 
 JSON output conforms to documented schemas. Use `gaze schema` to print the analysis report schema. See [JSON Schemas](docs/reference/json-schemas.md) for annotated examples.
 
