@@ -22,7 +22,7 @@ type RunnerOptions struct {
 	ModuleDir string
 
 	// Adapter is the AI adapter to use for formatting.
-	// Required when Format is "text"; ignored when Format is "json".
+	// Required when Format is "text"; ignored for native formats.
 	Adapter AIAdapter
 
 	// AdapterCfg holds adapter-specific configuration (timeout, model, etc.).
@@ -33,11 +33,10 @@ type RunnerOptions struct {
 	// frontmatter) or the embedded default prompt.
 	SystemPrompt string
 
-	// Format is "text" (default) or "json".
+	// Format is "text" (default), "json", or "html".
 	Format string
 
-	// Stdout receives the formatted report (text mode) or combined JSON
-	// payload (json mode).
+	// Stdout receives the formatted report or combined native payload.
 	Stdout io.Writer
 
 	// Stderr receives progress signals, threshold summaries, and warnings.
@@ -74,7 +73,7 @@ type RunnerOptions struct {
 // validateRunnerOpts applies defaults and validates required fields.
 // In text mode, verifies the adapter is non-nil and the binary is on PATH.
 func validateRunnerOpts(opts *RunnerOptions) error {
-	if opts.Format != "text" && opts.Format != "json" {
+	if opts.Format != "text" && opts.Format != "json" && opts.Format != "html" {
 		opts.Format = "text"
 	}
 	if opts.Format == "text" && opts.Adapter == nil {
@@ -94,6 +93,14 @@ func runJSONPath(payload *ReportPayload, opts RunnerOptions) error {
 	enc := json.NewEncoder(opts.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(payload); err != nil {
+		return err
+	}
+	return evaluateAndPrintThresholds(opts.Thresholds, payload, opts.Stderr)
+}
+
+// runHTMLPath writes the payload as native HTML and evaluates thresholds.
+func runHTMLPath(payload *ReportPayload, opts RunnerOptions) error {
+	if err := WriteHTML(opts.Stdout, payload); err != nil {
 		return err
 	}
 	return evaluateAndPrintThresholds(opts.Thresholds, payload, opts.Stderr)
@@ -140,10 +147,10 @@ func runTextPath(payload *ReportPayload, opts RunnerOptions) error {
 
 // Run executes the report pipeline according to opts.
 //
-// In --format=json mode it assembles a ReportPayload from the four analysis
+// In --format=json or --format=html mode it assembles a ReportPayload from the four analysis
 // steps (CRAP, Quality, Classification, Docscan) and writes the combined
-// JSON to opts.Stdout. Each step's failure is recorded in PayloadErrors and
-// the remaining steps still run (partial-failure mode).
+// native output to opts.Stdout. Each step's failure is recorded in PayloadErrors
+// and the remaining steps still run (partial-failure mode).
 //
 // In --format=text mode (default) it additionally calls opts.Adapter.Format
 // with the system prompt and JSON payload to produce a markdown report, then
@@ -184,10 +191,14 @@ func Run(opts RunnerOptions) error {
 		return err
 	}
 
-	if opts.Format == "json" {
+	switch opts.Format {
+	case "json":
 		return runJSONPath(payload, opts)
+	case "html":
+		return runHTMLPath(payload, opts)
+	default:
+		return runTextPath(payload, opts)
 	}
-	return runTextPath(payload, opts)
 }
 
 // checkZeroResultGate returns an error when the CRAP step succeeded

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gaze Quality Report</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;padding:24px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;color:#1a1a2e;background:#fafbfc}
+h1{font-size:1.5em;margin:0 0 16px}h2{font-size:1.15em;margin:24px 0 10px}h3{font-size:1em;margin:0 0 8px}
+.summary,.diagnostic,.empty{margin:0 0 16px;padding:12px 16px;border-radius:6px;background:#f0f4f8}
+.diagnostic{border-left:4px solid #ca8a04;background:#fffbeb}.empty{text-align:center;color:#4b5563}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:0 0 12px}
+.metric{padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff}.metric strong{display:block;font-size:1.1em}.label{color:#64748b;font-size:.82em}
+.report{margin:0 0 12px;padding:14px;border:1px solid #e2e8f0;border-radius:6px;background:#fff}.identity{margin:0;color:#4b5563}.identity code{color:#1a1a2e}
+table{width:100%;border-collapse:collapse;font-size:.9em;margin-top:8px}th{text-align:left;padding:6px 8px;background:#f8fafc;border-bottom:2px solid #e2e8f0;color:#64748b}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+ul{margin:6px 0 0;padding-left:22px}.hint{display:block;margin-top:3px;color:#4b5563;font-family:ui-monospace,monospace;white-space:pre-wrap}.reason{font-family:ui-monospace,monospace}.muted{color:#64748b}.unavailable{font-style:italic;color:#92400e}
+</style>
+</head>
+<body>
+<main>
+<h1>Gaze Quality Report</h1>
+{{- if eq .ResolvedPairs 0}}
+<div class="empty">No test-target pairs were resolved.</div>
+{{- else}}
+<div class="summary">{{.ResolvedPairs}} test-target pair(s) resolved</div>
+{{- end}}
+{{- with .Summary}}
+{{- if .Reason}}
+<section class="diagnostic" aria-label="Unavailable analysis"><strong>Quality metrics are unavailable.</strong> Reason: <span class="reason">{{.Reason}}</span></section>
+{{- end}}
+{{- if .SSADegraded}}
+<section class="diagnostic" aria-label="SSA degradation"><strong>SSA analysis degraded.</strong> Contract coverage and over-specification metrics are unavailable; assertion detection data is partial.
+{{- if .SSADegradedPackages}}<ul>{{range .SSADegradedPackages}}<li>{{.}}</li>{{end}}</ul>{{end}}
+</section>
+{{- end}}
+{{- if gt .SkippedTests 0}}
+<section class="diagnostic" aria-label="Skipped tests"><strong>{{.SkippedTests}} test function(s) skipped because no target was resolved.</strong>
+{{- if .SkippedTestNames}}<ul>{{range .SkippedTestNames}}<li>{{.}}</li>{{end}}{{if gt .SkippedTestsRemaining 0}}<li>… and {{.SkippedTestsRemaining}} more</li>{{end}}</ul>{{end}}
+<p class="muted">Use <code>--target=FuncName</code> to specify target functions manually.</p></section>
+{{- end}}
+<section aria-labelledby="package-summary"><h2 id="package-summary">Package Summary</h2>
+<div class="metrics">
+<div class="metric"><span class="label">Tests analyzed</span><strong>{{.TotalTests}}</strong></div>
+{{- if .MetricsAvailable}}
+<div class="metric"><span class="label">Average contract coverage</span><strong>{{printf "%.0f%%" .AverageContractCoverage}}</strong></div>
+<div class="metric"><span class="label">Total over-specifications</span><strong>{{.TotalOverSpecifications}}</strong></div>
+{{- end}}
+{{- if .DetectionAvailable}}<div class="metric"><span class="label">Assertion detection confidence</span><strong>{{.AssertionDetectionConfidence}}%</strong></div>{{end}}
+</div>
+{{- with .ClassificationCounts}}
+<h3>Classification Counts</h3><div class="metrics">
+<div class="metric"><span class="label">Contractual</span><strong>{{.Contractual}}</strong></div>
+<div class="metric"><span class="label">Incidental</span><strong>{{.Incidental}}</strong></div>
+<div class="metric"><span class="label">Ambiguous</span><strong>{{.Ambiguous}}</strong></div>
+</div>
+{{- end}}
+{{- if and .MetricsAvailable .WorstCoverageTests}}
+<h3>Lowest Coverage Tests</h3><table><thead><tr><th>Test</th><th>Contract coverage</th></tr></thead><tbody>
+{{- range .WorstCoverageTests}}<tr><td>{{.TestFunction}}</td><td>{{printf "%.0f%%" .Coverage}} ({{.CoveredCount}}/{{.TotalContractual}})</td></tr>{{end}}
+</tbody></table>
+{{- end}}
+</section>
+{{- end}}
+{{- if .Reports}}
+<section aria-labelledby="test-results"><h2 id="test-results">Test Results</h2>
+{{- range .Reports}}
+<article class="report">
+<h3>{{.TestFunction}}</h3><p class="identity">Test: <code>{{.TestLocation}}</code></p>
+{{- if .TargetAvailable}}<p class="identity">Target: <code>{{.TargetName}}</code>{{if .TargetLocation}} at <code>{{.TargetLocation}}</code>{{end}}{{if .TargetSignature}} — <code>{{.TargetSignature}}</code>{{end}}</p>{{else}}<p class="unavailable">Target unavailable.</p>{{end}}
+<div class="metrics">
+{{- if .MetricsAvailable}}
+<div class="metric"><span class="label">Contract coverage</span><strong>{{printf "%.0f%%" .ContractCoverage}} ({{.CoveredCount}}/{{.TotalContractual}})</strong></div>
+<div class="metric"><span class="label">Over-specification</span><strong>{{.OverSpecificationCount}} ({{printf "%.0f%%" .OverSpecificationPercentage}})</strong></div>
+{{- end}}
+<div class="metric"><span class="label">Assertions detected</span><strong>{{.AssertionCount}}</strong></div>
+<div class="metric"><span class="label">Assertion detection confidence</span><strong>{{.AssertionDetectionConfidence}}%</strong></div>
+</div>
+{{- if .Gaps}}<h3>Gaps</h3><ul>{{range .Gaps}}<li><strong>{{.Type}}</strong>: {{.Description}} <span class="muted">({{.Location}})</span>{{if .Hint}}<span class="hint">Hint: {{.Hint}}</span>{{end}}</li>{{end}}</ul>{{end}}
+{{- if .DiscardedReturns}}<h3>Discarded Returns</h3><ul>{{range .DiscardedReturns}}<li><strong>{{.Type}}</strong>: {{.Description}} <span class="muted">({{.Location}})</span>{{if .Hint}}<span class="hint">Hint: {{.Hint}}</span>{{end}}</li>{{end}}</ul>{{end}}
+{{- if .Suggestions}}<h3>Remediation Suggestions</h3><ul>{{range .Suggestions}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{- if .AmbiguousEffects}}<h3>Ambiguous Effects</h3><ul>{{range .AmbiguousEffects}}<li><strong>{{.Type}}</strong>: {{.Description}} <span class="muted">({{.Location}})</span></li>{{end}}</ul>{{end}}
+{{- if .UnmappedAssertions}}{{$showReasons := .HasUnmappedReasons}}<h3>Unmapped Assertions</h3><table><thead><tr><th>Location</th><th>Type</th>{{if $showReasons}}<th>Reason</th>{{end}}</tr></thead><tbody>{{range .UnmappedAssertions}}<tr><td>{{.Location}}</td><td>{{.Type}}</td>{{if $showReasons}}<td>{{.Reason}}</td>{{end}}</tr>{{end}}</tbody></table>{{end}}
+</article>
+{{- end}}
+</section>
+{{- end}}
+</main>
+</body>
+</html>

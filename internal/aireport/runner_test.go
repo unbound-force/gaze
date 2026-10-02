@@ -80,6 +80,44 @@ func TestRun_JSONFormat_SkipsAIAdapter(t *testing.T) {
 	}
 }
 
+func TestRun_HTMLFormat_WritesNativeReportWithoutAdapter(t *testing.T) {
+	qualityErr := "quality analysis degraded"
+	payload := &ReportPayload{
+		Summary: ReportSummary{
+			TotalFunctions:      3,
+			CRAPload:            intPtr(1),
+			SSADegraded:         true,
+			SSADegradedPackages: []string{"example.com/degraded"},
+		},
+		CRAP:   json.RawMessage(`{"scores":[{"function":"Risky"}]}`),
+		Errors: PayloadErrors{Quality: &qualityErr},
+	}
+	var stdout bytes.Buffer
+
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "html",
+		Stdout:      &stdout,
+		Stderr:      &bytes.Buffer{},
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"<title>Gaze Combined Report</title>",
+		"Risky",
+		"quality analysis degraded",
+		"SSA analysis degraded.",
+		"example.com/degraded",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected native HTML report to contain %q", want)
+		}
+	}
+}
+
 // TestRun_CRAPStepFailure_PartialPayload verifies that a CRAP step failure
 // produces a partial payload with a non-null errors.crap field, and that the
 // command does not abort (exit 0 / nil error).

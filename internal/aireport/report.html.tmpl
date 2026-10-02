@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gaze Combined Report</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;padding:24px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;color:#1a1a2e;background:#fafbfc}
+h1{font-size:1.5em;margin:0 0 16px}h2{font-size:1.15em;margin:24px 0 10px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:0 0 12px}
+.metric{padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff}.metric strong{display:block;font-size:1.1em}.label{color:#64748b;font-size:.82em}.unavailable{font-style:italic;color:#92400e}
+.diagnostic,.failure,.empty{margin:12px 0;padding:12px 16px;border-radius:6px}.diagnostic{border-left:4px solid #ca8a04;background:#fffbeb}.failure{border-left:4px solid #b91c1c;background:#fef2f2}.empty{color:#4b5563;background:#f0f4f8}
+details{border:1px solid #e2e8f0;border-radius:6px;background:#fff}summary{cursor:pointer;padding:10px 14px;font-weight:600}pre{margin:0;padding:14px;overflow:auto;border-top:1px solid #e2e8f0;background:#f8fafc;font-family:ui-monospace,monospace;font-size:.86em;white-space:pre-wrap;word-break:break-word}
+ul{margin:6px 0 0;padding-left:22px}
+</style>
+</head>
+<body>
+<main>
+<h1>Gaze Combined Report</h1>
+<section aria-labelledby="summary"><h2 id="summary">Summary</h2>
+<div class="metrics">
+<div class="metric"><span class="label">Functions analyzed</span>{{if .Summary.TotalFunctions.Available}}<strong>{{.Summary.TotalFunctions.Value}}</strong>{{else}}<strong class="unavailable">Unavailable</strong>{{end}}</div>
+<div class="metric"><span class="label">CRAPload</span>{{if .Summary.CRAPload.Available}}<strong>{{.Summary.CRAPload.Value}}</strong>{{else}}<strong class="unavailable">Unavailable</strong>{{end}}</div>
+<div class="metric"><span class="label">GazeCRAPload</span>{{if .Summary.GazeCRAPload.Available}}<strong>{{.Summary.GazeCRAPload.Value}}</strong>{{else}}<strong class="unavailable">Unavailable</strong>{{end}}</div>
+<div class="metric"><span class="label">Average contract coverage</span>{{if .Summary.AvgContractCoverage.Available}}<strong>{{.Summary.AvgContractCoverage.Value}}%</strong>{{else}}<strong class="unavailable">Unavailable</strong>{{end}}</div>
+<div class="metric"><span class="label">Skipped tests</span>{{if .Summary.SkippedTests.Available}}<strong>{{.Summary.SkippedTests.Value}}</strong>{{else}}<strong class="unavailable">Unavailable</strong>{{end}}</div>
+</div>
+<h2>Classification</h2>
+{{- if .Summary.Classification.Available}}
+<div class="metrics">
+<div class="metric"><span class="label">Contractual</span><strong>{{.Summary.Classification.Contractual}}</strong></div>
+<div class="metric"><span class="label">Ambiguous</span><strong>{{.Summary.Classification.Ambiguous}}</strong></div>
+<div class="metric"><span class="label">Incidental</span><strong>{{.Summary.Classification.Incidental}}</strong></div>
+</div>
+{{- else}}<p class="unavailable">Classification metrics are unavailable.</p>{{end}}
+{{- if .Summary.SSADegraded}}
+<div class="diagnostic"><strong>SSA analysis degraded.</strong>{{if .Summary.SSADegradedPackages}}<ul>{{range .Summary.SSADegradedPackages}}<li>{{.}}</li>{{end}}</ul>{{end}}</div>
+{{- end}}
+</section>
+{{- range .Steps}}
+<section aria-labelledby="step-{{.ID}}"><h2 id="step-{{.ID}}">{{.Name}}</h2>
+{{- if .Failed}}<div class="failure"><strong>Step failed.</strong> {{.Error}}</div>
+{{- else if .JSON}}<details open><summary>Pipeline output</summary><pre>{{.JSON}}</pre></details>
+{{- else}}<div class="empty">The step completed without output.</div>{{end}}
+</section>
+{{- end}}
+</main>
+</body>
+</html>
