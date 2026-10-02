@@ -1138,7 +1138,7 @@ automatically.`,
 	}
 
 	cmd.Flags().StringVar(&format, "format", "text",
-		"output format: text or json")
+		"output format: text, json, or html")
 	cmd.Flags().StringVar(&coverProfile, "coverprofile", "",
 		"path to coverage profile (default: generate via go test)")
 	cmd.Flags().Float64Var(&crapThreshold, "crap-threshold", 15,
@@ -1969,7 +1969,7 @@ Packages without test files are skipped with a warning.`,
 	}
 
 	cmd.Flags().StringVar(&format, "format", "text",
-		"output format: text or json")
+		"output format: text, json, or html")
 	cmd.Flags().StringVar(&targetFunc, "target", "",
 		"restrict analysis to tests that exercise this function")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false,
