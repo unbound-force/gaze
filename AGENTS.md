@@ -218,6 +218,21 @@ openspec/
 
 Branch names follow the same numbering pattern for Speckit (e.g., `001-side-effect-detection`) or kebab-case for OpenSpec (e.g., `assess-graceful-degradation`).
 
+### Spec Artifact Immutability
+
+Completed spec artifacts (`spec.md`, `plan.md`, `tasks.md`,
+`research.md`, `quickstart.md`, `data-model.md`, `checklists/`,
+and any other artifacts in the spec directory) are
+**point-in-time design records**. They document the decisions
+and context as they existed when the spec was written. They
+**must not** be retroactively updated when implementation
+evolves beyond the original spec — the git history and
+subsequent specs/PRs serve as the record of that evolution.
+Review agents **must not** flag completed spec artifacts as
+stale documentation. (Note: `tasks.md` checkbox updates during
+the active implementation phase are permitted per Task
+Completion Bookkeeping below.)
+
 ### Task Completion Bookkeeping
 
 When a task from `tasks.md` is completed during implementation, its checkbox **must** be updated from `- [ ]` to `- [x]` immediately. Do not defer this — mark tasks complete as they are finished, not in a batch after all work is done. This keeps the task list an accurate, real-time view of progress and prevents drift between the codebase and the plan.
@@ -229,7 +244,7 @@ Before marking any task complete, you **must** validate whether the change requi
 - `README.md` — new/changed commands, flags, output formats, or architecture
 - `AGENTS.md` — new conventions, packages, patterns, or workflow changes
 - GoDoc comments — new or modified exported functions, types, and packages
-- Spec artifacts under `specs/` — if the change affects planned behavior
+- Spec artifacts under `specs/` — if the spec is still in-flight and the change affects planned behavior (completed specs are immutable per Spec Artifact Immutability above)
 
 A task is not complete until its documentation impact has been assessed and any necessary updates have been made. Skipping this step causes documentation drift, which compounds over time and erodes project accuracy.
 
@@ -258,6 +273,7 @@ gh issue create --repo unbound-force/website \
 ```
 
 **Exempt changes** (no website issue needed):
+
 - Internal refactoring with no user-facing behavior
   change
 - Test-only changes
@@ -265,6 +281,7 @@ gh issue create --repo unbound-force/website \
 - Spec artifacts (specs are internal planning documents)
 
 **Examples requiring a website issue**:
+
 - New CLI command or flag added
 - Hero capabilities changed (new agent, removed feature)
 - Installation steps changed (`uf setup` flow)
@@ -379,6 +396,7 @@ metadata that grep cannot match.
 ### When to Fall Back to grep/glob/read
 
 Use direct file operations instead of Dewey when:
+
 - **Dewey is unavailable** — MCP tools return errors or
   are not configured
 - **Exact string matching is needed** — searching for a
@@ -391,6 +409,7 @@ Use direct file operations instead of Dewey when:
 ### Graceful Degradation (3-Tier Pattern)
 
 **Tier 3 (Full Dewey)** — semantic + structured search:
+
 - `dewey_semantic_search` — natural language queries
 - `dewey_search` — keyword queries
 - `dewey_get_page`, `dewey_find_connections`,
@@ -400,6 +419,7 @@ Use direct file operations instead of Dewey when:
 
 **Tier 2 (Graph-only, no embedding model)** — structured
 search only:
+
 - `dewey_search` — keyword queries (no embeddings needed)
 - `dewey_get_page`, `dewey_traverse`,
   `dewey_find_connections` — graph navigation
@@ -408,6 +428,7 @@ search only:
 - Semantic search unavailable — use exact keyword matches
 
 **Tier 1 (No Dewey)** — direct file access:
+
 - Use Read tool for direct file access
 - Use Grep for keyword search across the codebase
 - Use Glob for file pattern matching
@@ -457,6 +478,7 @@ golangci-lint v2 is configured in `.golangci.yml` with these linters enabled:
 Formatters: gofmt, goimports.
 
 ## Active Technologies
+
 - N/A — Markdown files only (no Go code changes) + None — plain Markdown, no static site generator, no build step (037-project-documentation)
 - Filesystem only — `docs/` directory at repository root (037-project-documentation)
 - Go 1.25+ (per `go.mod` directive) + Standard library only (no new dependencies). Existing: `gopkg.in/yaml.v3` (config), `encoding/json` (report output) (039-baseline-gazecrap-threshold)
