@@ -6,7 +6,6 @@ description: >
   Without arguments: detects active workflow and runs /speckit.implement
   or /opsx-apply.
 ---
-<!-- scaffolded by gaze v1.8.0 -->
 
 <protect>
 # Command: /gaze fix
@@ -103,6 +102,7 @@ Parse the CRAP JSON for `scores` array — each score has `function`,
 #### Step 2: Build target list
 
 Filter scores to actionable fix strategies:
+
 1. `add_tests` — functions with 0% line coverage
 2. `add_assertions` — functions with line coverage but Q3 quadrant
 3. `decompose_and_test` — complex functions with 0% coverage

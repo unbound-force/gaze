@@ -6,7 +6,6 @@ description: >
   agent.
 agent: gaze-reporter
 ---
-<!-- scaffolded by gaze v1.8.0 -->
 
 <protect>
 # Command: /gaze

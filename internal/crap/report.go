@@ -24,9 +24,9 @@ func WriteJSON(w io.Writer, report *Report) error {
 
 // crapJSONWithChangeGate is the JSON envelope when --gate-on-change is active.
 type crapJSONWithChangeGate struct {
-	Scores           []Score               `json:"scores"`
-	Summary          Summary               `json:"summary"`
-	ChangedFunctions []ChangedFunction      `json:"changed_functions"`
+	Scores           []Score                 `json:"scores"`
+	Summary          Summary                 `json:"summary"`
+	ChangedFunctions []ChangedFunction       `json:"changed_functions"`
 	ChangedSummary   ChangedFunctionsSummary `json:"changed_functions_summary"`
 }
 

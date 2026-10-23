@@ -1,7 +1,6 @@
 ---
 description: Perform a read-only testability analysis of spec artifacts by delegating to the reviewer-testing agent in Spec Review Mode.
 ---
-<!-- scaffolded by gaze v1.8.0 -->
 
 <protect>
 ## User Input
@@ -41,6 +40,7 @@ For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot
 Load only the minimal necessary context from each artifact:
 
 **From spec.md:**
+
 - User Stories with acceptance scenarios
 - Functional Requirements (FR-xxx)
 - Success Criteria (SC-xxx)
@@ -48,17 +48,20 @@ Load only the minimal necessary context from each artifact:
 - Assumptions
 
 **From plan.md:**
+
 - Testing Strategy section
 - Phase structure and test-related tasks
 - Technical constraints
 - Constitution Check results
 
 **From tasks.md:**
+
 - Test-related tasks (if any)
 - Task-to-requirement mapping via [US*] labels
 - Phase ordering and dependencies
 
 **From constitution:**
+
 - Load `.specify/memory/constitution.md` — focus on Principle IV: Testability
 
 ### 3. Delegate to Reviewer-Testing Agent
@@ -80,6 +83,7 @@ Produce a Markdown report (no file writes) with the following structure:
 |----|----------|----------|----------|---------|----------------|
 
 Categories map to the reviewer-testing agent's Spec Review Mode audit checklist:
+
 - **Testability**: Vague or unmeasurable acceptance criteria
 - **Strategy**: Missing or incomplete test strategy (unit/integration/e2e)
 - **Fixtures**: Infeasible or undocumented test fixture requirements
@@ -99,6 +103,7 @@ Categories map to the reviewer-testing agent's Spec Review Mode audit checklist:
 | Constitution IV Compliance | PASS/FAIL | |
 
 **Metrics:**
+
 - Total acceptance criteria assessed
 - Testable criteria count
 - Vague criteria count
