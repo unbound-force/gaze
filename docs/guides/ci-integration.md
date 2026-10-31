@@ -256,6 +256,41 @@ the same JSON minified to one line. See
 [Troubleshooting](#troubleshooting) for validating the config with `jq`
 before storing it.
 
+### Scaffolded install: `gaze init --ci`
+
+The preferred adoption path is to let gaze generate the caller workflow for
+you:
+
+```bash
+gaze init --ci
+```
+
+In a Go module rooted at the repository root, this writes
+`.github/workflows/gaze-ai-report.yml` — a self-contained caller that owns
+its own `test` job (checkout → setup-go → `go test -race -count=1 -short
+-coverprofile=coverage.out ./...` → upload-artifact) and calls the reusable
+workflow with the coverage artifact and the `OPENCODE_CONFIG_CONTENT`
+secret. The `uses:` pin is resolved from the running gaze binary's version
+and validated (`>= v2.3.0`); dev builds fail closed rather than writing an
+unusable pin, and `--gaze-version` overrides the pin with the same
+validation. The `setup-go` version is read from the module's `go`
+directive. When no `go.mod` exists at the repository root, CI scaffolding
+is skipped with a warning and only the `.opencode/` scaffolding runs.
+
+Two ownership notes:
+
+- The scaffolded workflow is **report-only** until you uncomment its
+  threshold inputs — it exits 0 and appends the AI report to the step
+  summary without enforcing anything. Choose values with the guidance in
+  [Threshold Flags](#threshold-flags), then uncomment the lines.
+- The file is **user-owned** after first write: re-running `gaze init --ci`
+  skips it (threshold edits survive); only `--force` regenerates it.
+
+See [`gaze init`](../reference/cli/init.md) for the full flag reference.
+The hand-written example below shows what the scaffolded file contains,
+for consumers who prefer to own the YAML from the start or need a shape
+the scaffold does not emit.
+
 ### Consumer example
 
 ```yaml

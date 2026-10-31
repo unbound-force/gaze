@@ -407,6 +407,38 @@ func TestAssetPaths_Returns9Files(t *testing.T) {
 	}
 }
 
+// TestAssetPaths_ExcludesCISubtree verifies the ci/ subtree — the
+// CI workflow template consumed by the dedicated write path, not a
+// mirrored .opencode/ asset (design D8) — never appears in the
+// mirrored asset manifest.
+func TestAssetPaths_ExcludesCISubtree(t *testing.T) {
+	paths, err := assetPaths()
+	if err != nil {
+		t.Fatalf("assetPaths() returned error: %v", err)
+	}
+	for _, p := range paths {
+		if strings.HasPrefix(p, "ci/") {
+			t.Errorf("mirrored asset path %q must not come from the ci/ subtree", p)
+		}
+	}
+}
+
+// TestRun_PlainInit_NeverWritesOpencodeCIDir verifies no .opencode/ci/
+// mirror directory is ever produced by a plain init run, even though
+// the embedded assets tree contains the ci/ template subtree.
+func TestRun_PlainInit_NeverWritesOpencodeCIDir(t *testing.T) {
+	dir := t.TempDir()
+	writeGoMod(t, dir, "go 1.24")
+
+	var buf bytes.Buffer
+	if _, err := Run(Options{TargetDir: dir, Version: "v2.4.0", Stdout: &buf}); err != nil {
+		t.Fatalf("Run() returned error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".opencode", "ci")); !os.IsNotExist(err) {
+		t.Error("plain init must never write a .opencode/ci/ mirror of the CI template subtree")
+	}
+}
+
 // TestRun_OverwriteOnDiff_ToolOwned verifies that tool-owned files
 // (references and specific commands) are overwritten when their
 // content differs from the embedded version, while user-owned

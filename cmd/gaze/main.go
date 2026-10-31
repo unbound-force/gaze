@@ -78,25 +78,36 @@ produced by their test targets.`,
 
 // initParams holds the parsed flags for the init command.
 type initParams struct {
-	targetDir string
-	force     bool
-	version   string
-	stdout    io.Writer
+	targetDir   string
+	force       bool
+	ci          bool
+	gazeVersion string
+	version     string
+	stdout      io.Writer
 }
 
 // runInit is the extracted, testable body of the init command.
 func runInit(p initParams) error {
+	// The version override pins only the CI workflow's uses: reference;
+	// without --ci it has no effect, so reject it rather than silently
+	// ignoring a flag the user typed (design D4).
+	if p.gazeVersion != "" && !p.ci {
+		return fmt.Errorf("--gaze-version requires --ci: it pins the CI workflow scaffolding's version reference")
+	}
 	_, err := scaffold.Run(scaffold.Options{
-		TargetDir: p.targetDir,
-		Force:     p.force,
-		Version:   p.version,
-		Stdout:    p.stdout,
+		TargetDir:   p.targetDir,
+		Force:       p.force,
+		CI:          p.ci,
+		GazeVersion: p.gazeVersion,
+		Version:     p.version,
+		Stdout:      p.stdout,
 	})
 	return err
 }
 
 // newInitCmd creates the "init" subcommand that scaffolds OpenCode
-// agent and command files into the current directory.
+// agent and command files into the current directory. With --ci it
+// additionally scaffolds the AI-report caller workflow.
 func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -105,22 +116,35 @@ func newInitCmd() *cobra.Command {
 
 Creates .opencode/agents/ and .opencode/commands/ directories with
 Gaze's quality reporting agent and commands. After running this,
-you can use /gaze in OpenCode to generate quality reports.`,
+you can use /gaze in OpenCode to generate quality reports.
+
+With --ci, also writes .github/workflows/gaze-ai-report.yml: a
+self-contained starter workflow that runs the test suite with coverage
+and calls gaze's reusable AI-report workflow. CI scaffolding requires
+a Go module at the repository root (the reusable workflow analyzes
+./... from there); when go.mod is absent, CI scaffolding is skipped
+with a warning and the .opencode/ scaffolding proceeds.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
+			ci, _ := cmd.Flags().GetBool("ci")
+			gazeVersion, _ := cmd.Flags().GetString("gaze-version")
 			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting working directory: %w", err)
 			}
 			return runInit(initParams{
-				targetDir: cwd,
-				force:     force,
-				version:   version,
-				stdout:    cmd.OutOrStdout(),
+				targetDir:   cwd,
+				force:       force,
+				ci:          ci,
+				gazeVersion: gazeVersion,
+				version:     version,
+				stdout:      cmd.OutOrStdout(),
 			})
 		},
 	}
 	cmd.Flags().Bool("force", false, "Overwrite existing files")
+	cmd.Flags().Bool("ci", false, "Also scaffold .github/workflows/gaze-ai-report.yml, a starter caller for gaze's reusable AI-report workflow")
+	cmd.Flags().String("gaze-version", "", "Gaze release tag (>= v2.3.0) pinning the scaffolded CI workflow's uses: reference; must be an existing release tag, since validation is offline and cannot prove a tag exists (requires --ci)")
 	return cmd
 }
 

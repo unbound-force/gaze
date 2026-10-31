@@ -1,0 +1,78 @@
+# Scaffolded by gaze init --ci (gaze __GAZE_VERSION__).
+#
+# This file is user-owned: rerunning `gaze init --ci` will not overwrite
+# it (use --force to regenerate it).
+#
+# CI integration guide:
+# https://github.com/unbound-force/gaze/blob/main/docs/guides/ci-integration.md
+#
+# The `on:` triggers below assume `main` is the default branch. If your
+# repository's default branch has another name, adjust the `branches:`
+# filters under `on:`.
+#
+# The `uses:` pin below targets a gaze release tag. For immutable pinning,
+# replace the tag with the tag's 40-character commit SHA.
+name: Gaze AI Report
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege by default: every job in this workflow is capped at
+# read-only repository access.
+permissions:
+  contents: read
+
+# Superseded PR runs cancel while main-branch runs queue: AI-report runs
+# spend LLM budget, so a superseded run should not be allowed to finish.
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version: "__GO_VERSION__"
+
+      - name: Test
+        run: go test -race -count=1 -short -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: coverage-out
+          path: coverage.out
+
+  gaze-ai-report:
+    needs: test
+    # Explicit least-privilege grant at the reusable-workflow call site:
+    # the called workflow inherits the caller job's permissions and can
+    # only downgrade them, never elevate them.
+    permissions:
+      contents: read
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@__GAZE_VERSION__
+    with:
+      coverage-artifact: coverage-out
+      gaze-version: __GAZE_VERSION__
+      # Report-only by default: the threshold inputs below are commented
+      # out, so the workflow exits 0 until a human chooses values. To
+      # enable one: run `gaze report ./... --format=json`, read the summary
+      # metrics, pick a permissive initial value, replace <N> with a real
+      # number, and uncomment the line. The <N> placeholder fails the
+      # reusable workflow's number-typed input check, so uncommenting
+      # without choosing a value is not possible.
+      # max-crapload: <N>  # TODO: fail when the CRAPload exceeds this value
+      # max-gaze-crapload: <N>  # TODO: fail when the GazeCRAPload exceeds this value
+      # min-contract-coverage: <N>  # TODO: fail when average contract coverage falls below this percentage
+    secrets:
+      opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
