@@ -379,6 +379,8 @@ The 9 embedded files (row 1) are:
 - `references/doc-scoring-model.md`
 - `references/example-report.md`
 
+The `internal/scaffold/assets/ci/` subtree is deliberately excluded from the `.opencode/` mirror sync: it holds the CI workflow template consumed by `gaze init --ci`'s dedicated write path (rendered into `.github/workflows/gaze-ai-report.yml`, never mirrored into `.opencode/`), so no `.opencode/` counterpart exists and the 9-file manifest above is unchanged.
+
 ## Coding Conventions
 
 - **Formatting**: `gofmt` and `goimports` (enforced by golangci-lint).

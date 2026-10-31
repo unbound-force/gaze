@@ -2634,6 +2634,71 @@ func TestRunInit_ForceFlag(t *testing.T) {
 	}
 }
 
+func TestRunInit_GazeVersionRequiresCI(t *testing.T) {
+	dir := t.TempDir()
+
+	var stdout bytes.Buffer
+	err := runInit(initParams{
+		targetDir:   dir,
+		force:       false,
+		ci:          false,
+		gazeVersion: "v2.4.0",
+		version:     "v2.4.0",
+		stdout:      &stdout,
+	})
+	if err == nil {
+		t.Fatal("runInit() with --gaze-version but no --ci succeeded, want rejection")
+	}
+	if !strings.Contains(err.Error(), "--gaze-version requires --ci") {
+		t.Errorf("error should explain the --ci requirement, got: %v", err)
+	}
+
+	// Rejected before any scaffolding work: nothing written.
+	if _, statErr := os.Stat(filepath.Join(dir, ".opencode")); !os.IsNotExist(statErr) {
+		t.Error("rejected --gaze-version run must not scaffold .opencode/")
+	}
+}
+
+func TestRunInit_CIFlagsThreadIntoScaffold(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n\ngo 1.24\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	// A dev build-time version plus a valid override proves both the
+	// ci flag and the gazeVersion flag thread through runInit into
+	// scaffold.Options: without CI threading, the dev version would
+	// fail closed; without gazeVersion threading, the override could
+	// not rescue it.
+	var stdout bytes.Buffer
+	err := runInit(initParams{
+		targetDir:   dir,
+		force:       false,
+		ci:          true,
+		gazeVersion: "v2.4.0",
+		version:     "dev",
+		stdout:      &stdout,
+	})
+	if err != nil {
+		t.Fatalf("runInit() returned error: %v", err)
+	}
+
+	workflow, err := os.ReadFile(filepath.Join(dir, ".github", "workflows", "gaze-ai-report.yml"))
+	if err != nil {
+		t.Fatalf("reading scaffolded CI workflow: %v", err)
+	}
+	content := string(workflow)
+	if !strings.Contains(content, "reusable_gaze_ai_report.yml@v2.4.0") {
+		t.Errorf("CI workflow uses: pin should carry the --gaze-version override v2.4.0:\n%s", content)
+	}
+	if !strings.Contains(content, "gaze-version: v2.4.0") {
+		t.Errorf("CI workflow gaze-version input should carry the override v2.4.0:\n%s", content)
+	}
+	if !strings.Contains(stdout.String(), "CI next steps") {
+		t.Errorf("expected CI next-steps section in output, got:\n%s", stdout.String())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // extractShortPkgName tests
 // ---------------------------------------------------------------------------

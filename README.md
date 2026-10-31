@@ -144,7 +144,7 @@ For adapter setup, CI integration, and all flags, see [`gaze report` reference](
 | `gaze self-check` | Run CRAP analysis on Gaze's own source code | [`self-check`](docs/reference/cli/self-check.md) |
 | `gaze docscan` | Scan repository for documentation files; with `--analyzer`, reports API documentation coverage | [`docscan`](docs/reference/cli/docscan.md) |
 | `gaze schema` | Print the JSON Schema for `gaze analyze --format=json` output | [`schema`](docs/reference/cli/schema.md) |
-| `gaze init` | Scaffold OpenCode agent and command files | [`init`](docs/reference/cli/init.md) |
+| `gaze init` | Scaffold OpenCode agent and command files; with `--ci`, also a starter AI-report CI workflow | [`init`](docs/reference/cli/init.md) |
 
 ## CI Integration
 
@@ -153,6 +153,8 @@ Use threshold flags for CI enforcement. Gaze exits non-zero when limits are exce
 ```bash
 gaze crap --max-crapload=5 --max-gaze-crapload=3 --max-cognitive-complexity=15 ./...
 ```
+
+`gaze init --ci` scaffolds a starter GitHub Actions workflow that runs the test suite with coverage and calls gaze's reusable AI-report workflow — see [`gaze init`](docs/reference/cli/init.md).
 
 For complete GitHub Actions workflow examples, coverage profile reuse, and threshold selection guidance, see the [CI Integration guide](docs/guides/ci-integration.md).
 
