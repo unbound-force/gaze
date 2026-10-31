@@ -222,8 +222,8 @@
   (`gh issue create --repo unbound-force/website --title "docs:
   gaze init --ci scaffolds the AI-report caller workflow" --body
   "..."` covering what changed, why it matters, and which pages need
-  updating).
-- [ ] 5.6 Review Council Gate: run `/uf.review-council` and resolve
+  updating). Done: unbound-force/website#352.
+- [x] 5.6 Review Council Gate: run `/uf.review-council` and resolve
   all REQUEST CHANGES findings until all four reviewers (Adversary,
   Architect, Guard, Tester) return APPROVE; minimal to no code
   changes between APPROVE and PR submission.
