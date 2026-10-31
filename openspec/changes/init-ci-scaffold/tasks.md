@@ -216,7 +216,7 @@
 - [x] 5.4 Spec artifacts committed and pushed before implementation
   begins (Spec Commit Gate); implementation proceeds only from the
   pushed baseline.
-- [ ] 5.5 Website Documentation Gate: open a docs issue in
+- [x] 5.5 Website Documentation Gate: open a docs issue in
   `unbound-force/website` for the new user-facing `--ci` /
   `--gaze-version` flags before the implementing PR merges
   (`gh issue create --repo unbound-force/website --title "docs:
