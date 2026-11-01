@@ -17,7 +17,9 @@
 # Exits:
 #   0  tag is consistent with the floor, or the tree predates floor governance
 #   1  validation failure (tag below floor; floor tag missing or incomplete)
-#   2  usage error or malformed release tag
+#   2  usage error, malformed release tag, or malformed repository state
+#      (duplicate, malformed, or pre-release floor constant; floor-bearing
+#      tree missing the reusable workflow)
 
 set -euo pipefail
 export LC_ALL=C
@@ -34,9 +36,11 @@ workflow_path=".github/workflows/reusable_gaze_ai_report.yml"
 
 # parse_release <tag> sets parsed_major, parsed_minor, parsed_patch, and
 # parsed_pre globals; returns 1 for any tag that is not strict canonical
-# semver (no leading zeros, optional dash-prefixed pre-release suffix).
+# semver (no leading zeros, pre-release suffix of non-empty dot-separated
+# identifiers, mirroring x/mod/semver's IsValid rejection of malformed
+# pre-release identifiers such as empty dot-separated segments).
 parse_release() {
-  if [[ ! "$1" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+  if [[ ! "$1" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
     return 1
   fi
   parsed_major="${BASH_REMATCH[1]}"
@@ -60,7 +64,8 @@ compare_number() {
 # compare_release <tag-a> <tag-b> prints -1, 0, or 1: the semver precedence
 # of tag-a relative to tag-b. A pre-release of a version sorts below the
 # canonical release; two pre-releases of the same version compare lexically,
-# which is sufficient because the floor is always a canonical release tag.
+# which is correct here because the floor is rejected below unless canonical,
+# so at most one operand (the release tag) can carry a pre-release suffix.
 compare_release() {
   parse_release "$1"
   local a_major="$parsed_major" a_minor="$parsed_minor" a_patch="$parsed_patch" a_pre="$parsed_pre"
@@ -116,24 +121,28 @@ if [[ ${#floor_lines[@]} -eq 0 ]]; then
   exit 0
 fi
 if [[ ${#floor_lines[@]} -gt 1 ]]; then
-  printf '::error::expected exactly one minWorkflowTag declaration in internal/scaffold/scaffold.go, found %d\n' "${#floor_lines[@]}" >&2
-  exit 1
+  printf '::error::expected exactly one minWorkflowTag declaration in internal/scaffold/scaffold.go, found %d\n' "${#floor_lines[@]}"
+  exit 2
 fi
 floor="$(printf '%s\n' "${floor_lines[0]}" | sed -E 's/^[[:space:]]*const minWorkflowTag = "([^"]*)".*$/\1/')"
 if ! parse_release "$floor"; then
-  printf '::error::malformed minWorkflowTag value in internal/scaffold/scaffold.go: %s\n' "$floor" >&2
-  exit 1
+  printf '::error::malformed minWorkflowTag value in internal/scaffold/scaffold.go: %s\n' "$floor"
+  exit 2
+fi
+if [[ -n "$parsed_pre" ]]; then
+  printf '::error::workflow floor must be a canonical release tag, found pre-release floor: %s\n' "$floor"
+  exit 2
 fi
 
 # A floor-bearing tree must ship the workflow the floor points at.
 if [[ ! -f "$repo_root/$workflow_path" ]]; then
-  printf '::error::floor-bearing tree must contain %s\n' "$workflow_path" >&2
-  exit 1
+  printf '::error::floor-bearing tree must contain %s\n' "$workflow_path"
+  exit 2
 fi
 
 precedence="$(compare_release "$release_tag" "$floor")"
 if [[ "$precedence" == "-1" ]]; then
-  printf '::error::release tag %s is below the workflow floor %s: the released binary would fail its own --ci validation\n' "$release_tag" "$floor" >&2
+  printf '::error::release tag %s is below the workflow floor %s: the released binary would fail its own --ci validation\n' "$release_tag" "$floor"
   exit 1
 fi
 if [[ "$precedence" == "0" ]]; then
@@ -144,11 +153,11 @@ fi
 # Above the floor: the floor tag must exist and contain the workflow, proving
 # the scaffold's pin has something real to point at.
 if ! git -C "$repo_root" rev-parse -q --verify "refs/tags/$floor" >/dev/null; then
-  printf '::error::release tag %s exceeds the workflow floor %s, but tag %s does not exist in the repository\n' "$release_tag" "$floor" "$floor" >&2
+  printf '::error::release tag %s exceeds the workflow floor %s, but tag %s does not exist in the repository\n' "$release_tag" "$floor" "$floor"
   exit 1
 fi
 if ! git -C "$repo_root" show "$floor:$workflow_path" >/dev/null 2>&1; then
-  printf '::error::release tag %s exceeds the workflow floor %s, but tag %s does not contain %s\n' "$release_tag" "$floor" "$floor" "$workflow_path" >&2
+  printf '::error::release tag %s exceeds the workflow floor %s, but tag %s does not contain %s\n' "$release_tag" "$floor" "$floor" "$workflow_path"
   exit 1
 fi
 printf 'release tag %s is above workflow floor %s; floor tag exists and contains %s\n' "$release_tag" "$floor" "$workflow_path"

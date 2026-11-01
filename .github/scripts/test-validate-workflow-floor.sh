@@ -32,8 +32,8 @@ if [[ ${#floor_lines[@]} -ne 1 ]]; then
   exit 1
 fi
 repo_floor="$(printf '%s\n' "${floor_lines[0]}" | sed -E 's/^[[:space:]]*const minWorkflowTag = "([^"]*)".*$/\1/')"
-if [[ ! "$repo_floor" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
-  printf 'malformed minWorkflowTag value in internal/scaffold/scaffold.go: %s\n' "$repo_floor" >&2
+if [[ ! "$repo_floor" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  printf 'workflow floor must be a canonical release tag, found: %s\n' "$repo_floor" >&2
   exit 1
 fi
 if [[ ! -f "$repository_root/$workflow_file" ]]; then
@@ -107,6 +107,7 @@ run_case above-floor-valid v2.4.0 "$standard_repo" 0
 run_case floor-prerelease v2.3.0-rc1 "$standard_repo" 1
 run_case later-prerelease v2.4.0-rc1 "$standard_repo" 0
 run_case malformed-tag release-2 "$standard_repo" 2
+run_case malformed-prerelease-tag v2.4.0-rc..1 "$standard_repo" 2
 
 # Above the floor, but the floor tag does not exist in the repository.
 init_repo untagged-floor
@@ -137,7 +138,14 @@ init_repo malformed-floor
 write_scaffold 'const minWorkflowTag = "banana"'
 write_workflow
 commit_repo
-run_case malformed-floor v2.4.0 "$repo" 1
+run_case malformed-floor v2.4.0 "$repo" 2
+
+# Pre-release floor value: floors must be canonical release tags.
+init_repo prerelease-floor
+write_scaffold 'const minWorkflowTag = "v2.4.0-rc.1"'
+write_workflow
+commit_repo
+run_case prerelease-floor v2.4.0 "$repo" 2
 
 # Duplicate floor declarations.
 init_repo duplicate-floor
@@ -145,13 +153,13 @@ write_scaffold 'const minWorkflowTag = "v2.3.0"
 const minWorkflowTag = "v2.4.0"'
 write_workflow
 commit_repo
-run_case duplicate-floor v2.4.0 "$repo" 1
+run_case duplicate-floor v2.4.0 "$repo" 2
 
 # Floor-bearing tree missing the workflow the floor points at — even a tag
 # exactly at the floor must not pass.
 init_repo floor-without-workflow
 write_scaffold 'const minWorkflowTag = "v2.3.0"'
 commit_repo
-run_case floor-without-workflow v2.3.0 "$repo" 1
+run_case floor-without-workflow v2.3.0 "$repo" 2
 
-printf 'workflow-floor and repository-state validation passed: 12 cases\n'
+printf 'workflow-floor and repository-state validation passed: 14 cases\n'
