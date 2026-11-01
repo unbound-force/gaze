@@ -1,0 +1,156 @@
+# Design: Validate Workflow Floor
+
+## Context
+
+`gaze init --ci` (shipped in v2.3.0) pins the scaffolded workflow's `uses:`
+reference to the embedding binary's version and refuses to run when that
+version is below `minWorkflowTag` (`v2.3.0`, `internal/scaffold/scaffold.go`),
+because only tags ≥ v2.3.0 contain
+`.github/workflows/reusable_gaze_ai_report.yml`. The release workflow had no
+corresponding check: a below-floor release tag or an unreleased floor bump
+would ship a binary that fails its own `--ci` validation. This change adds the
+missing release-time gate, modeled on `validate-module-major` (script + release
+job + CI test script).
+
+## Goals / Non-Goals
+
+**Goals**
+
+- Fail the release workflow, before preflight creates the tag, when the
+  requested tag is below the embedded floor.
+- Fail the release workflow when the floor constant references a tag that does
+  not exist or does not contain the reusable workflow file.
+- Keep the check deterministic, offline, and unskippable.
+- Fail CI if the floor constant moves or the reusable workflow file is removed
+  from the tree without the validator being updated.
+
+**Non-Goals**
+
+- Validating the v2.3.0 release itself (it predates this gate).
+- Changing `--ci` runtime behavior, the floor value, or the scaffold template.
+- Supporting floors that are pre-release tags.
+
+## Decisions
+
+### D1: Mirror the `validate-module-major` shape
+
+Script `.github/scripts/validate-workflow-floor.sh` with CLI
+`validate-workflow-floor.sh -- <release-tag> [repo-root]` (repo-root defaults
+to the working directory), `set -euo pipefail`, `LC_ALL=C`, exit 2 for usage
+errors and malformed tags, exit 1 for validation failures, diagnostics to
+stderr via printf with `::error::`/`::notice::` workflow commands, success line
+to stdout. Release job `validate-workflow-floor` sits beside
+`validate-module-major` (same pinned `actions/checkout` SHA, `contents: read`,
+5-minute timeout) and `preflight` needs both.
+
+*Rationale*: an established in-repo pattern; reviewers and operators already
+know its failure modes.
+
+### D2: Derive the floor from the source constant, never duplicate it
+
+The validator greps `internal/scaffold/scaffold.go` for
+`^[[:space:]]*const minWorkflowTag = "vX.Y.Z"`. Zero matches → skip (D4);
+exactly one match → use it; multiple matches → fail (ambiguous source of
+truth); a value failing the strict tag regex → fail (malformed floor).
+
+*Rationale*: duplicating `v2.3.0` into the script would recreate the exact
+drift problem this gate exists to catch. Reading the same constant the binary
+embeds makes the verdict correct by construction.
+
+### D3: Explicit bash semver comparison, not `sort -V`
+
+Strip the leading `v`, split the core on `.`, compare major/minor/patch
+numerically. Pre-release handling: a tag without a pre-release suffix sorts
+above the same core with one (`v2.4.0 > v2.4.0-rc1`); two pre-release suffixes
+compare lexically.
+
+*Rationale*: `sort -V` pre-release ordering is implementation-defined and has
+burned this kind of gate before. The lexical fallback is sufficient because
+the floor is always a canonical release tag (never a pre-release) — only one
+operand can carry a suffix in practice, and the no-suffix-wins rule covers it.
+
+### D4: Legacy trees skip with a notice, floor-bearing trees are held to the contract
+
+If the tree has no `minWorkflowTag` constant, the validator exits 0 with a
+`::notice::` — the tree predates floor governance and has no contract to
+enforce. If the constant exists, the tree MUST also contain
+`.github/workflows/reusable_gaze_ai_report.yml`; a floor-bearing tree without
+the workflow file fails unconditionally, before any tag comparison.
+
+*Rationale*: skipping keeps the gate forward-compatible with old tags/hotfix
+branches, while the workflow-presence check catches the catastrophic case of
+releasing `T == F` from a tree where the workflow was deleted or renamed.
+
+### D5: Above-floor releases must prove the floor tag shipped the workflow
+
+When `T > F`, the validator requires (a) `F` resolves as a local git tag
+(`git rev-parse -q --verify "refs/tags/$F"`) and (b)
+`git show "$F:.github/workflows/reusable_gaze_ai_report.yml"` succeeds.
+Failure of either → exit 1.
+
+*Rationale*: a floor bump to a typo like `v2.30.0`, or a bump merged but whose
+floor release was cancelled, would otherwise ship binaries whose `--ci` pins
+customers to a nonexistent workflow tag. Verifying tag *contents* (not just
+existence) also catches a floor pointing at a pre-workflow tag.
+
+### D6: Offline and unskippable
+
+The release job checks out with `fetch-depth: 0` so all existing tags are
+available locally; the validator makes no network or GitHub API calls. No
+release skip flag is added for this gate.
+
+*Rationale*: matches `release-major-module-validation` VAL-REQ-002 philosophy
+(deterministic, offline, not bypassable by the existing skip inputs). Full
+clone is acceptable — this repository is small.
+
+### D7: Repo-invariant test assertions contain the silent-skip path
+
+The CI test script first asserts the repository's own state: the floor
+constant exists in `internal/scaffold/scaffold.go`, parses cleanly, and the
+reusable workflow file exists in the tree. Only then does it run the
+synthetic-repo matrix.
+
+*Rationale*: without these assertions, moving the constant (or deleting the
+workflow) would silently convert the repo's own gate into a permanent skip.
+The test converts silent skip into loud CI failure, forcing the validator to
+be updated in the same change.
+
+### D8: Test matrix via synthetic git repositories
+
+The test script builds throwaway repos in `mktemp -d` (with `trap` cleanup):
+writes `internal/scaffold/scaffold.go` with a chosen constant (or none),
+optionally writes `.github/workflows/reusable_gaze_ai_report.yml`, commits,
+and tags the floor at chosen commits (with or without the workflow file). Each
+case invokes the validator and compares exit status, using the
+`set +e` / capture / `set -e` pattern from `test-validate-module-major.sh`.
+
+Cases (expected exit): below-floor `v2.2.9` → 1; at-floor `v2.3.0` → 0;
+above-floor valid → 0; above-floor, floor tag missing → 1; above-floor, floor
+tag predates the workflow → 1; floor pre-release `v2.3.0-rc1` as release tag
+→ 1 (mirrors `--ci` rejection of floor pre-releases); later pre-release
+`v2.4.0-rc1` → 0; legacy tree without constant → 0 (skip); malformed floor
+`"banana"` → 1; duplicate constant → 1; floor constant but no workflow in
+tree → 1; malformed release tag `release-2` → 2.
+
+## Risks / Trade-offs
+
+- **Floor constant relocates** → validator silently skips (D4). Contained by
+  D7 repo-invariant assertions failing CI.
+- **Lexical pre-release comparison** could mis-order exotic suffixes (e.g.
+  `rc.10` vs `rc.2`). Accepted: floors are canonical releases; release tags
+  use simple `-rcN`/none forms here.
+- **`fetch-depth: 0`** slightly slower checkout. Accepted for offline
+  determinism; repository is small.
+- **Gate cannot protect its own introducing release** (v2.3.0 already shipped).
+  First exercised on the next release; its above-floor branch then
+  retroactively proves v2.3.0 contains the workflow.
+
+## Migration Plan
+
+Purely additive: new script, new test script, one new release job, one test
+step, comment/doc updates. No consumer-facing behavior changes; no ordering
+constraints with other changes.
+
+## Open Questions
+
+None.
