@@ -46,7 +46,7 @@ advisor:
     - divisor-curator
     - divisor-guard
     - divisor-sre
-    - divisor-testing
+    - divisor-gaze-testing
   feedback:
     - divisor-adversary
     - divisor-architect

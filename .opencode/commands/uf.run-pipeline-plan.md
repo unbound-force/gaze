@@ -123,6 +123,16 @@ Phase 0 runs in the orchestrator context (no subagents).
    answered). The pipeline MUST NOT PROCEED before the
    human confirms.
 
+**Sibling repository references**: Before filesystem or
+web search for cross-repo reference material, check
+`.uf/sibling-repos.yaml`. When the repo declares siblings,
+use `acquire_sibling_evidence` (or read the in-repo
+`.uf/sibling-clones/<name>/` or `.uf/sibling-cache/<name>/`
+copies) for their contract files. NEVER read sibling
+repositories from outside-workspace paths — out-of-workspace
+reads trigger permission asks that wedge parented child
+sessions (see Direct Human Gate Surfacing).
+
 ### Plan File Contract
 
 A plan file is a numbered markdown list. Each item

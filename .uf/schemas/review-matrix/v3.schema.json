@@ -261,6 +261,33 @@
           "maximum": 1800,
           "default": 600
         },
+        "per_run_timeout_ceiling_seconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 1800,
+          "default": 1800
+        },
+        "per_run_timeout_tiers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lightweight": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 1800
+            },
+            "standard": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 1800
+            },
+            "heavy": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 1800
+            }
+          }
+        },
         "max_reported_cost_usd": {
           "type": "number",
           "minimum": 1,
