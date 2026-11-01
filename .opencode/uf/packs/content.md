@@ -218,6 +218,20 @@ sections relevant to its domain:
   file access to confirm exact numbers, flags, and
   capabilities before writing.
 
+- **FA-005** [MUST] For cross-repo reference material
+  (sibling repositories), agents MUST first consult
+  `.uf/sibling-repos.yaml` (declared siblings, roles, and
+  contract paths) and obtain contract files via the
+  `acquire_sibling_evidence` tool or by reading the
+  in-repo clone/cache paths (`.uf/sibling-clones/<name>/`,
+  `.uf/sibling-cache/<name>/`). Agents MUST NOT read
+  sibling-repository files from paths outside the
+  current workspace (e.g., a developer's ~/Projects
+  checkout of a sibling repo) — out-of-workspace reads
+  trigger permission asks that parented child sessions
+  cannot answer, wedging delegated pipelines until
+  timeout.
+
 ---
 
 ## Formatting (FT) — All Content Agents

@@ -22,6 +22,13 @@ export interface ToolFailure {
   readonly message: string
   readonly retryable: boolean
   readonly code?: string
+  /**
+   * Child session id, present only on delegation failures
+   * (DELEGATE_FAILED / DELEGATE_CANCELLED) where the executor
+   * created a child session before failing. Omitted when no
+   * child session ever existed.
+   */
+  readonly child_session_id?: string
 }
 
 /** Discriminated union returned by every tool handler. */
