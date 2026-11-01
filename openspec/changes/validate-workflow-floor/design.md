@@ -71,11 +71,19 @@ embeds makes the verdict correct by construction.
 *Post-review revision*: the grep's exit status is now captured explicitly
 (matches are written to a temporary file). A grep failure other than "no
 match" (exit 1, the legacy-tree signal) — e.g. an unreadable `scaffold.go` —
-is a repo-state failure (exit 2) rather than a silent legacy skip, closing
-the gate's only fail-open path. Not covered by a matrix case: simulating an
-unreadable file portably (chmod 000 is a no-op under root) would add
-flakiness without protecting any real workflow path — the release job always
-runs against a fresh checkout.
+is a repo-state failure (exit 2) rather than a silent legacy skip. Not
+covered by a matrix case: simulating an unreadable file portably (chmod 000
+is a no-op under root) would add flakiness without protecting any real
+workflow path — the release job always runs against a fresh checkout.
+
+*Third-pass advisory (accepted, documented)*: an *absent* `scaffold.go`
+still takes the legacy-skip branch (exit 0) via the `[[ -f ]]` guard, so
+the unreadable-file fix did not close every skip-shaped path. The missing
+file is not a reachable silent skip in practice: in a floor-era tree a
+missing `scaffold.go` is repo-state corruption, and it is doubly contained —
+`test-validate-workflow-floor.sh`'s repository invariant fails CI when the
+file or the constant is absent, and the release preflight requires green CI
+on HEAD.
 
 ### D3: Explicit bash semver comparison, not `sort -V`
 
@@ -95,6 +103,17 @@ release tag) can carry a suffix, and the no-suffix-wins rule covers it.
 Exotic remaining divergence (leading-zero numeric identifiers, which semver
 rejects but the regex admits) is contained downstream by the org-infra
 preflight's Python semver validation.
+
+*Third-pass advisory (accepted, documented)*: the comparison primitive —
+bash `(( ))` arithmetic — is 64-bit signed, while the grammar bounds numeric
+components' character classes but not their magnitude. A component at or
+above 2^63 (19+ digits) either wraps or raises an arithmetic error under
+`set -e`; both outcomes fail closed (a non-zero exit, or a wrapped comparison
+that still routes through the above-floor tag-existence and tag-content
+checks). The input is maintainer-only (workflow_dispatch requires write
+access) and org-infra preflight re-validates the tag with Python semver
+(arbitrary precision) downstream, so the unbounded-magnitude axis is recorded
+here rather than bounded in the grammar.
 
 ### D4: Legacy trees skip with a notice, floor-bearing trees are held to the contract
 

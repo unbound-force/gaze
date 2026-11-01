@@ -55,6 +55,6 @@ Tasks touching the same file must NOT carry [P] relative to each other.
   non-strict validation reports the change as valid.
 - [x] 4.4 Spec Commit Gate: commit and push all spec artifacts before any
   implementation commit lands.
-- [ ] 4.5 Review Council Gate: run `/uf.review-council` and resolve all
+- [x] 4.5 Review Council Gate: run `/uf.review-council` and resolve all
   findings until all four reviewers APPROVE; make minimal to no changes
   between APPROVE and PR submission.
