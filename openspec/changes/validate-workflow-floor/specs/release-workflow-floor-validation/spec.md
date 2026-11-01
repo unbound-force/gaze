@@ -56,14 +56,14 @@ such constant.
 - **GIVEN** the `minWorkflowTag` constant is set to a value that does not match
   the strict `vMAJOR.MINOR.PATCH` tag form
 - **WHEN** the validator runs
-- **THEN** it exits with status 1 rather than guessing the intended floor
+- **THEN** it exits with status 2 rather than guessing the intended floor
 
 #### Scenario: Floor-bearing tree must contain the reusable workflow
 
 - **GIVEN** the tree contains the `minWorkflowTag` constant
 - **WHEN** the tree does not contain
   `.github/workflows/reusable_gaze_ai_report.yml`
-- **THEN** the validator exits with status 1 regardless of the requested tag
+- **THEN** the validator exits with status 2 regardless of the requested tag
 
 ### Requirement: Deterministic And Unskippable Validation
 

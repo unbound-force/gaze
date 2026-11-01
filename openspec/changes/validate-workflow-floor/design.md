@@ -68,6 +68,15 @@ truth); a value failing the strict tag regex → fail (malformed floor).
 drift problem this gate exists to catch. Reading the same constant the binary
 embeds makes the verdict correct by construction.
 
+*Post-review revision*: the grep's exit status is now captured explicitly
+(matches are written to a temporary file). A grep failure other than "no
+match" (exit 1, the legacy-tree signal) — e.g. an unreadable `scaffold.go` —
+is a repo-state failure (exit 2) rather than a silent legacy skip, closing
+the gate's only fail-open path. Not covered by a matrix case: simulating an
+unreadable file portably (chmod 000 is a no-op under root) would add
+flakiness without protecting any real workflow path — the release job always
+runs against a fresh checkout.
+
 ### D3: Explicit bash semver comparison, not `sort -V`
 
 Strip the leading `v`, split the core on `.`, compare major/minor/patch
@@ -150,8 +159,15 @@ above-floor valid → 0; above-floor, floor tag missing → 1; above-floor, floo
 tag predates the workflow → 1; floor pre-release `v2.3.0-rc1` as release tag
 → 1 (mirrors `--ci` rejection of floor pre-releases); later pre-release
 `v2.4.0-rc1` → 0; legacy tree without constant → 0 (skip); malformed floor
-`"banana"` → 1; duplicate constant → 1; floor constant but no workflow in
-tree → 1; malformed release tag `release-2` → 2.
+`"banana"` → 2; duplicate constant → 2; floor constant but no workflow in
+tree → 2; malformed release tag `release-2` → 2.
+
+*Post-review revision*: repo-state failures (malformed floor, duplicate
+constant, floor-bearing tree missing the workflow, pre-release floor
+constant) exit 2, aligning the taxonomy with `validate-module-major.sh`.
+The matrix adds two cases for the hardened tag grammar — pre-release floor
+constant `v2.4.0-rc.1` → 2 and malformed pre-release tag `v2.4.0-rc..1`
+→ 2 — bringing the total to fourteen cases.
 
 ## Risks / Trade-offs
 
