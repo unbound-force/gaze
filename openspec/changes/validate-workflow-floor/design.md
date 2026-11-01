@@ -36,12 +36,23 @@ job + CI test script).
 
 Script `.github/scripts/validate-workflow-floor.sh` with CLI
 `validate-workflow-floor.sh -- <release-tag> [repo-root]` (repo-root defaults
-to the working directory), `set -euo pipefail`, `LC_ALL=C`, exit 2 for usage
-errors and malformed tags, exit 1 for validation failures, diagnostics to
-stderr via printf with `::error::`/`::notice::` workflow commands, success line
-to stdout. Release job `validate-workflow-floor` sits beside
-`validate-module-major` (same pinned `actions/checkout` SHA, `contents: read`,
-5-minute timeout) and `preflight` needs both.
+to the working directory), `set -euo pipefail`, `LC_ALL=C`. Exit taxonomy
+mirrors the sibling: exit 2 for usage errors, malformed tags, and malformed
+repository state (duplicate/malformed/pre-release floor constant,
+floor-bearing tree missing the workflow — the same class the sibling assigns
+exit 2 for "expected exactly one module directive"); exit 1 for validation
+failures. `::error::`/`::notice::` workflow commands print to stdout (the
+Actions runner only parses stdout for workflow commands, so redirected
+commands never render as annotations); usage and malformed-tag messages are
+plain stderr like the sibling; success line to stdout. Release job
+`validate-workflow-floor` sits beside `validate-module-major` (same pinned
+`actions/checkout` SHA, `contents: read`, 5-minute timeout) and `preflight`
+needs both.
+
+*Revision (post-review)*: the original draft redirected `::error::` to stderr
+and used exit 1 for repo-state failures; both were corrected after council
+review flagged the annotation rendering and the sibling-divergent exit
+semantics.
 
 *Rationale*: an established in-repo pattern; reviewers and operators already
 know its failure modes.
@@ -62,20 +73,30 @@ embeds makes the verdict correct by construction.
 Strip the leading `v`, split the core on `.`, compare major/minor/patch
 numerically. Pre-release handling: a tag without a pre-release suffix sorts
 above the same core with one (`v2.4.0 > v2.4.0-rc1`); two pre-release suffixes
-compare lexically.
+compare lexically. The tag grammar restricts pre-release suffixes to
+non-empty dot-separated identifiers (`-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*`),
+mirroring what `x/mod/semver`'s `IsValid` contributes to the Go-side chain —
+rejecting malformed identifiers (empty dot-separated segments) that a plain
+character class would admit.
 
 *Rationale*: `sort -V` pre-release ordering is implementation-defined and has
-burned this kind of gate before. The lexical fallback is sufficient because
-the floor is always a canonical release tag (never a pre-release) — only one
-operand can carry a suffix in practice, and the no-suffix-wins rule covers it.
+burned this kind of gate before. The lexical fallback is correct because
+pre-release floors are rejected outright (D4), so at most one operand (the
+release tag) can carry a suffix, and the no-suffix-wins rule covers it.
+Exotic remaining divergence (leading-zero numeric identifiers, which semver
+rejects but the regex admits) is contained downstream by the org-infra
+preflight's Python semver validation.
 
 ### D4: Legacy trees skip with a notice, floor-bearing trees are held to the contract
 
 If the tree has no `minWorkflowTag` constant, the validator exits 0 with a
 `::notice::` — the tree predates floor governance and has no contract to
-enforce. If the constant exists, the tree MUST also contain
-`.github/workflows/reusable_gaze_ai_report.yml`; a floor-bearing tree without
-the workflow file fails unconditionally, before any tag comparison.
+enforce. If the constant exists, the floor MUST be a canonical release tag:
+a malformed value or a pre-release suffix fails as repo-state error (exit 2),
+enforcing by construction the invariant D3's comparison relies on. The tree
+MUST also contain `.github/workflows/reusable_gaze_ai_report.yml`; a
+floor-bearing tree without the workflow file fails unconditionally (exit 2),
+before any tag comparison.
 
 *Rationale*: skipping keeps the gate forward-compatible with old tags/hotfix
 branches, while the workflow-presence check catches the catastrophic case of
