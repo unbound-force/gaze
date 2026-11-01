@@ -29,7 +29,7 @@ Tasks touching the same file must NOT carry [P] relative to each other.
 - [x] 2.1 Implement `.github/scripts/test-validate-workflow-floor.sh` per
   design D7–D8: repository-invariant assertions (floor constant present and
   parseable, reusable workflow file present in tree) followed by the
-  synthetic-repo matrix covering all twelve cases from D8, using the
+  synthetic-repo matrix covering all fourteen cases from D8, using the
   `set +e` / capture / `set -e` pattern and `mktemp -d` with `trap` cleanup.
 - [x] 2.2 Wire the test script into `.github/workflows/test.yml` on the
   Go 1.25 matrix leg beside the module-major test step

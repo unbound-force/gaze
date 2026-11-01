@@ -18,8 +18,8 @@
 #   0  tag is consistent with the floor, or the tree predates floor governance
 #   1  validation failure (tag below floor; floor tag missing or incomplete)
 #   2  usage error, malformed release tag, or malformed repository state
-#      (duplicate, malformed, or pre-release floor constant; floor-bearing
-#      tree missing the reusable workflow)
+#      (duplicate, malformed, or pre-release floor constant; unreadable
+#      scaffold.go; floor-bearing tree missing the reusable workflow)
 
 set -euo pipefail
 export LC_ALL=C
@@ -114,7 +114,15 @@ fi
 # scaffold cannot drift apart.
 floor_lines=()
 if [[ -f "$scaffold_go" ]]; then
-  mapfile -t floor_lines < <(grep -E '^[[:space:]]*const minWorkflowTag = "[^"]*"' "$scaffold_go")
+  matches_file="$(mktemp)"
+  trap 'rm -f "$matches_file"' EXIT
+  grep_status=0
+  grep -E '^[[:space:]]*const minWorkflowTag = "[^"]*"' "$scaffold_go" >"$matches_file" || grep_status=$?
+  if (( grep_status > 1 )); then
+    printf '::error::could not read %s to extract the workflow floor (grep status %d)\n' "$scaffold_go" "$grep_status"
+    exit 2
+  fi
+  mapfile -t floor_lines <"$matches_file"
 fi
 if [[ ${#floor_lines[@]} -eq 0 ]]; then
   printf '::notice::no minWorkflowTag constant in internal/scaffold/scaffold.go; tree predates workflow-floor governance, skipping\n'
