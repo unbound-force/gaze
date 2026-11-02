@@ -1,6 +1,7 @@
 package aireport
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,7 @@ func TestExtractFinalText_Fixtures(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := extractFinalText(readStream(t, tc.name))
+			got, _, err := extractFinalText(readStream(t, tc.name))
 
 			if tc.wantErr != "" {
 				if err == nil {
@@ -79,7 +80,7 @@ func TestExtractFinalText_Fixtures(t *testing.T) {
 // TestExtractFinalText_NarrationDropped proves only the final step's text
 // survives, so narration between tool calls never reaches the report.
 func TestExtractFinalText_NarrationDropped(t *testing.T) {
-	got, err := extractFinalText(readStream(t, "narration_then_answer.jsonl"))
+	got, _, err := extractFinalText(readStream(t, "narration_then_answer.jsonl"))
 	if err != nil {
 		t.Fatalf("extractFinalText error: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestExtractFinalText_Synthetic(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := extractFinalText([]byte(tc.in))
+			got, _, err := extractFinalText([]byte(tc.in))
 			if err != nil {
 				t.Fatalf("extractFinalText error: %v", err)
 			}
@@ -156,7 +157,7 @@ func TestExtractFinalText_Errors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := extractFinalText([]byte(tc.in))
+			_, _, err := extractFinalText([]byte(tc.in))
 			if err == nil {
 				t.Fatal("extractFinalText = nil error, want a failure")
 			}
@@ -177,4 +178,58 @@ func textEventLine(id, messageID, text string) string {
 func stepFinishLine(messageID string) string {
 	return `{"type":"step_finish","part":{"id":"finish","messageID":"` + messageID +
 		`","type":"step-finish"}}` + "\n"
+}
+
+// TestParseEvents_MixedJunkCounts pins the tolerance contract: junk lines
+// (plain text, JSON of the wrong shape, CRLF-framed noise) are skipped and
+// counted without discarding the valid events around them.
+func TestParseEvents_MixedJunkCounts(t *testing.T) {
+	stream := "not json at all\n" +
+		textEventLine("p1", "m1", "first") +
+		"[1,2]\n" +
+		"trailing junk\r\n" +
+		textEventLine("p2", "m1", "second") +
+		stepFinishLine("m1")
+
+	events, skipped, err := parseEvents([]byte(stream))
+	if err != nil {
+		t.Fatalf("parseEvents error: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events = %d, want 3 (a junk line must not drop its neighbors)", len(events))
+	}
+	if skipped != 3 {
+		t.Fatalf("skipped = %d, want 3", skipped)
+	}
+
+	answer, skipped, err := extractFinalText([]byte(stream))
+	if err != nil {
+		t.Fatalf("extractFinalText error: %v", err)
+	}
+	if answer != "first\nsecond" {
+		t.Fatalf("answer = %q, want %q", answer, "first\nsecond")
+	}
+	if skipped != 3 {
+		t.Fatalf("extractFinalText skipped = %d, want 3", skipped)
+	}
+}
+
+// TestExtractAnswer_SkippedLinesCounted proves the skip count surfaces on
+// the errNoFinalText error, so a mostly-corrupt stream cannot degrade
+// silently.
+func TestExtractAnswer_SkippedLinesCounted(t *testing.T) {
+	stream := "garbage line\n" +
+		textEventLine("p1", "m1", "   ") +
+		stepFinishLine("m1")
+
+	_, err := extractAnswer([]byte(stream), nil)
+	if err == nil {
+		t.Fatal("extractAnswer = nil error, want errNoFinalText")
+	}
+	if !errors.Is(err, errNoFinalText) {
+		t.Fatalf("error = %v, want errNoFinalText (sentinel must survive wrapping)", err)
+	}
+	if !strings.Contains(err.Error(), "skipped 1") {
+		t.Fatalf("error = %q, want it to contain the skip count", err)
+	}
 }
