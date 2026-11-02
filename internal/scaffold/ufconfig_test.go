@@ -68,17 +68,24 @@ advisor:
 # scaffolded by uf vdev
 `
 
-// ufMatrixFixtureNoTriage is ufMatrixFixture with its advisor.triage
-// block removed. Staged once so the case input and its byte-identity
-// expectation cannot drift apart.
-var ufMatrixFixtureNoTriage = strings.Replace(ufMatrixFixture,
-	"  triage:\n    - divisor-adversary\n    - divisor-guard\n    - divisor-sre\n    - divisor-testing\n", "", 1)
+// ufTriageBlockNeedle is the advisor.triage block in ufMatrixFixture.
+// Both derived fixtures are cut from this one literal so they cannot
+// disagree about what the base fixture contains.
+const ufTriageBlockNeedle = "  triage:\n    - divisor-adversary\n    - divisor-guard\n    - divisor-sre\n    - divisor-testing\n"
 
-// ufMatrixFixtureTriageNotSequence is ufMatrixFixture with its
-// advisor.triage list replaced by a mapping — the shape a consumer
-// edit leaving `triage: {}` behind would produce.
-var ufMatrixFixtureTriageNotSequence = strings.Replace(ufMatrixFixture,
-	"  triage:\n    - divisor-adversary\n    - divisor-guard\n    - divisor-sre\n    - divisor-testing\n", "  triage: {}\n", 1)
+// matrixFixtureWithTriage derives ufMatrixFixture with its advisor.triage
+// block replaced by replacement. strings.Replace returns the input
+// unchanged when the needle stops matching, so the helper fails the test
+// on a no-op replacement: otherwise base-fixture drift would surface as a
+// misleading success-path diagnostic in the two skip cases.
+func matrixFixtureWithTriage(t *testing.T, replacement string) string {
+	t.Helper()
+	derived := strings.Replace(ufMatrixFixture, ufTriageBlockNeedle, replacement, 1)
+	if derived == ufMatrixFixture {
+		t.Fatalf("ufMatrixFixture no longer contains ufTriageBlockNeedle %q; update the needle", ufTriageBlockNeedle)
+	}
+	return derived
+}
 
 // ufSyncCase drives the table-driven syncUFReviewConfig branch
 // matrix: each case stages .uf files (or their absence) and asserts
@@ -101,6 +108,11 @@ type ufSyncCase struct {
 // files warn and are skipped without failing the operation; the two
 // config files are handled independently.
 func TestSyncUFReviewConfig(t *testing.T) {
+	// Derived fixtures are staged once so each case input and its
+	// byte-identity expectation cannot drift apart.
+	noTriage := matrixFixtureWithTriage(t, "")
+	triageNotSequence := matrixFixtureWithTriage(t, "  triage: {}\n")
+
 	cases := []ufSyncCase{
 		{
 			name:           "absent .uf directory prints notice and creates nothing",
@@ -225,23 +237,23 @@ func TestSyncUFReviewConfig(t *testing.T) {
 		{
 			name: "matrix without advisor.triage skips the whole file",
 			files: map[string]string{
-				".uf/review-matrix.yaml": ufMatrixFixtureNoTriage,
+				".uf/review-matrix.yaml": noTriage,
 			},
 			wantRegistered: nil,
 			wantStdout:     []string{"advisor.triage"},
 			verify: func(t *testing.T, dir string) {
-				assertFileContent(t, filepath.Join(dir, ".uf", "review-matrix.yaml"), ufMatrixFixtureNoTriage)
+				assertFileContent(t, filepath.Join(dir, ".uf", "review-matrix.yaml"), noTriage)
 			},
 		},
 		{
 			name: "matrix with non-sequence advisor.triage skips the whole file",
 			files: map[string]string{
-				".uf/review-matrix.yaml": ufMatrixFixtureTriageNotSequence,
+				".uf/review-matrix.yaml": triageNotSequence,
 			},
 			wantRegistered: nil,
 			wantStdout:     []string{"advisor.triage"},
 			verify: func(t *testing.T, dir string) {
-				assertFileContent(t, filepath.Join(dir, ".uf", "review-matrix.yaml"), ufMatrixFixtureTriageNotSequence)
+				assertFileContent(t, filepath.Join(dir, ".uf", "review-matrix.yaml"), triageNotSequence)
 			},
 		},
 		{
