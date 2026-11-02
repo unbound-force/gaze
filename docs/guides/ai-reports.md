@@ -57,7 +57,7 @@ gaze report ./... --ai=claude --model=claude-sonnet-4-20250514
 1. System prompt is written to a temp file (`gaze-claude-prompt-*/prompt.md`)
 2. Claude is invoked: `claude -p "" --system-prompt-file <path> [--model <name>]`
 3. The JSON payload is piped to stdin
-4. Formatted report is read from stdout
+4. The validated answer JSON is read from stdout
 5. Temp file is cleaned up
 
 ## Gemini
@@ -135,7 +135,7 @@ The host must be an absolute HTTP or HTTPS URL with a valid host component.
 2. A JSON request is built: `{"model": "<name>", "system": "<prompt>", "prompt": "<payload>", "stream": false}`
 3. The request is POSTed to `<host>/api/generate`
 4. The response JSON is parsed (`{"response": "..."}`)
-5. The response text is returned as the formatted report
+5. The response text is returned as the validated answer JSON
 
 ### Limitations
 
