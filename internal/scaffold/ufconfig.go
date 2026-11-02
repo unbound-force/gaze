@@ -27,8 +27,9 @@ const (
 
 	// ufGenericTestingAgent is the uf-owned generic test-quality
 	// reviewer that the advisor lists swap away from. Its
-	// capabilities entry and triage advisor membership are
-	// deliberately preserved (coexistence, design D1).
+	// capabilities entry is deliberately preserved (coexistence);
+	// it is swapped out of all four advisor lists, triage included
+	// (openspec/changes/gaze-init-triage-advisor).
 	ufGenericTestingAgent = "divisor-testing"
 
 	// ufCapabilitiesRelPath is the repo-relative display path of the
@@ -111,11 +112,13 @@ func syncReviewerCapabilities(path string, stdout io.Writer) bool {
 }
 
 // syncReviewMatrix swaps the generic divisor-testing advisor for
-// divisor-gaze-testing in the code, spec, and feedback advisor lists
-// of a review-matrix.yaml. The triage list, always overrides, and
-// every other key pass through the Node round-trip untouched. It
-// reports whether the file was rewritten; a file already in the
-// end-state is an idempotent no-op that is never rewritten.
+// divisor-gaze-testing in the code, spec, triage, and feedback advisor
+// lists of a review-matrix.yaml. A missing or non-sequence list in any
+// of the four modes skips the whole file with a warning (no partial
+// registration). Always overrides and every other key pass through the
+// Node round-trip untouched. It reports whether the file was
+// rewritten; a file already in the end-state is an idempotent no-op
+// that is never rewritten.
 func syncReviewMatrix(path string, stdout io.Writer) bool {
 	data, doc, ok := loadYAMLDocument(path, stdout)
 	if !ok {
@@ -132,7 +135,7 @@ func syncReviewMatrix(path string, stdout io.Writer) bool {
 		return false
 	}
 	changed := false
-	for _, mode := range []string{"code", "spec", "feedback"} {
+	for _, mode := range []string{"code", "spec", "triage", "feedback"} {
 		list := mappingValue(advisor, mode)
 		if list == nil || list.Kind != yaml.SequenceNode {
 			// Missing expected key: skip the whole file rather than

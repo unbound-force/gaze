@@ -68,6 +68,18 @@ advisor:
 # scaffolded by uf vdev
 `
 
+// ufMatrixFixtureNoTriage is ufMatrixFixture with its advisor.triage
+// block removed. Staged once so the case input and its byte-identity
+// expectation cannot drift apart.
+var ufMatrixFixtureNoTriage = strings.Replace(ufMatrixFixture,
+	"  triage:\n    - divisor-adversary\n    - divisor-guard\n    - divisor-sre\n    - divisor-testing\n", "", 1)
+
+// ufMatrixFixtureTriageNotSequence is ufMatrixFixture with its
+// advisor.triage list replaced by a mapping — the shape a consumer
+// edit leaving `triage: {}` behind would produce.
+var ufMatrixFixtureTriageNotSequence = strings.Replace(ufMatrixFixture,
+	"  triage:\n    - divisor-adversary\n    - divisor-guard\n    - divisor-sre\n    - divisor-testing\n", "  triage: {}\n", 1)
+
 // ufSyncCase drives the table-driven syncUFReviewConfig branch
 // matrix: each case stages .uf files (or their absence) and asserts
 // the registration outcome, the stdout notices/warnings, and the
@@ -208,6 +220,28 @@ func TestSyncUFReviewConfig(t *testing.T) {
 				if strings.Contains(string(data), ufGazeTestingAgent) {
 					t.Errorf("matrix must not be partially registered when a mode is missing")
 				}
+			},
+		},
+		{
+			name: "matrix without advisor.triage skips the whole file",
+			files: map[string]string{
+				".uf/review-matrix.yaml": ufMatrixFixtureNoTriage,
+			},
+			wantRegistered: nil,
+			wantStdout:     []string{"advisor.triage"},
+			verify: func(t *testing.T, dir string) {
+				assertFileContent(t, filepath.Join(dir, ".uf", "review-matrix.yaml"), ufMatrixFixtureNoTriage)
+			},
+		},
+		{
+			name: "matrix with non-sequence advisor.triage skips the whole file",
+			files: map[string]string{
+				".uf/review-matrix.yaml": ufMatrixFixtureTriageNotSequence,
+			},
+			wantRegistered: nil,
+			wantStdout:     []string{"advisor.triage"},
+			verify: func(t *testing.T, dir string) {
+				assertFileContent(t, filepath.Join(dir, ".uf", "review-matrix.yaml"), ufMatrixFixtureTriageNotSequence)
 			},
 		},
 		{
@@ -634,8 +668,8 @@ func assertCapabilitiesRegistered(t *testing.T, path string) {
 }
 
 // assertMatrixSwapped asserts the registered end-state of a
-// review-matrix.yaml: gaze persona in code/spec/feedback advisor
-// lists, generic persona removed from them, triage untouched.
+// review-matrix.yaml: gaze persona in the code/spec/triage/feedback
+// advisor lists, generic persona removed from all four.
 func assertMatrixSwapped(t *testing.T, path string) {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -659,6 +693,7 @@ func assertMatrixSwapped(t *testing.T, path string) {
 	}{
 		{"code", matrix.Advisor.Code},
 		{"spec", matrix.Advisor.Spec},
+		{"triage", matrix.Advisor.Triage},
 		{"feedback", matrix.Advisor.Feedback},
 	} {
 		if !containsString(mode.list, ufGazeTestingAgent) {
@@ -667,12 +702,6 @@ func assertMatrixSwapped(t *testing.T, path string) {
 		if containsString(mode.list, ufGenericTestingAgent) {
 			t.Errorf("advisor.%s must not contain %s:\n%s", mode.name, ufGenericTestingAgent, data)
 		}
-	}
-	if !containsString(matrix.Advisor.Triage, ufGenericTestingAgent) {
-		t.Errorf("advisor.triage must retain %s:\n%s", ufGenericTestingAgent, data)
-	}
-	if containsString(matrix.Advisor.Triage, ufGazeTestingAgent) {
-		t.Errorf("advisor.triage must be untouched (no gaze persona):\n%s", data)
 	}
 }
 

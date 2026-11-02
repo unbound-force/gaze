@@ -49,7 +49,7 @@ Gaze uses a mixed ownership model for scaffolded files:
 
 ### Divisor Review-Config Registration
 
-When run in a project that already uses unbound-force tooling (a `.uf/` directory exists), `gaze init` also registers the `divisor-gaze-testing` persona in the existing review configuration: it appends the reviewer entry to `.uf/reviewer-capabilities.yaml` and swaps the generic `divisor-testing` advisor for `divisor-gaze-testing` in the `code`, `spec`, and `feedback` advisor lists of `.uf/review-matrix.yaml` (the `triage` list is untouched). The merge is idempotent, comment-preserving, and never creates `.uf` files — projects without a `.uf/` directory get a notice instead.
+When run in a project that already uses unbound-force tooling (a `.uf/` directory exists), `gaze init` also registers the `divisor-gaze-testing` persona in the existing review configuration: it appends the reviewer entry to `.uf/reviewer-capabilities.yaml` and swaps the generic `divisor-testing` advisor for `divisor-gaze-testing` in the `code`, `spec`, `triage`, and `feedback` advisor lists of `.uf/review-matrix.yaml` (a matrix missing any of the four lists is skipped with a warning). The merge is idempotent, comment-preserving, and never creates `.uf` files — projects without a `.uf/` directory get a notice instead.
 
 `gaze init` also removes a legacy `.opencode/agents/reviewer-testing.md` when its content carries the gaze version marker (`<!-- scaffolded by gaze ... -->`) — the file was superseded by `agents/divisor-gaze-testing.md`. Marker-less (user-customized) copies are left untouched.
 
