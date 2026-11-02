@@ -17,7 +17,7 @@ Gaze is a single-binary CLI tool that performs static analysis on Go source code
 | `internal/report/` | Output formatters for analysis results. JSON, styled text, and self-contained analyze HTML formatters. Embeds the JSON Schema (Draft 2020-12) and analyze HTML template. | `taxonomy`, `lipgloss`, `html/template` |
 | `internal/docscan/` | Documentation file scanner. Finds Markdown files in the repository, prioritized by proximity to the target package. | None (leaf package) |
 | `internal/docscan/apidoc/` | API documentation coverage analysis. Cross-references analyzer output (`doc_coverage` + `analyze`) against documentation files; computes coverage, stale references, and code-block language validation. | `docscan`, `protocol` |
-| `internal/aireport/` | Combined CI quality report pipeline. Orchestrates all four analysis operations, emits native JSON or self-contained HTML, or pipes JSON to external AI CLIs for text output. Also handles threshold enforcement and GitHub Step Summary integration. | `taxonomy`, `crap`, `quality`, `analysis`, `classify`, `docscan`, `loader`, `config`, `html/template` |
+| `internal/aireport/` | Combined CI quality report pipeline. Orchestrates all four analysis operations, emits deterministic markdown, native JSON, or self-contained HTML, or pipes JSON to external AI CLIs for text output. Also handles threshold enforcement and GitHub Step Summary integration. | `taxonomy`, `crap`, `quality`, `analysis`, `classify`, `docscan`, `loader`, `config`, `html/template` |
 | `internal/scaffold/` | OpenCode file scaffolding. Uses `embed.FS` to scaffold agent and command files into user projects via [`gaze init`](../reference/cli/init.md). | None (uses `embed.FS`) |
 
 ## Data Flow
@@ -97,8 +97,8 @@ The following diagram shows how data flows through Gaze from CLI invocation to o
    - Docscan step — documentation file inventory
 2. **Payload**: Results are assembled into a `ReportPayload` JSON structure
 3. **Threshold check**: If threshold flags are set, enforce quality gates (exit non-zero on violation)
-4. **Format**: JSON and self-contained HTML are rendered natively; text output is produced by the selected AI adapter (Claude/Gemini/Ollama/OpenCode)
-5. **Output**: The selected format is written to stdout; AI-formatted text can also be appended to `$GITHUB_STEP_SUMMARY`
+4. **Format**: Markdown, JSON, and self-contained HTML are rendered natively; text output is produced by the selected AI adapter (Claude/Gemini/Ollama/OpenCode)
+5. **Output**: The selected format is written to stdout; text and markdown output can also be appended to `$GITHUB_STEP_SUMMARY`
 
 ## Key Patterns
 

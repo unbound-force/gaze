@@ -1,0 +1,2 @@
+{"type":"step_start","timestamp":1793491200137,"sessionID":"ses_7f3a9c21e001Kq8ZtVb2NwXy4D","part":{"id":"prt_e8001","sessionID":"ses_7f3a9c21e001Kq8ZtVb2NwXy4D","messageID":"msg_e801","type":"step-start","snapshot":"4b825dc642cb6eb9a060e54bf8d69288fbee4904"}}
+{"type":"error","timestamp":1793491200274,"sessionID":"ses_7f3a9c21e001Kq8ZtVb2NwXy4D","error":{"name":"APIError","data":{"message":"Incorrect API key provided.","statusCode":401,"isRetryable":false}}}

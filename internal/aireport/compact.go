@@ -13,12 +13,14 @@ import (
 // compactPayload mirrors ReportPayload but includes the summary with JSON
 // tags (not json:"-") and uses compact representations for each section.
 type compactPayload struct {
-	Summary  compactSummary  `json:"summary"`
-	CRAP     json.RawMessage `json:"crap"`
-	Quality  json.RawMessage `json:"quality"`
-	Classify json.RawMessage `json:"classify"`
-	Docscan  json.RawMessage `json:"docscan"`
-	Errors   PayloadErrors   `json:"errors"`
+	Metadata   ReportMetadata  `json:"metadata"`
+	Summary    compactSummary  `json:"summary"`
+	CRAP       json.RawMessage `json:"crap"`
+	Quality    json.RawMessage `json:"quality"`
+	Classify   json.RawMessage `json:"classify"`
+	Docscan    json.RawMessage `json:"docscan"`
+	Errors     PayloadErrors   `json:"errors"`
+	Assessment *Assessment     `json:"assessment"`
 }
 
 // compactSummary mirrors ReportSummary with JSON tags so it appears in
@@ -152,6 +154,8 @@ const qualityReportCap = 50
 // are preserved as [] (not null).
 func (p *ReportPayload) CompactForAI() ([]byte, error) {
 	cp := compactPayload{
+		Metadata:   p.Metadata,
+		Assessment: p.Assessment,
 		Summary: compactSummary{
 			CRAPload:            p.Summary.CRAPload,
 			GazeCRAPload:        p.Summary.GazeCRAPload,

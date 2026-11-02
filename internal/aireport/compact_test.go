@@ -225,7 +225,7 @@ func TestCompactForAI_ValidJSON(t *testing.T) {
 	}
 
 	// Verify all top-level keys are present.
-	for _, key := range []string{"summary", "crap", "quality", "classify", "docscan", "errors"} {
+	for _, key := range []string{"metadata", "summary", "crap", "quality", "classify", "docscan", "errors", "assessment"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing top-level key %q in compact JSON", key)
 		}
@@ -1251,7 +1251,7 @@ func TestProjectSideEffects(t *testing.T) {
 func TestRunTextPath_CompactPayloadReceived(t *testing.T) {
 	payload := buildFullPayload(t)
 
-	fa := &FakeAdapter{Response: "# Report\n\nFormatted output."}
+	fa := &FakeAdapter{Response: validAnswerJSON}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -1409,4 +1409,49 @@ func extractQualityReports(t *testing.T, data []byte) []map[string]interface{} {
 	}
 
 	return reports
+}
+
+func TestCompactForAI_MetadataAndAssessment(t *testing.T) {
+	payload := buildFullPayload(t)
+	payload.Metadata = ReportMetadata{
+		ModulePath:  "github.com/example/project",
+		Branch:      "main",
+		GazeVersion: "v2.4.0",
+		Date:        "2026-11-01",
+		Sections:    AllSections().List(),
+	}
+	assessment := Assess(payload)
+	payload.Assessment = &assessment
+
+	data, err := payload.CompactForAI()
+	if err != nil {
+		t.Fatalf("CompactForAI: %v", err)
+	}
+
+	var compact struct {
+		Metadata   ReportMetadata `json:"metadata"`
+		Assessment *Assessment    `json:"assessment"`
+	}
+	if err := json.Unmarshal(data, &compact); err != nil {
+		t.Fatalf("Unmarshal compact payload: %v", err)
+	}
+
+	if compact.Metadata.ModulePath != payload.Metadata.ModulePath {
+		t.Errorf("metadata.module_path = %q, want %q", compact.Metadata.ModulePath, payload.Metadata.ModulePath)
+	}
+	if compact.Metadata.GazeVersion != payload.Metadata.GazeVersion {
+		t.Errorf("metadata.gaze_version = %q, want %q", compact.Metadata.GazeVersion, payload.Metadata.GazeVersion)
+	}
+	if compact.Assessment == nil {
+		t.Fatal("assessment is missing from the compact payload")
+	}
+	if compact.Assessment.RubricVersion != rubricVersion {
+		t.Errorf("assessment.rubric_version = %q, want %q", compact.Assessment.RubricVersion, rubricVersion)
+	}
+	if got := len(compact.Assessment.Scorecard); got != 5 {
+		t.Errorf("assessment.scorecard has %d rows, want 5", got)
+	}
+	if got := len(compact.Assessment.Recommendations); got > maxRecommendations {
+		t.Errorf("assessment.recommendations has %d items, want at most %d", got, maxRecommendations)
+	}
 }

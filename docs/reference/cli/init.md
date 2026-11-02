@@ -27,7 +27,7 @@ The `init` command creates 9 files with the following directory structure:
 ```text
 .opencode/
 ├── agents/
-│   ├── gaze-reporter.md          # AI agent prompt for quality reporting (user-owned)
+│   ├── gaze-reporter.md          # AI agent prompt for quality reporting (tool-owned)
 │   ├── gaze-test-generator.md    # Test generation agent
 │   └── divisor-gaze-testing.md   # Test-quality reviewer persona for review councils
 ├── commands/
@@ -44,8 +44,8 @@ The `init` command creates 9 files with the following directory structure:
 
 Gaze uses a mixed ownership model for scaffolded files:
 
-- **User-owned files** (`agents/gaze-reporter.md`, `commands/gaze.md`): Created once, never overwritten on subsequent `gaze init` runs (unless `--force` is used). Users can customize these files.
-- **Tool-owned files** (everything under `references/`, plus `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`): Updated automatically on `gaze init` if the content has changed. These files are maintained by Gaze and should not be manually edited.
+- **User-owned files** (`commands/gaze.md`): Created once, never overwritten on subsequent `gaze init` runs (unless `--force` is used). Users can customize this file.
+- **Tool-owned files** (everything under `references/`, plus `agents/gaze-reporter.md`, `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`): Updated automatically on `gaze init` if the content has changed, and reported as `updated`. These files are maintained by Gaze and should not be manually edited — local customizations to `agents/gaze-reporter.md` are overwritten.
 
 ### Divisor Review-Config Registration
 

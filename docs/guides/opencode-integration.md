@@ -44,7 +44,7 @@ The scaffold creates 9 files: three subdirectories plus the DCP configuration at
 
 | File | Description | Ownership |
 |------|-------------|-----------|
-| `agents/gaze-reporter.md` | Quality report agent — interprets Gaze JSON output and produces formatted markdown reports with actionable recommendations | User-owned |
+| `agents/gaze-reporter.md` | Quality report agent — shows the Gaze-rendered markdown report verbatim and adds judgment (narrative plus prioritized recommendations) | Tool-owned |
 | `agents/gaze-test-generator.md` | Test generation agent — generates Go test functions from Gaze quality data (gap hints, gaps, fix strategies) | Tool-owned |
 | `agents/divisor-gaze-testing.md` | Testing persona for review councils — universal gaze test-quality rubric with conditional Go-native and external-analyzer sections | Tool-owned |
 
@@ -52,7 +52,7 @@ The scaffold creates 9 files: three subdirectories plus the DCP configuration at
 
 | File | Description | Ownership |
 |------|-------------|-----------|
-| `commands/gaze.md` | `/gaze` command — runs Gaze CLI with `--format=json` and delegates to the gaze-reporter agent for formatting | User-owned |
+| `commands/gaze.md` | `/gaze` command — runs `gaze report --format=markdown` and delegates to the gaze-reporter agent, which shows the rendered report and adds judgment | User-owned |
 | `commands/gaze-fix.md` | `/gaze fix` command — batch remediation using the gaze-test-generator agent | Tool-owned |
 | `commands/speckit.testreview.md` | `/speckit.testreview` command — read-only spec testability analysis | Tool-owned |
 
@@ -73,9 +73,9 @@ The scaffold creates 9 files: three subdirectories plus the DCP configuration at
 
 Gaze distinguishes between two ownership models for scaffolded files:
 
-**User-owned files** (`agents/gaze-reporter.md`, `commands/gaze.md`) are written once and never overwritten on subsequent `gaze init` runs. You can customize these files — add project-specific instructions, change formatting preferences, adjust the agent's behavior. Your changes are preserved.
+**User-owned files** (`commands/gaze.md`) are written once and never overwritten on subsequent `gaze init` runs. You can customize this file — add project-specific instructions or change how the command invokes Gaze. Your changes are preserved.
 
-**Tool-owned files** (everything under `references/`, plus `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`) use overwrite-on-diff behavior. When you run `gaze init`, these files are compared against the version embedded in the Gaze binary. If the content differs (e.g., because you upgraded Gaze), the file is silently updated. If the content is identical, the file is skipped. This ensures reference materials and tool-managed agents stay current without requiring `--force`.
+**Tool-owned files** (everything under `references/`, plus `agents/gaze-reporter.md`, `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`) use overwrite-on-diff behavior. When you run `gaze init`, these files are compared against the version embedded in the Gaze binary. If the content differs (e.g., because you upgraded Gaze), the file is updated and reported. If the content is identical, the file is skipped. This keeps reference materials and tool-managed agents current without requiring `--force`. Local customizations to these files are overwritten — keep project-specific instructions in your own agent files instead.
 
 The `--force` flag overrides both behaviors and overwrites all files unconditionally.
 
@@ -112,31 +112,31 @@ After running `gaze init`, the `/gaze` command is available in OpenCode:
 
 The `/gaze` command:
 
-1. Runs the appropriate `gaze` CLI command with `--format=json`
-2. Passes the JSON output to the gaze-reporter agent
-3. The agent interprets the data and produces a formatted markdown report
+1. Runs `gaze report --format=markdown` (adding `--sections=crap` or `--sections=quality` for the focused modes)
+2. Shows the Gaze-rendered markdown report verbatim
+3. Adds an `## Assessment` section with judgment: a short narrative and up to five prioritized recommendations
 
 The report includes:
 
-- Module health summary with letter grades
+- Module health summary with letter grades computed by Gaze's rubric
 - [CRAP](../reference/glossary.md) and [GazeCRAP](../reference/glossary.md) score analysis
 - [Quadrant](../reference/glossary.md) distribution (Q1 Safe through Q4 Dangerous)
 - Worst offenders with [fix strategy](../reference/glossary.md) labels
 - [Contract coverage](../reference/glossary.md) gaps with specific unasserted effects
-- Actionable recommendations prioritized by impact
+- Actionable recommendations prioritized by impact, followed by the agent's assessment
 
 ## What the Gaze-Reporter Agent Does
 
-The gaze-reporter agent is an OpenCode agent definition that instructs the AI model how to interpret Gaze's JSON output. It:
+The gaze-reporter agent is an OpenCode agent definition that shows Gaze's rendered report and adds judgment. It:
 
-- Reads the JSON payload from Gaze CLI commands
-- Applies the scoring consistency rules (CRAPload threshold from `summary.crap_threshold`, contract coverage as module-wide average)
-- Uses emoji-rich formatting with section markers and severity indicators
-- References the canonical example output from `references/example-report.md`
-- Applies the document-enhanced classification scoring model from `references/doc-scoring-model.md`
-- Produces a structured markdown report with clear remediation guidance
+- Resolves the Gaze binary (local build, then `PATH`, then `go install`)
+- Parses the mode (`crap`, `quality`, or full) and detects external analyzers from `.gaze.yaml` or project markers
+- Runs `gaze report --format=markdown` and shows the output verbatim — it never re-renders tables, re-grades metrics, or re-ranks the deterministic recommendations
+- Adds one `## Assessment` section: a short narrative and up to five prioritized recommendations that cite the report's metrics
+- In quality mode, inspects unmapped assertions and reports likely semantic mappings as suggestions at confidence 50, without changing any rendered coverage number
+- In full mode, may consult `references/doc-scoring-model.md` for document-informed ambiguity notes that never change the rendered counts
 
-The agent does not perform any analysis — all metrics are computed by Gaze. The agent only formats and interprets the pre-computed data.
+All metrics, grades, and deterministic recommendations are computed by Gaze. The agent adds interpretation and prioritization only.
 
 ## What the Gaze-Test-Generator Agent Does
 
@@ -180,11 +180,11 @@ When you upgrade Gaze (e.g., via `brew upgrade gaze`), run `gaze init` again to 
 gaze init
 ```
 
-Tool-owned files with changed content are automatically updated. User-owned files are skipped (your customizations are preserved). The output shows what was updated:
+Tool-owned files with changed content are automatically updated, including `agents/gaze-reporter.md` — local edits to that agent are overwritten. User-owned files are skipped, so your customizations to `commands/gaze.md` are preserved. The output shows what was updated:
 
 ```text
 Gaze OpenCode integration already up to date:
-  skipped: .opencode/agents/gaze-reporter.md (already exists)
+  updated: .opencode/agents/gaze-reporter.md (content changed)
   updated: .opencode/references/example-report.md (content changed)
   skipped: .opencode/commands/gaze.md (already exists)
 ```

@@ -47,7 +47,7 @@ func TestRunProductionPipeline_AllStepsSucceed(t *testing.T) {
 	var stderr bytes.Buffer
 	steps := fakeSteps()
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestRunProductionPipeline_CRAPStepSSADegradation(t *testing.T) {
 		}, nil
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestRunProductionPipeline_CRAPStepFails(t *testing.T) {
 		return nil, fmt.Errorf("crap analysis failed")
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("pipeline should not return error on step failure, got: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestRunProductionPipeline_QualityStepFails(t *testing.T) {
 		return nil, fmt.Errorf("quality analysis failed")
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("pipeline should not return error on step failure, got: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestRunProductionPipeline_ClassifyStepFails(t *testing.T) {
 		return nil, fmt.Errorf("classify failed")
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("pipeline should not return error on step failure, got: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestRunProductionPipeline_DocscanStepFails(t *testing.T) {
 		return nil, fmt.Errorf("docscan failed")
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("pipeline should not return error on step failure, got: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestRunProductionPipeline_MultipleStepsFail(t *testing.T) {
 		return nil, fmt.Errorf("quality failed")
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("pipeline should not return error on step failures, got: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestRunProductionPipeline_EmptyPatterns(t *testing.T) {
 		return nil, nil
 	}
 
-	_, err := runProductionPipeline(context.Background(), []string{}, "/tmp", "", false, &stderr, steps)
+	_, err := runProductionPipeline(context.Background(), []string{}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err == nil {
 		t.Fatal("expected error for empty patterns")
 	}
@@ -313,7 +313,7 @@ func TestRunProductionPipeline_GazeCRAPloadFlowsThroughPipeline(t *testing.T) {
 		}, nil
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestRunProductionPipeline_SummaryFields(t *testing.T) {
 	var stderr bytes.Buffer
 	steps := fakeSteps()
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestRunProductionPipeline_CRAPStepFails_CRAPloadIsNil(t *testing.T) {
 		return nil, fmt.Errorf("crap analysis failed")
 	}
 
-	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("pipeline should not return error on step failure, got: %v", err)
 	}
@@ -395,7 +395,7 @@ func TestRunProductionPipeline_TestShortThreadsToStep(t *testing.T) {
 	}
 
 	// Pass testShort=true and verify it reaches the step.
-	_, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", true, &stderr, steps)
+	_, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", true, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestRunProductionPipeline_TestShortThreadsToStep(t *testing.T) {
 
 	// Pass testShort=false and verify it reaches the step.
 	capturedShort = true // reset to non-default
-	_, err = runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps)
+	_, err = runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps())
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestRunProductionPipeline_ContextForwardedToDocscanStep(t *testing.T) {
 	}
 
 	ctx := context.WithValue(context.Background(), ctxKey{}, "value")
-	if _, err := runProductionPipeline(ctx, []string{"./..."}, "/tmp", "", false, &stderr, steps); err != nil {
+	if _, err := runProductionPipeline(ctx, []string{"./..."}, "/tmp", "", false, &stderr, steps, AllSections().Steps()); err != nil {
 		t.Fatalf("runProductionPipeline: %v", err)
 	}
 
@@ -462,5 +462,102 @@ func TestRunProductionPipeline_ContextForwardedToDocscanStep(t *testing.T) {
 	}
 	if got := captured.Value(ctxKey{}); got != "value" {
 		t.Errorf("docscan step context value = %v, want %q", got, "value")
+	}
+}
+
+// TestRunProductionPipeline_SectionSelection verifies that only the steps a
+// section selection requires are invoked and that unselected steps leave both
+// their payload field and their error entry nil.
+func TestRunProductionPipeline_SectionSelection(t *testing.T) {
+	cases := []struct {
+		name      string
+		sections  []string
+		wantCrap  bool
+		wantQual  bool
+		wantClass bool
+		wantDoc   bool
+	}{
+		{name: "crap", sections: []string{"crap"}, wantCrap: true},
+		{name: "quality", sections: []string{"quality"}, wantQual: true},
+		{name: "classification", sections: []string{"classification"}, wantClass: true},
+		{name: "health", sections: []string{"health"}, wantCrap: true, wantQual: true, wantDoc: true},
+		{name: "all", sections: []string{"crap", "quality", "classification", "health"},
+			wantCrap: true, wantQual: true, wantClass: true, wantDoc: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sections, err := ParseSections(tc.sections)
+			if err != nil {
+				t.Fatalf("ParseSections: %v", err)
+			}
+
+			calls := make(map[string]int)
+			steps := fakeSteps()
+			crapStep := steps.crapStep
+			qualityStep := steps.qualityStep
+			classifyStep := steps.classifyStep
+			docscanStep := steps.docscanStep
+
+			steps.crapStep = func(p []string, m, c string, w io.Writer, cc crap.ContractCoverageProvider, s bool) (*crapStepResult, error) {
+				calls["crap"]++
+				return crapStep(p, m, c, w, cc, s)
+			}
+			steps.qualityStep = func(p []string, m string, w io.Writer, d ...qualityPipelineDeps) (*qualityStepResult, error) {
+				calls["quality"]++
+				return qualityStep(p, m, w, d...)
+			}
+			steps.classifyStep = func(p []string, m string, w io.Writer, d ...qualityPipelineDeps) (*classifyStepResult, error) {
+				calls["classification"]++
+				return classifyStep(p, m, w, d...)
+			}
+			steps.docscanStep = func(ctx context.Context, m string, w io.Writer) (json.RawMessage, error) {
+				calls["docscan"]++
+				return docscanStep(ctx, m, w)
+			}
+
+			var stderr bytes.Buffer
+			payload, err := runProductionPipeline(context.Background(), []string{"./..."}, "/tmp", "", false, &stderr, steps, sectionSteps(sections))
+			if err != nil {
+				t.Fatalf("runProductionPipeline: %v", err)
+			}
+
+			want := map[string]bool{
+				"crap":           tc.wantCrap,
+				"quality":        tc.wantQual,
+				"classification": tc.wantClass,
+				"docscan":        tc.wantDoc,
+			}
+			for step, expected := range want {
+				got := calls[step]
+				if expected && got != 1 {
+					t.Errorf("%s step calls = %d, want 1", step, got)
+				}
+				if !expected && got != 0 {
+					t.Errorf("%s step calls = %d, want 0", step, got)
+				}
+			}
+
+			assertUnselectedNil(t, "CRAP", payload.CRAP, payload.Errors.CRAP, tc.wantCrap)
+			assertUnselectedNil(t, "Quality", payload.Quality, payload.Errors.Quality, tc.wantQual)
+			assertUnselectedNil(t, "Classify", payload.Classify, payload.Errors.Classify, tc.wantClass)
+			assertUnselectedNil(t, "Docscan", payload.Docscan, payload.Errors.Docscan, tc.wantDoc)
+		})
+	}
+}
+
+// assertUnselectedNil fails when an unselected step left a payload field or an
+// error entry populated.
+func assertUnselectedNil(t *testing.T, name string, field json.RawMessage, errField *string, selected bool) {
+	t.Helper()
+
+	if selected {
+		return
+	}
+	if field != nil {
+		t.Errorf("%s field is populated although the step was not selected", name)
+	}
+	if errField != nil {
+		t.Errorf("%s error entry is set although the step was not selected: %q", name, *errField)
 	}
 }

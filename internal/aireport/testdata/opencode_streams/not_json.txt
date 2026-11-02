@@ -1,0 +1,5 @@
+I'll start by examining the project structure and the gaze configuration.
+
+The payload shows a CRAPload of 7. Let me check whether the CI coverage source is available.
+
+CI 源确实存在。这改变了计划——我可以评估未映射的断言，并检查 add_tests 函数签名。让我检查一下仓库。

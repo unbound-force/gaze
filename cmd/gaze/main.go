@@ -2157,9 +2157,22 @@ type reportParams struct {
 	languageFlag        string
 	// testShort passes -short to internal go test invocations when true.
 	testShort bool
-	ctx       context.Context
-	stdout    io.Writer
-	stderr    io.Writer
+	// sections lists the report sections to analyze and render. An empty
+	// slice means every section.
+	sections []string
+	// now stamps the report metadata clock. Nil means time.Now.
+	now func() time.Time
+	// gazeVersion overrides the version recorded in the report metadata.
+	gazeVersion string
+	// analyzeFunc overrides the analysis pipeline for testing. When nil the
+	// production pipeline (or the external-analyzer pipeline) runs.
+	analyzeFunc func([]string, string) (*aireport.ReportPayload, error)
+	// metadata overrides the derived report metadata when set. Tests use it
+	// to pin values the environment would otherwise supply.
+	metadata *aireport.ReportMetadata
+	ctx      context.Context
+	stdout   io.Writer
+	stderr   io.Writer
 
 	// runnerFunc overrides aireport.Run for testing. When nil, aireport.Run is called.
 	runnerFunc func(aireport.RunnerOptions) error
@@ -2173,22 +2186,38 @@ type reportParams struct {
 // Threshold evaluation runs after the pipeline and may set exit code 1.
 // validateReportParams checks pre-flight conditions for gaze report:
 // adapter requirement in text mode, ollama model requirement, and
-// coverprofile path validity.
-func validateReportParams(p reportParams) error {
-	if err := cliutil.ValidateFormat(p.format, "html"); err != nil {
-		return err
+// coverprofile path validity. It returns the resolved section set so the
+// run parses --sections exactly once.
+func validateReportParams(p reportParams) (aireport.SectionSet, error) {
+	if err := cliutil.ValidateFormat(p.format, "html", "markdown"); err != nil {
+		return aireport.SectionSet{}, err
+	}
+
+	// Section selection and threshold compatibility are pre-flight
+	// conditions (FR-028): an incompatible combination must fail before any
+	// analysis runs.
+	sections, err := reportSections(p)
+	if err != nil {
+		return aireport.SectionSet{}, err
+	}
+	if err := aireport.CheckThresholds(sections, aireport.ThresholdConfig{
+		MaxCrapload:         p.maxCrapload,
+		MaxGazeCrapload:     p.maxGazeCrapload,
+		MinContractCoverage: p.minContractCoverage,
+	}); err != nil {
+		return aireport.SectionSet{}, err
 	}
 
 	// In text mode, --ai is required (FR-002).
 	if p.format == "text" && p.adapterName == "" {
-		return fmt.Errorf(
+		return sections, fmt.Errorf(
 			"--ai is required in text mode: must be one of \"claude\", \"gemini\", \"ollama\", or \"opencode\"",
 		)
 	}
 
 	// In text mode, validate ollama requires --model (FR-003).
 	if p.format == "text" && p.adapterName == "ollama" && p.modelName == "" {
-		return fmt.Errorf("--model is required when using ollama (FR-003)")
+		return sections, fmt.Errorf("--model is required when using ollama (FR-003)")
 	}
 
 	// Pre-flight validation for --coverprofile (FR-004, FR-005): check
@@ -2197,85 +2226,50 @@ func validateReportParams(p reportParams) error {
 	if p.coverProfile != "" {
 		info, statErr := os.Stat(p.coverProfile)
 		if statErr != nil {
-			return fmt.Errorf("--coverprofile %q: %w", p.coverProfile, statErr)
+			return sections, fmt.Errorf("--coverprofile %q: %w", p.coverProfile, statErr)
 		}
 		if info.IsDir() {
-			return fmt.Errorf("--coverprofile %q is a directory, not a file", p.coverProfile)
+			return sections, fmt.Errorf("--coverprofile %q is a directory, not a file", p.coverProfile)
 		}
 	}
 
-	return nil
+	return sections, nil
 }
 
 func runReport(p reportParams) error {
-	if err := validateReportParams(p); err != nil {
+	sections, err := validateReportParams(p)
+	if err != nil {
 		return err
 	}
 
-	cwd, err := os.Getwd()
+	moduleDir, err := resolveReportModuleDir(p)
 	if err != nil {
-		cwd = "."
+		return err
 	}
 
-	// When --analyzer is set, the project may not be a Go module.
-	// Use cwd directly and skip FindModuleRoot. For Go-native
-	// analysis, resolve the module root. Fix for #257: same bug
-	// pattern as #250 (fixed in runCrap by PR #254).
-	moduleDir := cwd
-	if p.analyzerFlag == "" {
-		var findErr error
-		moduleDir, findErr = loader.FindModuleRoot(cwd)
-		if findErr != nil {
-			return fmt.Errorf("finding module root: %w", findErr)
-		}
-	}
-
-	timeout := p.aiTimeout
-	if timeout <= 0 {
-		timeout = 10 * time.Minute
-	}
-
-	// adapterCfg is the single source of adapter configuration used for both
-	// NewAdapter and RunnerOptions.AdapterCfg.
-	adapterCfg := aireport.AdapterConfig{
-		Name:    p.adapterName,
-		Model:   p.modelName,
-		Timeout: timeout,
-	}
-
-	// Resolve AI adapter (validates allowlist name). The pre-flight binary
-	// check (FR-012) runs inside aireport.Run, before the analysis pipeline,
-	// via ValidateAdapterBinary.
-	var aiAdapter aireport.AIAdapter
-	var systemPrompt string
+	// Text mode is the only AI-assisted format, so it is the only one that
+	// could be tempted to read the project's interactive prompt (FR-025).
 	if p.format == "text" {
-		var adapterErr error
-		aiAdapter, adapterErr = aireport.NewAdapter(adapterCfg)
-		if adapterErr != nil {
-			return fmt.Errorf("invalid --ai value: %w", adapterErr)
-		}
-
-		// Load system prompt only in text mode (FR-015): in JSON and HTML modes the
-		// prompt file is never needed and a permission error must not block output.
-		var promptErr error
-		systemPrompt, promptErr = aireport.LoadPrompt(moduleDir)
-		if promptErr != nil {
-			return fmt.Errorf("loading system prompt: %w", promptErr)
-		}
+		printIgnoredPromptNotice(moduleDir, p.stderr)
 	}
 
-	stepSummaryPath := os.Getenv("GITHUB_STEP_SUMMARY")
+	adapterCfg := reportAdapterConfig(p)
+	aiAdapter, err := buildReportAdapter(p, adapterCfg)
+	if err != nil {
+		return err
+	}
 
 	opts := aireport.RunnerOptions{
 		Patterns:        p.patterns,
 		ModuleDir:       moduleDir,
 		Adapter:         aiAdapter,
 		AdapterCfg:      adapterCfg,
-		SystemPrompt:    systemPrompt,
 		Format:          p.format,
+		Sections:        sections,
+		Metadata:        reportMetadata(p, moduleDir),
 		Stdout:          p.stdout,
 		Stderr:          p.stderr,
-		StepSummaryPath: stepSummaryPath,
+		StepSummaryPath: os.Getenv("GITHUB_STEP_SUMMARY"),
 		CoverProfile:    p.coverProfile,
 		Thresholds: aireport.ThresholdConfig{
 			MaxCrapload:         p.maxCrapload,
@@ -2286,21 +2280,11 @@ func runReport(p reportParams) error {
 		Context:   p.ctx,
 	}
 
-	// External analyzer path: when --analyzer is set, override the
-	// CRAP step's providers with external adapters. The quality,
-	// classify, and docscan steps are Go-specific and are skipped
-	// when using an external analyzer (their errors are recorded
-	// in the payload).
-	if p.analyzerFlag != "" {
-		analyzeFunc, cleanup, extErr := buildExternalReportAnalyzeFunc(
-			p.ctx, p.analyzerFlag, p.languageFlag, moduleDir, p.patterns, p.stderr,
-		)
-		if extErr != nil {
-			return extErr
-		}
-		defer cleanup()
-		opts.AnalyzeFunc = analyzeFunc
+	cleanup, err := applyReportAnalyzeFunc(&opts, p, moduleDir, sections)
+	if err != nil {
+		return err
 	}
+	defer cleanup()
 
 	runFn := p.runnerFunc
 	if runFn == nil {
@@ -2310,16 +2294,169 @@ func runReport(p reportParams) error {
 	return runFn(opts)
 }
 
-// buildExternalReportAnalyzeFunc creates an AnalyzeFunc that uses an
-// external analyzer for the CRAP step of the report pipeline. The
-// quality, classify, and docscan steps are skipped (they are
-// Go-specific). Returns the analyze function, a cleanup function
-// (to close the session), and an error.
+// ignoredPromptNotice is the single line gaze report prints when a project
+// carries a locally customized interactive /gaze prompt.
+const ignoredPromptNotice = "notice: ignoring .opencode/agents/gaze-reporter.md for gaze report (it is the interactive /gaze agent; gaze report uses built-in report-mode instructions)"
+
+// printIgnoredPromptNotice warns, once, that gaze report does not read the
+// project's interactive /gaze agent. The report pipeline always uses the
+// embedded report-mode prompt, so a local customization cannot silently
+// change CI output (FR-025, research R17).
+func printIgnoredPromptNotice(moduleDir string, stderr io.Writer) {
+	path := filepath.Join(moduleDir, ".opencode", "agents", "gaze-reporter.md")
+
+	if _, err := os.Stat(path); err != nil {
+		return
+	}
+
+	_, _ = fmt.Fprintln(stderr, ignoredPromptNotice)
+}
+
+// resolveReportModuleDir resolves the directory the analysis runs from: the
+// working directory for external analyzers (the project may not be a Go
+// module) and the Go module root otherwise.
+func resolveReportModuleDir(p reportParams) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+
+	if p.analyzerFlag != "" {
+		return cwd, nil
+	}
+
+	moduleDir, findErr := loader.FindModuleRoot(cwd)
+	if findErr != nil {
+		return "", fmt.Errorf("finding module root: %w", findErr)
+	}
+
+	return moduleDir, nil
+}
+
+// reportAdapterConfig returns the single adapter configuration used for both
+// NewAdapter and RunnerOptions.AdapterCfg.
+func reportAdapterConfig(p reportParams) aireport.AdapterConfig {
+	timeout := p.aiTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	return aireport.AdapterConfig{
+		Name:    p.adapterName,
+		Model:   p.modelName,
+		Timeout: timeout,
+	}
+}
+
+// buildReportAdapter resolves the AI adapter and system prompt. Only text
+// mode needs them (FR-015): native formats must not fail on adapter or
+// prompt problems.
+func buildReportAdapter(p reportParams, cfg aireport.AdapterConfig) (aireport.AIAdapter, error) {
+	if p.format != "text" {
+		return nil, nil
+	}
+
+	adapter, err := aireport.NewAdapter(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --ai value: %w", err)
+	}
+
+	return adapter, nil
+}
+
+// reportSections parses --sections, defaulting to every section.
+func reportSections(p reportParams) (aireport.SectionSet, error) {
+	if len(p.sections) == 0 {
+		return aireport.AllSections(), nil
+	}
+
+	return aireport.ParseSections(p.sections)
+}
+
+// applyReportAnalyzeFunc wires the run's analysis function: the injected test
+// seam, the external-analyzer pipeline, or the production default. The
+// returned cleanup closes the analyzer session; it is a no-op otherwise.
+func applyReportAnalyzeFunc(opts *aireport.RunnerOptions, p reportParams, moduleDir string, sections aireport.SectionSet) (func(), error) {
+	if p.analyzerFlag != "" {
+		analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
+			p.ctx, p.analyzerFlag, p.languageFlag, moduleDir, p.patterns, p.stderr, sections.Steps(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		opts.AnalyzeFunc = analyzeFunc
+
+		return cleanup, nil
+	}
+
+	if p.analyzeFunc != nil {
+		opts.AnalyzeFunc = p.analyzeFunc
+	}
+
+	return func() {}, nil
+}
+
+// reportNow returns the clock that stamps the report metadata.
+func reportNow(p reportParams) time.Time {
+	if p.now != nil {
+		return p.now()
+	}
+
+	return time.Now()
+}
+
+// reportMetadata returns the metadata recorded in the report header.
+func reportMetadata(p reportParams, moduleDir string) aireport.ReportMetadata {
+	if p.metadata != nil {
+		return *p.metadata
+	}
+
+	return buildReportMetadata(moduleDir, p.gazeVersion, reportNow(p))
+}
+
+// buildReportMetadata derives the report metadata from the environment.
+// The derivation rules are fixed by research R7: the module path comes from
+// go.mod, the branch only from CI environment variables (no git shelling),
+// and the date is UTC.
+func buildReportMetadata(moduleDir, gazeVersion string, now time.Time) aireport.ReportMetadata {
+	modulePath := crap.ReadModulePath(moduleDir)
+	if modulePath == "" {
+		modulePath = filepath.Base(moduleDir)
+	}
+
+	if gazeVersion == "" {
+		gazeVersion = version
+	}
+
+	return aireport.ReportMetadata{
+		ModulePath:  modulePath,
+		Branch:      reportBranch(),
+		GazeVersion: gazeVersion,
+		Date:        now.UTC().Format("2006-01-02"),
+	}
+}
+
+// reportBranch returns the CI branch name, or an empty string outside CI.
+func reportBranch() string {
+	if branch := os.Getenv("GITHUB_HEAD_REF"); branch != "" {
+		return branch
+	}
+
+	return os.Getenv("GITHUB_REF_NAME")
+}
+
+// buildExternalReportAnalyzeFunc creates an AnalyzeFunc that runs the
+// selected report steps against an external analyzer. CRAP comes from the
+// analyzer's complexity, coverage, and side-effect methods; quality and
+// classification come from its optional test_mapping method; docscan uses
+// the optional doc_coverage method. Returns the analyze function, a
+// cleanup function (to close the session), and an error.
 func buildExternalReportAnalyzeFunc(
 	ctx context.Context,
 	analyzerFlag, languageFlag, moduleDir string,
 	patterns []string,
 	stderr io.Writer,
+	selected aireport.StepSet,
 ) (func([]string, string) (*aireport.ReportPayload, error), func(), error) {
 	session, providers, err := initExternalSession(
 		analyzerFlag, languageFlag, moduleDir, patterns, stderr)
@@ -2328,53 +2465,192 @@ func buildExternalReportAnalyzeFunc(
 	}
 
 	analyzeFunc := func(pats []string, modDir string) (*aireport.ReportPayload, error) {
-		return runExternalReportCRAP(ctx, pats, modDir, providers, session, stderr)
+		return runExternalReport(ctx, pats, modDir, providers, session, stderr, selected)
 	}
 
 	cleanup := func() { _ = session.Close() }
 	return analyzeFunc, cleanup, nil
 }
 
-// runExternalReportCRAP runs the CRAP step using external providers
-// and builds a ReportPayload with the CRAP section populated plus the
-// docscan step when an analyzer session is available. Quality and
-// classify are Go-specific and skipped.
-func runExternalReportCRAP(ctx context.Context, pats []string, modDir string, providers *adapter.Providers, sess *adapter.Session, stderr io.Writer) (*aireport.ReportPayload, error) {
+// externalQualitySection is the quality section built from an external
+// analyzer, together with the summary values the report header and the
+// classification section need.
+type externalQualitySection struct {
+	JSON     json.RawMessage
+	Coverage int
+	Counts   *taxonomy.ClassificationCounts
+}
+
+// runExternalReportQuality builds the report's quality section from the
+// external analyzer's test_mapping data. It mirrors `gaze quality --analyzer`
+// and reuses that command's degradation messages so the report warns exactly
+// as the command does (research R9).
+func runExternalReportQuality(pats []string, modDir string, providers *adapter.Providers, sess *adapter.Session) (*externalQualitySection, error) {
+	if !providers.Capabilities.TestMapping {
+		return nil, fmt.Errorf(
+			"analyzer %q does not support test_mapping — "+
+				"contract coverage and over-specification metrics are unavailable",
+			providers.AnalyzerName)
+	}
+	if sess == nil {
+		return nil, fmt.Errorf("external analyzer session is unavailable")
+	}
+
+	results, err := providers.SideEffects.AllResults()
+	if err != nil {
+		return nil, fmt.Errorf("fetching side effect analysis: %w", err)
+	}
+
+	mappings, err := adapter.FetchTestMappings(sess.Client(), pats, modDir)
+	if err != nil {
+		return nil, fmt.Errorf("test_mapping failed for analyzer %q: %w",
+			providers.AnalyzerName, err)
+	}
+
+	reports, summary := adapter.BuildQualityFromMappings(mappings, results, sess.DiscoverTestFiles())
+
+	raw, err := cliutil.CaptureJSON(func(w io.Writer) error {
+		return quality.WriteJSON(w, reports, summary)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &externalQualitySection{
+		JSON:     raw,
+		Coverage: int(summary.AverageContractCoverage),
+		Counts:   summary.ClassificationCounts,
+	}, nil
+}
+
+// externalClassificationCounts copies the analyzer's classification tally
+// onto the payload summary. A nil tally leaves the summary untouched.
+func externalClassificationCounts(payload *aireport.ReportPayload, counts *taxonomy.ClassificationCounts) {
+	if counts == nil {
+		return
+	}
+
+	payload.Summary.Contractual = counts.Contractual
+	payload.Summary.Ambiguous = counts.Ambiguous
+	payload.Summary.Incidental = counts.Incidental
+}
+
+// applyExternalReportQuality fills the report's quality and classification
+// data from the external analyzer. A selected step that cannot run records
+// a step error so the rendered report shows a warning callout instead of a
+// fabricated result.
+func applyExternalReportQuality(payload *aireport.ReportPayload, pats []string, modDir string, providers *adapter.Providers, sess *adapter.Session, selected aireport.StepSet) {
+	// Classification counts come from the same test_mapping data as the
+	// quality section, so the fetch runs when either section needs it.
+	// Selecting only classification must not leave the section empty.
+	if !selected.Quality && !selected.Classify {
+		return
+	}
+
+	section, err := runExternalReportQuality(pats, modDir, providers, sess)
+	if err != nil {
+		msg := err.Error()
+		if selected.Quality {
+			payload.Errors.Quality = &msg
+		}
+		if selected.Classify {
+			payload.Errors.Classify = &msg
+		}
+
+		return
+	}
+
+	if selected.Quality {
+		payload.Quality = section.JSON
+		coverage := section.Coverage
+		payload.Summary.AvgContractCoverage = &coverage
+	}
+
+	if selected.Classify {
+		externalClassificationCounts(payload, section.Counts)
+		if !hasClassificationCounts(payload) {
+			skipped := "skipped: external analyzer mode"
+			payload.Errors.Classify = &skipped
+		}
+	}
+}
+
+// hasClassificationCounts reports whether the payload carries any
+// classification tally to render.
+func hasClassificationCounts(payload *aireport.ReportPayload) bool {
+	return payload.Summary.Contractual+payload.Summary.Ambiguous+payload.Summary.Incidental > 0
+}
+
+// applyExternalReportCRAP fills payload with the CRAP step computed by the
+// external analyzer's providers.
+func applyExternalReportCRAP(payload *aireport.ReportPayload, pats []string, modDir string, providers *adapter.Providers, stderr io.Writer) error {
 	opts := crap.DefaultOptions()
 	opts.Stderr = stderr
 	wireExternalProviders(&opts, providers)
 
 	rpt, err := crap.Analyze(pats, modDir, opts)
 	if err != nil {
-		return nil, fmt.Errorf("CRAP analysis with external analyzer: %w", err)
+		return fmt.Errorf("CRAP analysis with external analyzer: %w", err)
 	}
 
 	crapJSON, err := cliutil.CaptureJSON(func(w io.Writer) error {
 		return crap.WriteJSON(w, rpt)
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	payload := &aireport.ReportPayload{CRAP: crapJSON}
+	payload.CRAP = crapJSON
 	crapload := rpt.Summary.CRAPload
 	payload.Summary.CRAPload = &crapload
 	payload.Summary.GazeCRAPload = rpt.Summary.GazeCRAPload
 	payload.Summary.TotalFunctions = rpt.Summary.TotalFunctions
 
-	skipped := "skipped: external analyzer mode"
-	payload.Errors.Quality = &skipped
-	payload.Errors.Classify = &skipped
+	return nil
+}
+
+// applyExternalReportDocscan fills payload with the docscan step when the
+// analyzer exposes the optional doc_coverage method.
+func applyExternalReportDocscan(ctx context.Context, payload *aireport.ReportPayload, modDir string, sess *adapter.Session, stderr io.Writer) {
+	if sess == nil {
+		return
+	}
+
+	docscanJSON, err := aireport.RunDocscanStep(ctx, modDir, sess, stderr)
+	if err != nil {
+		msg := err.Error()
+		payload.Errors.Docscan = &msg
+
+		return
+	}
+
+	payload.Docscan = docscanJSON
+}
+
+// runExternalReport builds the report payload from an external analyzer.
+// Each selected step is gated independently so a focused section set —
+// `--sections=quality` or `--sections=classification`, for example — runs
+// exactly the steps it renders instead of publishing an empty report by
+// omission.
+func runExternalReport(ctx context.Context, pats []string, modDir string, providers *adapter.Providers, sess *adapter.Session, stderr io.Writer, selected aireport.StepSet) (*aireport.ReportPayload, error) {
+	payload := &aireport.ReportPayload{}
+
+	if selected.CRAP {
+		if err := applyExternalReportCRAP(payload, pats, modDir, providers, stderr); err != nil {
+			return nil, err
+		}
+	}
+
+	// The external analyzer supplies quality and classification data through
+	// test_mapping. When it cannot, the step error renders a warning callout
+	// rather than a fabricated result.
+	applyExternalReportQuality(payload, pats, modDir, providers, sess, selected)
 
 	// The docscan step has external-analyzer support (via the optional
-	// doc_coverage protocol method), so run it when a session is available.
-	if sess != nil {
-		if docscanJSON, err := aireport.RunDocscanStep(ctx, modDir, sess, stderr); err != nil {
-			msg := err.Error()
-			payload.Errors.Docscan = &msg
-		} else {
-			payload.Docscan = docscanJSON
-		}
+	// doc_coverage protocol method), so run it when selected and a session
+	// is available.
+	if selected.Docscan {
+		applyExternalReportDocscan(ctx, payload, modDir, sess, stderr)
 	}
 
 	return payload, nil
@@ -2392,6 +2668,7 @@ func newReportCmd() *cobra.Command {
 		analyzerFlag  string
 		languageFlag  string
 		testShortFlag bool
+		sectionsFlag  []string
 
 		// Threshold raw values and "was set" flags for *int semantics.
 		maxCraploadVal     int
@@ -2416,6 +2693,7 @@ Examples:
   gaze report ./... --ai=opencode
   gaze report ./... --ai=opencode --model=claude-3-5-sonnet
   gaze report ./... --format=json
+  gaze report ./... --format=markdown --sections=crap,quality
   gaze report ./... --ai=claude --coverprofile=coverage.out`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -2450,6 +2728,8 @@ Examples:
 				analyzerFlag:        analyzerFlag,
 				languageFlag:        languageFlag,
 				testShort:           testShortFlag,
+				sections:            sectionsFlag,
+				now:                 time.Now,
 				ctx:                 cmd.Context(),
 				stdout:              cmd.OutOrStdout(),
 				stderr:              cmd.ErrOrStderr(),
@@ -2461,7 +2741,9 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&format, "format", "text", "output format: text, json, or html")
+	cmd.Flags().StringVar(&format, "format", "text", "output format: text, markdown, json, or html")
+	cmd.Flags().StringSliceVar(&sectionsFlag, "sections", []string{"crap", "quality", "classification", "health"},
+		"report sections to analyze and render: crap, quality, classification, health (default all)")
 	cmd.Flags().StringVar(&adapterName, "ai", "", "AI adapter: claude, gemini, ollama, or opencode")
 	cmd.Flags().StringVar(&modelName, "model", "", "model name (required for ollama)")
 	cmd.Flags().DurationVar(&aiTimeout, "ai-timeout", 10*time.Minute, "AI adapter timeout")

@@ -125,15 +125,19 @@ For all flags, see [`gaze quality` reference](docs/reference/cli/quality.md).
 
 ### `gaze report` -- Combined Quality Report
 
-Orchestrate CRAP, quality, classification, and documentation analysis. Text output uses an AI adapter; JSON and native HTML do not.
+Orchestrate CRAP, quality, classification, and documentation analysis. Gaze renders every report section, grade, and deterministic recommendation itself; in `text` mode the AI adapter supplies only a validated summary and recommendations. Deterministic `markdown`, JSON, and native HTML need no AI adapter.
 
 ```bash
 gaze report ./... --ai=claude                       # Claude adapter
 gaze report ./... --ai=opencode                     # OpenCode adapter
+gaze report ./... --format=markdown                 # Deterministic markdown (no AI needed)
+gaze report ./... --format=markdown --sections=crap,quality  # Choose sections
 gaze report ./... --format=json                     # JSON only (no AI needed)
 gaze report ./... --format=html > gaze-report.html  # Offline HTML (no AI needed)
 gaze report ./... --ai=claude --coverprofile=coverage.out  # Reuse coverage
 ```
+
+In `text` mode the adapter's answer is validated before rendering: an invalid or non-English answer fails the run with a non-zero exit while the deterministic report and a rejection callout are still published. Gaze never passes a run on model narration alone.
 
 For adapter setup, CI integration, and all flags, see [`gaze report` reference](docs/reference/cli/report.md) and [AI Reports guide](docs/guides/ai-reports.md).
 
@@ -255,7 +259,7 @@ For the full protocol specification (message format, methods, capability negotia
 
 ## Output Formats
 
-The `analyze`, `crap`, and `quality` commands support `text` (default), `json`, and `html`. `self-check` supports `text` and `json`. `report` supports AI-formatted `text`, native `json`, and native `html`; JSON and HTML need no AI adapter.
+The `analyze`, `crap`, and `quality` commands support `text` (default), `json`, and `html`. `self-check` supports `text` and `json`. `report` supports deterministic `markdown`, AI-formatted `text`, native `json`, and native `html`; markdown, JSON, and HTML need no AI adapter.
 
 HTML output is a self-contained single file designed for offline viewing. It uses inline styling and requires no network access, JavaScript, or external assets.
 

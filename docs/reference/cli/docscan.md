@@ -1,6 +1,6 @@
 # gaze docscan
 
-Scan the repository for Markdown documentation files and output a prioritized list as JSON. This command is primarily used as input to the gaze-reporter agent's full mode for document-enhanced [classification](../../concepts/classification.md).
+Scan the repository for Markdown documentation files and output a prioritized list as JSON. This command also feeds the full-mode documentation section of [`gaze report`](report.md) for document-enhanced [classification](../../concepts/classification.md).
 
 Documents are prioritized by proximity to the target package:
 

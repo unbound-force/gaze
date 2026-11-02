@@ -2,13 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/unbound-force/gaze/v2/internal/aireport"
 	"github.com/unbound-force/gaze/v2/internal/analysis"
@@ -2869,12 +2872,12 @@ func TestSC004_PartialFailure(t *testing.T) {
 // is called exactly once per invocation, and produces structurally equivalent
 // output (same four emoji markers in order) regardless of adapter name (SC-006).
 func TestSC006_CrossAdapterStructure(t *testing.T) {
-	reportBody := "🔍 CRAP\n\n📊 Quality\n\n🧪 Classification\n\n🏥 Health\n"
+	reportBody := `{"summary":"The project needs attention.","recommendations":["Add tests for ` + "`run`" + `."]}`
 	payload := &aireport.ReportPayload{}
 
 	for _, adapterName := range []string{"claude", "gemini", "ollama", "opencode"} {
 		t.Run(adapterName, func(t *testing.T) {
-			fa := &aireport.FakeAdapter{Response: reportBody}
+			fa := &reportTestAdapter{Response: reportBody}
 
 			var stdout, stderr bytes.Buffer
 			// Use runnerFunc that delegates to real aireport.Run with FakeAdapter
@@ -2889,12 +2892,11 @@ func TestSC006_CrossAdapterStructure(t *testing.T) {
 				stderr:      &stderr,
 				runnerFunc: func(opts aireport.RunnerOptions) error {
 					return aireport.Run(aireport.RunnerOptions{
-						Patterns:     opts.Patterns,
-						Format:       opts.Format,
-						Adapter:      fa,
-						SystemPrompt: "# Test",
-						Stdout:       opts.Stdout,
-						Stderr:       opts.Stderr,
+						Patterns: opts.Patterns,
+						Format:   opts.Format,
+						Adapter:  fa,
+						Stdout:   opts.Stdout,
+						Stderr:   opts.Stderr,
 						AnalyzeFunc: func([]string, string) (*aireport.ReportPayload, error) {
 							return payload, nil
 						},
@@ -2984,9 +2986,6 @@ func TestRunReport_HTMLFormat_NoAIRequired(t *testing.T) {
 		runnerFunc: func(opts aireport.RunnerOptions) error {
 			if opts.Adapter != nil {
 				t.Error("HTML report unexpectedly configured an AI adapter")
-			}
-			if opts.SystemPrompt != "" {
-				t.Error("HTML report unexpectedly loaded a system prompt")
 			}
 			if opts.Format != "html" {
 				t.Errorf("runner format = %q, want html", opts.Format)
@@ -3381,7 +3380,7 @@ func TestSC004_PayloadContainsQuadrantCounts(t *testing.T) {
 		"scores": []
 	}`)
 
-	fakeAdapter := &aireport.FakeAdapter{Response: "# Fake Report\nOK"}
+	fakeAdapter := &reportTestAdapter{Response: `{"summary":"The payload carries quadrant counts.","recommendations":["Add tests for run."]}`}
 
 	var stderr bytes.Buffer
 	err := runReport(reportParams{
@@ -3434,19 +3433,18 @@ func TestSC005_AnalysisPerformance(t *testing.T) {
 	t.Log("Running SC-005 analysis performance test (may take up to 5 minutes)...")
 
 	modRoot := findModuleRootForReport(t)
-	fa := &aireport.FakeAdapter{Response: "🔍 CRAP\n\n📊 Quality\n\n🧪 Classification\n\n🏥 Health\n"}
+	fa := &reportTestAdapter{Response: `{"summary":"The project needs attention.","recommendations":["Add tests for ` + "`run`" + `."]}`}
 	var stdout, stderr bytes.Buffer
 
 	// Run the real four-step analysis pipeline. FakeAdapter replaces the AI
 	// formatting step to exclude network round-trip from the timing measurement.
 	err := aireport.Run(aireport.RunnerOptions{
-		Patterns:     []string{"./..."},
-		ModuleDir:    modRoot,
-		Format:       "text",
-		Adapter:      fa,
-		SystemPrompt: "# Test prompt",
-		Stdout:       &stdout,
-		Stderr:       &stderr,
+		Patterns:  []string{"./..."},
+		ModuleDir: modRoot,
+		Format:    "text",
+		Adapter:   fa,
+		Stdout:    &stdout,
+		Stderr:    &stderr,
 		// AnalyzeFunc is nil — real production pipeline runs.
 	})
 	if err != nil {
@@ -4266,4 +4264,1019 @@ func TestRunCrap_GateOnChange_Pass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error when changed function passes gate, got: %v", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// report command: sections, markdown format, and assessment
+// ---------------------------------------------------------------------------
+
+// loadReportFixture decodes a golden report payload fixture, including the
+// top-level summary block that ReportPayload itself keeps out of its JSON.
+func loadReportFixture(t *testing.T, name string) *aireport.ReportPayload {
+	t.Helper()
+
+	data, err := os.ReadFile(aireportGoldenPath(name))
+	if err != nil {
+		t.Fatalf("reading fixture %s: %v", name, err)
+	}
+
+	var payload aireport.ReportPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("decoding fixture %s: %v", name, err)
+	}
+
+	var fixture struct {
+		Summary struct {
+			TotalFunctions      int      `json:"total_functions"`
+			CRAPload            *int     `json:"crapload"`
+			GazeCRAPload        *int     `json:"gaze_crapload"`
+			AvgContractCoverage *int     `json:"avg_contract_coverage"`
+			SSADegraded         bool     `json:"ssa_degraded"`
+			SSADegradedPackages []string `json:"ssa_degraded_packages"`
+			Contractual         int      `json:"contractual"`
+			Ambiguous           int      `json:"ambiguous"`
+			Incidental          int      `json:"incidental"`
+			SkippedTests        int      `json:"skipped_tests"`
+			SkippedTestNames    []string `json:"skipped_test_names"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("decoding fixture summary %s: %v", name, err)
+	}
+
+	payload.Summary = aireport.ReportSummary{
+		TotalFunctions:      fixture.Summary.TotalFunctions,
+		CRAPload:            fixture.Summary.CRAPload,
+		GazeCRAPload:        fixture.Summary.GazeCRAPload,
+		AvgContractCoverage: fixture.Summary.AvgContractCoverage,
+		SSADegraded:         fixture.Summary.SSADegraded,
+		SSADegradedPackages: fixture.Summary.SSADegradedPackages,
+		Contractual:         fixture.Summary.Contractual,
+		Ambiguous:           fixture.Summary.Ambiguous,
+		Incidental:          fixture.Summary.Incidental,
+		SkippedTests:        fixture.Summary.SkippedTests,
+		SkippedTestNames:    fixture.Summary.SkippedTestNames,
+	}
+
+	return &payload
+}
+
+// reportGoldenMetadata pins the header values the goldens record.
+func reportGoldenMetadata() aireport.ReportMetadata {
+	return aireport.ReportMetadata{
+		ModulePath:  "github.com/example/project",
+		Branch:      "main",
+		GazeVersion: "v2.4.0",
+		Date:        "2026-11-01",
+	}
+}
+
+// runGoldenReport runs the report command against a fixture and returns
+// what it wrote to stdout.
+func runGoldenReport(t *testing.T, payload *aireport.ReportPayload, format string, sections []string) string {
+	t.Helper()
+
+	metadata := reportGoldenMetadata()
+	var stdout, stderr bytes.Buffer
+
+	err := runReport(reportParams{
+		patterns: []string{"./..."},
+		format:   format,
+		sections: sections,
+		metadata: &metadata,
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) {
+			return payload, nil
+		},
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runReport(%s): %v (stderr: %s)", format, err, stderr.String())
+	}
+
+	return stdout.String()
+}
+
+// TestNewReportCmd_FlagsRegistered verifies the report command exposes the
+// section selector and advertises the deterministic markdown format.
+func TestNewReportCmd_FlagsRegistered(t *testing.T) {
+	cmd := newReportCmd()
+
+	sections := cmd.Flags().Lookup("sections")
+	if sections == nil {
+		t.Fatal("--sections flag is not registered")
+	}
+
+	got, err := cmd.Flags().GetStringSlice("sections")
+	if err != nil {
+		t.Fatalf("reading --sections: %v", err)
+	}
+	want := []string{"crap", "quality", "classification", "health"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("--sections default = %v, want %v", got, want)
+	}
+	if !strings.Contains(sections.Usage, "report sections") {
+		t.Errorf("--sections usage = %q, want it to mention report sections", sections.Usage)
+	}
+
+	format := cmd.Flags().Lookup("format")
+	if format == nil {
+		t.Fatal("--format flag is not registered")
+	}
+	if !strings.Contains(format.Usage, "markdown") {
+		t.Errorf("--format usage = %q, want it to mention markdown", format.Usage)
+	}
+}
+
+// TestValidateReportParams_FormatMarkdown verifies markdown needs no AI
+// adapter, unknown formats are rejected, and sections gate thresholds.
+func TestValidateReportParams_FormatMarkdown(t *testing.T) {
+	if _, err := validateReportParams(reportParams{format: "markdown"}); err != nil {
+		t.Fatalf("markdown without --ai: %v", err)
+	}
+
+	_, err := validateReportParams(reportParams{format: "yaml"})
+	wantFormat := `invalid format "yaml": must be 'text', 'json', 'html', or 'markdown'`
+	if err == nil || err.Error() != wantFormat {
+		t.Fatalf("unknown format error = %v, want %q", err, wantFormat)
+	}
+
+	threshold := 8
+	_, err = validateReportParams(reportParams{
+		format:              "json",
+		sections:            []string{"crap"},
+		minContractCoverage: &threshold,
+	})
+	wantSections := "--min-contract-coverage requires the quality analysis, which --sections=crap does not run"
+	if err == nil || err.Error() != wantSections {
+		t.Fatalf("threshold without its section error = %v, want %q", err, wantSections)
+	}
+}
+
+// TestRunReport_Golden verifies the CLI renders byte-identical reports to
+// the renderer goldens for the full, crap-only, quality-only, and partial
+// payloads (SC-003).
+func TestRunReport_Golden(t *testing.T) {
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	cases := []struct {
+		name     string
+		fixture  string
+		sections []string
+		want     string
+	}{
+		{name: "all sections", fixture: "payload-full.json", want: "report-full.md"},
+		{name: "crap only", fixture: "payload-full.json", sections: []string{"crap"}, want: "report-crap.md"},
+		{name: "quality only", fixture: "payload-full.json", sections: []string{"quality"}, want: "report-quality.md"},
+		{name: "partial payload", fixture: "payload-partial.json", want: "report-partial.md"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := loadReportFixture(t, tc.fixture)
+			got := runGoldenReport(t, payload, "markdown", tc.sections)
+
+			want, err := os.ReadFile(aireportGoldenPath(tc.want))
+			if err != nil {
+				t.Fatalf("reading golden %s: %v", tc.want, err)
+			}
+
+			if got != string(want) {
+				t.Errorf("report differs from %s:\n%s", tc.want, reportGoldenDiff(string(want), got))
+			}
+		})
+	}
+
+	aiCases := []struct {
+		name     string
+		stream   string
+		want     string
+		wantRule string
+	}{
+		{name: "valid AI answer", stream: "answer_only.jsonl", want: "report-full-ai.md"},
+		{name: "rejected AI answer", stream: "summary_too_long.jsonl", want: "report-full-rejected.md", wantRule: "summary_length"},
+	}
+
+	for _, tc := range aiCases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := loadReportFixture(t, "payload-full.json")
+			got, err := runGoldenAIReport(t, payload, tc.stream)
+
+			if tc.wantRule == "" {
+				if err != nil {
+					t.Fatalf("runReport(--ai=opencode): %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("expected the rejected answer to fail the command")
+				}
+				if !strings.Contains(err.Error(), tc.wantRule) {
+					t.Errorf("error does not name rule %s: %v", tc.wantRule, err)
+				}
+			}
+
+			want, readErr := os.ReadFile(aireportGoldenPath(tc.want))
+			if readErr != nil {
+				t.Fatalf("reading golden %s: %v", tc.want, readErr)
+			}
+
+			if got != string(want) {
+				t.Errorf("report differs from %s:\n%s", tc.want, reportGoldenDiff(string(want), got))
+			}
+		})
+	}
+}
+
+// runGoldenAIReport runs the report command in text mode through the real
+// OpenCode adapter, replaying a recorded event stream from the fake binary.
+func runGoldenAIReport(t *testing.T, payload *aireport.ReportPayload, stream string) (string, error) {
+	t.Helper()
+
+	root := findModuleRootForReport(t)
+	bin := buildFakeOpenCodeForReport(t)
+	t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_OPENCODE_STREAM", filepath.Join(root, "internal", "aireport", "testdata", "opencode_streams", stream))
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	metadata := reportGoldenMetadata()
+	var stdout, stderr bytes.Buffer
+
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		adapterName: "opencode",
+		metadata:    &metadata,
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) {
+			return payload, nil
+		},
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+
+	return stdout.String(), err
+}
+
+// reportGoldenDiff reports the first line where two reports differ.
+func reportGoldenDiff(want, got string) string {
+	wantLines := strings.Split(want, "\n")
+	gotLines := strings.Split(got, "\n")
+
+	for i := 0; i < len(wantLines) && i < len(gotLines); i++ {
+		if wantLines[i] != gotLines[i] {
+			return fmt.Sprintf("line %d:\n  want %q\n  got  %q", i+1, wantLines[i], gotLines[i])
+		}
+	}
+
+	return fmt.Sprintf("want %d lines, got %d", len(wantLines), len(gotLines))
+}
+
+// TestRunReport_AssessmentRoundTrip verifies the JSON assessment and the
+// rendered scorecard and recommendations carry identical content (SC-005).
+func TestRunReport_AssessmentRoundTrip(t *testing.T) {
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	payload := loadReportFixture(t, "payload-full.json")
+
+	var decoded aireport.ReportPayload
+	if err := json.Unmarshal([]byte(runGoldenReport(t, payload, "json", nil)), &decoded); err != nil {
+		t.Fatalf("decoding JSON report: %v", err)
+	}
+	if decoded.Assessment == nil {
+		t.Fatal("JSON payload has no assessment")
+	}
+	assessment := *decoded.Assessment
+
+	report := runGoldenReport(t, payload, "markdown", nil)
+
+	rows := parseScorecardRows(t, report)
+	if len(rows) != len(assessment.Scorecard) {
+		t.Fatalf("scorecard rows = %d, want %d", len(rows), len(assessment.Scorecard))
+	}
+	for i := range assessment.Scorecard {
+		row := &assessment.Scorecard[i]
+		wantGrade := "⚪ N/A"
+		if row.Grade != nil {
+			wantGrade = row.Marker + " " + string(*row.Grade)
+		}
+		if rows[i][0] != row.Label {
+			t.Errorf("row %d dimension = %q, want %q", i+1, rows[i][0], row.Label)
+		}
+		if rows[i][1] != wantGrade {
+			t.Errorf("row %d grade = %q, want %q", i+1, rows[i][1], wantGrade)
+		}
+		if rows[i][2] != row.Detail {
+			t.Errorf("row %d details = %q, want %q", i+1, rows[i][2], row.Detail)
+		}
+	}
+
+	lines := parseRecommendationLines(t, report)
+	if len(lines) != len(assessment.Recommendations) {
+		t.Fatalf("recommendation lines = %d, want %d", len(lines), len(assessment.Recommendations))
+	}
+	for i := range assessment.Recommendations {
+		rec := &assessment.Recommendations[i]
+		want := fmt.Sprintf("%d. %s %s", i+1, rec.Marker, rec.Text)
+		if lines[i] != want {
+			t.Errorf("recommendation %d = %q, want %q", i+1, lines[i], want)
+		}
+	}
+}
+
+// parseScorecardRows extracts the scorecard table rows from a report.
+func parseScorecardRows(t *testing.T, report string) [][3]string {
+	t.Helper()
+
+	lines := strings.Split(report, "\n")
+	start := indexOfReportLine(lines, "### Summary Scorecard")
+	if start < 0 {
+		t.Fatal("scorecard heading not found")
+	}
+
+	var rows [][3]string
+	for _, line := range lines[start+1:] {
+		cells, ok := scorecardCells(line)
+		if !ok {
+			if len(rows) > 0 {
+				break
+			}
+			continue
+		}
+		rows = append(rows, cells)
+	}
+
+	return rows
+}
+
+// scorecardCells splits a scorecard table row, reporting false for
+// headings, separators, and non-table lines.
+func scorecardCells(line string) ([3]string, bool) {
+	var cells [3]string
+	if !strings.HasPrefix(line, "|") {
+		return cells, false
+	}
+
+	parts := strings.Split(strings.Trim(line, "|"), "|")
+	if len(parts) != 3 {
+		return cells, false
+	}
+	for i := range parts {
+		cells[i] = strings.TrimSpace(parts[i])
+	}
+	if cells[0] == "Dimension" || strings.HasPrefix(cells[0], "---") {
+		return cells, false
+	}
+
+	return cells, true
+}
+
+// parseRecommendationLines extracts the numbered recommendation lines.
+func parseRecommendationLines(t *testing.T, report string) []string {
+	t.Helper()
+
+	lines := strings.Split(report, "\n")
+	start := indexOfReportLine(lines, "### Recommendations")
+	if start < 0 {
+		t.Fatal("recommendations heading not found")
+	}
+
+	var out []string
+	for _, line := range lines[start+1:] {
+		if line == "" {
+			if len(out) > 0 {
+				break
+			}
+			continue
+		}
+		out = append(out, line)
+	}
+
+	return out
+}
+
+// indexOfReportLine returns the index of an exact line, or -1.
+func indexOfReportLine(lines []string, want string) int {
+	for i, line := range lines {
+		if line == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// buildFakeOpenCodeForReport builds the fake opencode binary used by the
+// report replay tests and returns its path.
+func buildFakeOpenCodeForReport(t *testing.T) string {
+	t.Helper()
+
+	bin := filepath.Join(t.TempDir(), "opencode")
+	cmd := exec.Command("go", "build", "-o", bin, "./internal/aireport/testdata/fake_opencode")
+	cmd.Dir = findModuleRootForReport(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("building fake opencode: %v\n%s", err, out)
+	}
+
+	return bin
+}
+
+// TestRunReport_IncidentReplay_ExitsNonZero is the CLI-level incident
+// regression (FR-036, SC-001): a narrated stream must fail the command with
+// rule not_json while the deterministic report still reaches stdout.
+//
+// No testing.Short() guard: this is the required incident regression gate, so
+// it must run in the standard short suite even though it builds and starts the
+// fake opencode binary.
+func TestRunReport_IncidentReplay_ExitsNonZero(t *testing.T) {
+	root := findModuleRootForReport(t)
+	bin := buildFakeOpenCodeForReport(t)
+	t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_OPENCODE_STREAM", filepath.Join(root, "internal", "aireport", "testdata", "opencode_streams", "incident.jsonl"))
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	payload := loadReportFixture(t, "payload-full.json")
+	metadata := reportGoldenMetadata()
+
+	var stdout, stderr bytes.Buffer
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		adapterName: "opencode",
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		metadata:    &metadata,
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected a non-nil error for the incident replay")
+	}
+	if !strings.Contains(err.Error(), "not_json") {
+		t.Errorf("error does not name rule not_json: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "## 📊 CRAP Summary") {
+		t.Errorf("stdout missing the deterministic CRAP section, got: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "> ⚠️ AI narrative rejected:") {
+		t.Errorf("stdout missing the rejection callout")
+	}
+}
+
+// reportIntPtr returns a pointer to v for report option structs.
+func reportIntPtr(v int) *int { return &v }
+
+// TestRunReport_SectionsForwarded verifies that --sections reaches the runner
+// and the payload metadata (FR-038).
+func TestRunReport_SectionsForwarded(t *testing.T) {
+	var gotOpts aireport.RunnerOptions
+	var stdout, stderr bytes.Buffer
+	payload := loadReportFixture(t, "payload-full.json")
+
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "json",
+		sections:    []string{"crap", "quality"},
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		stdout:      &stdout,
+		stderr:      &stderr,
+		runnerFunc: func(opts aireport.RunnerOptions) error {
+			gotOpts = opts
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("runReport: %v", err)
+	}
+
+	want := []aireport.Section{aireport.SectionCRAP, aireport.SectionQuality}
+	if got := gotOpts.Sections.List(); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("RunnerOptions.Sections = %v, want %v", got, want)
+	}
+	if got := gotOpts.Metadata.Sections; len(got) != 0 {
+		t.Errorf("expected metadata sections unset before the runner applies them, got %v", got)
+	}
+}
+
+// TestRunReport_SectionsInvalidRejectedBeforeAnalysis verifies section parsing
+// failures stop the command before any analysis runs.
+func TestRunReport_SectionsInvalidRejectedBeforeAnalysis(t *testing.T) {
+	cases := []struct {
+		name     string
+		sections []string
+		want     string
+	}{
+		{
+			name:     "unknown section",
+			sections: []string{"bogus"},
+			want:     `invalid --sections value "bogus": valid sections are crap, quality, classification, health`,
+		},
+		{
+			name:     "empty value",
+			sections: []string{""},
+			want:     `invalid --sections value "": valid sections are crap, quality, classification, health`,
+		},
+		{
+			name:     "empty element",
+			sections: []string{"crap,,quality"},
+			want:     `invalid --sections value "": valid sections are crap, quality, classification, health`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			analyzed := false
+			var stdout, stderr bytes.Buffer
+			err := runReport(reportParams{
+				patterns: []string{"./..."},
+				format:   "json",
+				sections: tc.sections,
+				analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) {
+					analyzed = true
+					return &aireport.ReportPayload{}, nil
+				},
+				stdout: &stdout,
+				stderr: &stderr,
+			})
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if err.Error() != tc.want {
+				t.Errorf("error = %q, want %q", err.Error(), tc.want)
+			}
+			if analyzed {
+				t.Error("analysis ran despite an invalid --sections value")
+			}
+		})
+	}
+}
+
+// TestRunReport_IncompatibleThresholdRejected verifies FR-028: a threshold that
+// needs an unselected analysis is rejected before analysis runs.
+func TestRunReport_IncompatibleThresholdRejected(t *testing.T) {
+	analyzed := false
+	var stdout, stderr bytes.Buffer
+	err := runReport(reportParams{
+		patterns:            []string{"./..."},
+		format:              "markdown",
+		sections:            []string{"crap"},
+		minContractCoverage: reportIntPtr(50),
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) {
+			analyzed = true
+			return &aireport.ReportPayload{}, nil
+		},
+		stdout: &stdout,
+		stderr: &stderr,
+	})
+
+	want := "--min-contract-coverage requires the quality analysis, which --sections=crap does not run"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+	if analyzed {
+		t.Error("analysis ran despite an incompatible threshold")
+	}
+}
+
+// TestRunReport_MarkdownThresholdFailureStillPrintsReport verifies US3 AS-2: the
+// deterministic report is published even when a threshold fails.
+func TestRunReport_MarkdownThresholdFailureStillPrintsReport(t *testing.T) {
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	payload := loadReportFixture(t, "payload-full.json")
+	metadata := reportGoldenMetadata()
+
+	var stdout, stderr bytes.Buffer
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "markdown",
+		maxCrapload: reportIntPtr(0),
+		metadata:    &metadata,
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		now:         func() time.Time { return time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC) },
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+
+	if err == nil {
+		t.Fatal("expected a threshold error")
+	}
+	if !strings.Contains(stdout.String(), "# 🔍 Gaze Full Quality Report") {
+		t.Error("expected the deterministic report on stdout")
+	}
+}
+
+// TestRunReport_MarkdownAppendsStepSummary verifies US3 AS-3.
+func TestRunReport_MarkdownAppendsStepSummary(t *testing.T) {
+	summaryPath := filepath.Join(t.TempDir(), "summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summaryPath)
+
+	payload := loadReportFixture(t, "payload-full.json")
+	metadata := reportGoldenMetadata()
+
+	var stdout, stderr bytes.Buffer
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "markdown",
+		sections:    []string{"crap"},
+		metadata:    &metadata,
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		now:         func() time.Time { return time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC) },
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runReport: %v", err)
+	}
+
+	written, readErr := os.ReadFile(summaryPath)
+	if readErr != nil {
+		t.Fatalf("read step summary: %v", readErr)
+	}
+	if string(written) != stdout.String() {
+		t.Error("step summary does not match stdout")
+	}
+	if !strings.Contains(string(written), "# 🔍 Gaze CRAP Report") {
+		t.Errorf("step summary missing the rendered report:\n%s", written)
+	}
+}
+
+// TestRunReport_MarkdownIgnoresAI verifies that a native format never builds an
+// adapter even when --ai is supplied.
+func TestRunReport_MarkdownIgnoresAI(t *testing.T) {
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	payload := loadReportFixture(t, "payload-partial.json")
+	metadata := reportGoldenMetadata()
+
+	var stdout, stderr bytes.Buffer
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "markdown",
+		adapterName: "opencode",
+		metadata:    &metadata,
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		now:         func() time.Time { return time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC) },
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runReport: %v", err)
+	}
+	if strings.Contains(stdout.String(), "gaze:ai-summary") {
+		t.Error("native markdown must not contain AI slots")
+	}
+}
+
+// TestRunReport_JSONSectionsNullForUnselected verifies that a CRAP-only report
+// serialises unselected sections and their errors as null.
+func TestRunReport_JSONSectionsNullForUnselected(t *testing.T) {
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	payload := &aireport.ReportPayload{
+		CRAP:   loadReportFixture(t, "payload-full.json").CRAP,
+		Errors: aireport.PayloadErrors{},
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "json",
+		sections:    []string{"crap"},
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runReport: %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if decErr := json.Unmarshal(stdout.Bytes(), &decoded); decErr != nil {
+		t.Fatalf("unmarshal stdout: %v", decErr)
+	}
+	for _, key := range []string{"quality", "classify", "docscan"} {
+		if got := string(decoded[key]); got != "null" {
+			t.Errorf("%s = %s, want null", key, got)
+		}
+	}
+	if got := string(decoded["errors"]); strings.Contains(got, "\": \"") {
+		t.Errorf("errors entries should all be null, got %s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// US5: gaze report ignores the project's interactive /gaze prompt (FR-025, R17)
+
+// reportIgnoreNoticeLine is the single stderr notice gaze report prints when
+// the project carries an interactive /gaze reporter prompt.
+const reportIgnoreNoticeLine = "notice: ignoring .opencode/agents/gaze-reporter.md for gaze report (it is the interactive /gaze agent; gaze report uses built-in report-mode instructions)"
+
+// setupReportNoticeModuleDir creates a temporary module directory, writes an
+// optional .opencode/agents/gaze-reporter.md, and chdirs into it so the report
+// command resolves it as the module root.
+func setupReportNoticeModuleDir(t *testing.T, reporterContent string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+
+	goMod := "module example.com/ignorenotice\n\ngo 1.24\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o600); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	if reporterContent != "" {
+		agentDir := filepath.Join(dir, ".opencode", "agents")
+		if err := os.MkdirAll(agentDir, 0o700); err != nil {
+			t.Fatalf("creating agent dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(agentDir, "gaze-reporter.md"), []byte(reporterContent), 0o600); err != nil {
+			t.Fatalf("writing reporter prompt: %v", err)
+		}
+	}
+
+	t.Chdir(dir)
+
+	return dir
+}
+
+// reportIgnoreNoticeLines returns the stderr lines carrying the ignore notice.
+func reportIgnoreNoticeLines(stderr string) []string {
+	var found []string
+
+	for _, line := range strings.Split(stderr, "\n") {
+		if strings.Contains(line, "ignoring .opencode/agents/gaze-reporter.md") {
+			found = append(found, line)
+		}
+	}
+
+	return found
+}
+
+// TestRunReport_IgnoreNotice_TextFormat verifies that text mode prints exactly
+// one notice and that the local interactive prompt never reaches the adapter.
+func TestRunReport_IgnoreNotice_TextFormat(t *testing.T) {
+	const sentinel = "SENTINEL-INTERACTIVE-PROMPT-MUST-NOT-REACH-REPORT"
+
+	repoRoot := findModuleRootForReport(t)
+	bin := buildFakeOpenCodeForReport(t)
+	capture := filepath.Join(t.TempDir(), "captured-agent.md")
+	stream := filepath.Join(repoRoot, "internal", "aireport", "testdata", "opencode_streams", "answer_only.jsonl")
+	payload := loadReportFixture(t, "payload-full.json")
+
+	setupReportNoticeModuleDir(t, "# Interactive gaze reporter\n\n"+sentinel+"\n")
+
+	t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_OPENCODE_STREAM", stream)
+	t.Setenv("FAKE_OPENCODE_CAPTURE_AGENT", capture)
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	var stdout, stderr bytes.Buffer
+
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		adapterName: "opencode",
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runReport() error = %v, want nil", err)
+	}
+
+	lines := reportIgnoreNoticeLines(stderr.String())
+	if len(lines) != 1 {
+		t.Fatalf("ignore notice lines = %d (%q), want exactly 1", len(lines), lines)
+	}
+	if lines[0] != reportIgnoreNoticeLine {
+		t.Errorf("notice line = %q, want %q", lines[0], reportIgnoreNoticeLine)
+	}
+
+	agent, readErr := os.ReadFile(capture)
+	if readErr != nil {
+		t.Fatalf("reading captured agent file: %v", readErr)
+	}
+	if strings.Contains(string(agent), sentinel) {
+		t.Error("captured agent instructions contain the local interactive prompt")
+	}
+	if !strings.Contains(string(agent), "Do not use tools, read files, or run commands.") {
+		t.Error("captured agent instructions do not contain the report-mode prompt")
+	}
+}
+
+// TestRunReport_IgnoreNotice_NoNoticeForJSONHTMLMarkdown verifies that the
+// native formats never print the notice.
+func TestRunReport_IgnoreNotice_NoNoticeForJSONHTMLMarkdown(t *testing.T) {
+	payload := loadReportFixture(t, "payload-full.json")
+
+	setupReportNoticeModuleDir(t, "# Interactive gaze reporter\n")
+
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	for _, format := range []string{"json", "html", "markdown"} {
+		t.Run(format, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			err := runReport(reportParams{
+				patterns:    []string{"./..."},
+				format:      format,
+				analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+				stdout:      &stdout,
+				stderr:      &stderr,
+			})
+			if err != nil {
+				t.Fatalf("runReport(%s) error = %v, want nil", format, err)
+			}
+			if lines := reportIgnoreNoticeLines(stderr.String()); len(lines) != 0 {
+				t.Errorf("%s printed %d ignore notice lines (%q), want 0", format, len(lines), lines)
+			}
+		})
+	}
+}
+
+// TestRunReport_IgnoreNotice_NoNoticeWhenAbsent verifies that text mode stays
+// quiet when the project has no interactive reporter prompt.
+func TestRunReport_IgnoreNotice_NoNoticeWhenAbsent(t *testing.T) {
+	repoRoot := findModuleRootForReport(t)
+	bin := buildFakeOpenCodeForReport(t)
+	stream := filepath.Join(repoRoot, "internal", "aireport", "testdata", "opencode_streams", "answer_only.jsonl")
+	payload := loadReportFixture(t, "payload-full.json")
+
+	setupReportNoticeModuleDir(t, "")
+
+	t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_OPENCODE_STREAM", stream)
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
+
+	var stdout, stderr bytes.Buffer
+
+	err := runReport(reportParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		adapterName: "opencode",
+		analyzeFunc: func([]string, string) (*aireport.ReportPayload, error) { return payload, nil },
+		stdout:      &stdout,
+		stderr:      &stderr,
+	})
+	if err != nil {
+		t.Fatalf("runReport() error = %v, want nil", err)
+	}
+	if lines := reportIgnoreNoticeLines(stderr.String()); len(lines) != 0 {
+		t.Errorf("printed %d ignore notice lines (%q), want 0", len(lines), lines)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// report metadata helpers
+// ---------------------------------------------------------------------------
+
+func TestReportNow_UsesInjectedClock(t *testing.T) {
+	want := time.Date(2026, 11, 1, 12, 30, 0, 0, time.UTC)
+	got := reportNow(reportParams{now: func() time.Time { return want }})
+	if !got.Equal(want) {
+		t.Errorf("reportNow() = %v, want %v", got, want)
+	}
+}
+
+func TestReportNow_DefaultsToWallClock(t *testing.T) {
+	before := time.Now().Add(-time.Second)
+	got := reportNow(reportParams{})
+	after := time.Now().Add(time.Second)
+	if got.Before(before) || got.After(after) {
+		t.Errorf("reportNow() = %v, want a value between %v and %v", got, before, after)
+	}
+}
+
+func TestReportMetadata_UsesOverride(t *testing.T) {
+	want := aireport.ReportMetadata{
+		ModulePath:  "github.com/override/project",
+		Branch:      "override-branch",
+		GazeVersion: "v9.9.9",
+		Date:        "2026-01-02",
+	}
+	p := reportParams{metadata: &want}
+
+	got := reportMetadata(p, t.TempDir())
+	if got.ModulePath != want.ModulePath || got.Branch != want.Branch ||
+		got.GazeVersion != want.GazeVersion || got.Date != want.Date {
+		t.Errorf("reportMetadata() = %+v, want %+v", got, want)
+	}
+}
+
+func TestBuildReportMetadata_ModulePathFromGoMod(t *testing.T) {
+	dir := t.TempDir()
+	goMod := "module example.com/metadata\n\ngo 1.24\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o600); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+	t.Setenv("GITHUB_HEAD_REF", "")
+	t.Setenv("GITHUB_REF_NAME", "")
+
+	now := time.Date(2026, 3, 4, 23, 59, 0, 0, time.UTC)
+	got := buildReportMetadata(dir, "v1.2.3", now)
+
+	if got.ModulePath != "example.com/metadata" {
+		t.Errorf("ModulePath = %q, want %q", got.ModulePath, "example.com/metadata")
+	}
+	if got.GazeVersion != "v1.2.3" {
+		t.Errorf("GazeVersion = %q, want %q", got.GazeVersion, "v1.2.3")
+	}
+	if got.Date != "2026-03-04" {
+		t.Errorf("Date = %q, want %q", got.Date, "2026-03-04")
+	}
+	if got.Branch != "" {
+		t.Errorf("Branch = %q, want empty outside CI", got.Branch)
+	}
+}
+
+func TestBuildReportMetadata_ModulePathFallback(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "no-gomod-here")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("creating dir: %v", err)
+	}
+	t.Setenv("GITHUB_HEAD_REF", "")
+	t.Setenv("GITHUB_REF_NAME", "")
+
+	got := buildReportMetadata(dir, "", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	if got.ModulePath != filepath.Base(dir) {
+		t.Errorf("ModulePath = %q, want directory base %q", got.ModulePath, filepath.Base(dir))
+	}
+	if got.GazeVersion != version {
+		t.Errorf("GazeVersion = %q, want package version %q", got.GazeVersion, version)
+	}
+}
+
+func TestBuildReportMetadata_DateIsUTC(t *testing.T) {
+	// 2026-03-04 23:30 at UTC-5 is 2026-03-05 04:30 UTC.
+	loc := time.FixedZone("UTC-5", -5*60*60)
+	now := time.Date(2026, 3, 4, 23, 30, 0, 0, loc)
+
+	got := buildReportMetadata(t.TempDir(), "v1.0.0", now)
+
+	if got.Date != "2026-03-05" {
+		t.Errorf("Date = %q, want %q (UTC date)", got.Date, "2026-03-05")
+	}
+}
+
+func TestReportBranch_Precedence(t *testing.T) {
+	tests := []struct {
+		name    string
+		headRef string
+		refName string
+		want    string
+	}{
+		{name: "head ref wins", headRef: "feature/x", refName: "main", want: "feature/x"},
+		{name: "falls back to ref name", headRef: "", refName: "main", want: "main"},
+		{name: "empty outside CI", headRef: "", refName: "", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GITHUB_HEAD_REF", tc.headRef)
+			t.Setenv("GITHUB_REF_NAME", tc.refName)
+
+			if got := reportBranch(); got != tc.want {
+				t.Errorf("reportBranch() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// reportTestAdapter — local AIAdapter test double
+// ---------------------------------------------------------------------------
+
+// reportTestAdapterCall records one invocation of reportTestAdapter.Format.
+type reportTestAdapterCall struct {
+	// SystemPrompt is the system prompt passed to Format.
+	SystemPrompt string
+	// Payload is the full payload read from the io.Reader argument.
+	Payload []byte
+}
+
+// reportTestAdapter is a minimal aireport.AIAdapter test double local to the
+// cmd/gaze package. aireport's own FakeAdapter lives in a test file and is
+// therefore not importable from here.
+type reportTestAdapter struct {
+	// Response is the string returned by Format.
+	Response string
+	// Err is the error returned by Format. When non-nil, Response is ignored.
+	Err error
+	// Calls records each invocation of Format.
+	Calls []reportTestAdapterCall
+}
+
+// Format implements aireport.AIAdapter. It records the call and returns the
+// configured Response or Err.
+func (a *reportTestAdapter) Format(_ context.Context, systemPrompt string, payload io.Reader) (string, error) {
+	var payloadBytes []byte
+	if payload != nil {
+		payloadBytes, _ = io.ReadAll(payload)
+	}
+	a.Calls = append(a.Calls, reportTestAdapterCall{
+		SystemPrompt: systemPrompt,
+		Payload:      payloadBytes,
+	})
+	if a.Err != nil {
+		return "", a.Err
+	}
+	return a.Response, nil
 }
