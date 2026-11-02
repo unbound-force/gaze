@@ -3,6 +3,7 @@ package aireport
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -195,12 +196,72 @@ var proseEscaper = strings.NewReplacer(
 
 // sanitizeProse escapes an analysis-derived string for a non-table position.
 func sanitizeProse(s string) string {
-	return proseEscaper.Replace(s)
+	return proseEscaper.Replace(neutralizeAutolinks(s))
 }
 
 // sanitizeHeaderValue escapes markup and flattens line breaks.
 func sanitizeHeaderValue(s string) string {
-	return headerEscaper.Replace(s)
+	return headerEscaper.Replace(neutralizeAutolinks(s))
+}
+
+// autolinkEmailRe matches a bare email address with a dotted domain. GFM
+// extended autolinking turns user@host.example into a mailto link; the dot
+// requirement mirrors that grammar, so a dotless user@host never linkifies
+// and is left untouched.
+var autolinkEmailRe = regexp.MustCompile(`([A-Za-z0-9._%+-]+)@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)`)
+
+// neutralizeAutolinks defangs GFM extended-autolink triggers before the
+// escapers run. Escaping markup alone does not stop autolinking: cmark-gfm
+// resolves backslash escapes into text before its autolink postprocessor,
+// so a bare "www." domain, a "scheme://" URL, or a dotted email stays
+// clickable even after "[", "<", and ">" are escaped. Inserting brackets
+// ("www[.]", "[:]//", "x[@]y") breaks the autolink grammar twice — the
+// bracket is not a domain character, and the downstream escapers render it
+// as a literal "[" — so a crafted branch name or file path cannot become an
+// attacker-chosen link in a Step Summary. The transform is idempotent: the
+// inserted brackets themselves prevent a re-match.
+func neutralizeAutolinks(s string) string {
+	if !strings.Contains(s, "://") && !strings.Contains(s, "@") && !containsFold(s, "www.") {
+		return s
+	}
+	s = strings.ReplaceAll(s, "://", "[:]//")
+	s = autolinkEmailRe.ReplaceAllString(s, "${1}[@]${2}")
+	return replaceFold(s, "www.", "www[.]")
+}
+
+// replaceFold replaces every case-insensitive occurrence of old (which must
+// be lowercase ASCII) with repl, preserving all other bytes verbatim.
+func replaceFold(s, old, repl string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if foldMatchAt(s, i, old) {
+			b.WriteString(repl)
+			i += len(old)
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// foldMatchAt reports whether s[i:] starts with old, ASCII-case-folded.
+// Bytes at or above 0x80 (multi-byte UTF-8) never match an ASCII old.
+func foldMatchAt(s string, i int, old string) bool {
+	if len(s)-i < len(old) {
+		return false
+	}
+	for j := 0; j < len(old); j++ {
+		c := s[i+j]
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != old[j] {
+			return false
+		}
+	}
+	return true
 }
 
 // writeAISummarySlot writes the AI summary slot when there is an
@@ -561,14 +622,21 @@ func writeRecommendationsList(b *strings.Builder, assessment Assessment) {
 	b.WriteString("\n")
 }
 
-// tableName renders a function or test name as a table-cell code span.
+// tableName renders a function or test name as a table-cell code span. The
+// code-span content is never autolinked, so names stay verbatim.
 func tableName(s string) string {
-	return escapeCell(codeSpan(s))
+	return escapeCellMarkup(codeSpan(s))
 }
 
-// escapeCell escapes a table cell: pipes, line breaks, and link or HTML
-// markup.
+// escapeCell escapes a table cell: autolink triggers, pipes, line breaks,
+// and link or HTML markup.
 func escapeCell(s string) string {
+	return escapeCellMarkup(neutralizeAutolinks(s))
+}
+
+// escapeCellMarkup escapes pipes, line breaks, and link or HTML markup in a
+// table cell.
+func escapeCellMarkup(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", " ")

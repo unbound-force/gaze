@@ -105,7 +105,7 @@ func TestRenderMarkdown_MetadataEscaped(t *testing.T) {
 		t.Fatal(err)
 	}
 	header := headerOf(out)
-	want := `Project: github.com/example/\<script\> · Branch: ev\[il\](https://x) \<!--`
+	want := `Project: github.com/example/\<script\> · Branch: ev\[il\](https\[:\]//x) \<!--`
 	if !strings.Contains(header, want) {
 		t.Errorf("header %q does not contain escaped values %q", header, want)
 	}
@@ -219,7 +219,7 @@ func TestEscapeCell_Markup(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"link", "a[b](https://evil.example)", `a\[b\](https://evil.example)`},
+		{"link", "a[b](https://evil.example)", `a\[b\](https\[:\]//evil.example)`},
 		{"html tag", "<script>alert(1)</script>", `\<script\>alert(1)\</script\>`},
 		{"html comment", "<!-- hidden -->", `\<!-- hidden --\>`},
 		{"pipe", "a|b", `a\|b`},
@@ -244,7 +244,7 @@ func TestSanitizeProse_Markup(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"link", "[docs](https://evil.example)", `\[docs\](https://evil.example)`},
+		{"link", "[docs](https://evil.example)", `\[docs\](https\[:\]//evil.example)`},
 		// ">" is intentionally left alone: it cannot open a tag, and
 		// escaping it would corrupt ordinary prose such as "(1201 > 1200)".
 		{"html tag", "<img src=x>", `\<img src=x>`},
@@ -258,6 +258,127 @@ func TestSanitizeProse_Markup(t *testing.T) {
 				t.Errorf("sanitizeProse(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestSanitizeHeaderValue_Pairs pins every headerEscaper pair exactly,
+// including the \r\n-before-\r/\n replacer ordering: reordered pairs would
+// flatten "a\r\nb" to two spaces instead of one.
+func TestSanitizeHeaderValue_Pairs(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"backslash", `a\b`, `a\\b`},
+		{"backtick", "a`b", "a\\`b"},
+		{"asterisk", "*a*", `\*a\*`},
+		{"underscore", "_a_", `\_a\_`},
+		{"open bracket", "a[b", `a\[b`},
+		{"close bracket", "a]b", `a\]b`},
+		{"open angle", "a<b", `a\<b`},
+		{"close angle", "a>b", `a\>b`},
+		{"pipe", "a|b", `a\|b`},
+		{"newline flattens", "a\nb", "a b"},
+		{"carriage return flattens", "a\rb", "a b"},
+		{"crlf flattens to one space", "a\r\nb", "a b"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sanitizeHeaderValue(tc.in); got != tc.want {
+				t.Errorf("sanitizeHeaderValue(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRenderMarkdown_AutolinkTriggersDefanged is the negative guard for the
+// escaper invariant: GFM extended autolinking linkifies bare "www." domains,
+// "scheme://" URLs, and dotted email addresses even when brackets and angle
+// brackets are escaped, so every sanitizer must defang all three trigger
+// classes before escaping. Assertions run on the emitted bytes.
+func TestRenderMarkdown_AutolinkTriggersDefanged(t *testing.T) {
+	// Render level: a crafted branch name and module path must not survive
+	// as bare autolink triggers in the metadata header.
+	p := loadPayloadFixture(t, "payload-full.json")
+	p.Metadata.Branch = "www.evil.example"
+	p.Metadata.ModulePath = "user@host.example"
+	out, err := RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := headerOf(out)
+	for _, want := range []string{`www\[.\]evil.example`, `user\[@\]host.example`} {
+		if !strings.Contains(header, want) {
+			t.Errorf("header %q does not contain defanged value %q", header, want)
+		}
+	}
+	for _, bare := range []string{"www.evil.example", "user@host.example", "://"} {
+		if strings.Contains(header, bare) {
+			t.Errorf("header %q contains bare autolink trigger %q", header, bare)
+		}
+	}
+
+	// Render level: scheme URLs defang in the header too.
+	p = loadPayloadFixture(t, "payload-full.json")
+	p.Metadata.Branch = "https://evil.example"
+	out, err = RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(headerOf(out), `https\[:\]//evil.example`) {
+		t.Errorf("header %q does not contain defanged scheme URL", headerOf(out))
+	}
+
+	// Unit level: every sink defangs every trigger class, case-insensitively.
+	if got, want := sanitizeHeaderValue("branch WWW.EVIL.EXAMPLE"), `branch www\[.\]EVIL.EXAMPLE`; got != want {
+		t.Errorf("sanitizeHeaderValue = %q, want %q", got, want)
+	}
+	if got, want := sanitizeProse("mail user@host.example now"), `mail user\[@\]host.example now`; got != want {
+		t.Errorf("sanitizeProse = %q, want %q", got, want)
+	}
+	if got, want := escapeCell("see www.evil.example and user@host.example"), `see www\[.\]evil.example and user\[@\]host.example`; got != want {
+		t.Errorf("escapeCell = %q, want %q", got, want)
+	}
+
+	// Code-span immunity: a function name renders verbatim inside its code
+	// span, which GFM never autolinks, so names stay readable.
+	p = loadPayloadFixture(t, "payload-full.json")
+	var report crap.Report
+	if err := json.Unmarshal(p.CRAP, &report); err != nil {
+		t.Fatalf("decode crap: %v", err)
+	}
+	report.Scores[0].Function = "www.evil.example"
+	report.Summary.WorstCRAP[0].Function = "www.evil.example"
+	p.CRAP = mustMarshalReport(t, report)
+	out, err = RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "`www.evil.example`") {
+		t.Error("code-span function name was not rendered verbatim")
+	}
+
+	// A dotless address never linkifies under GFM, so it must pass through
+	// untouched rather than be mangled.
+	if got, want := sanitizeProse("ping user@localhost now"), "ping user@localhost now"; got != want {
+		t.Errorf("sanitizeProse = %q, want %q", got, want)
+	}
+}
+
+// TestRenderMarkdown_MetadataNewlinesFlattened pins the header invariant's
+// new-line clause at render level: every line-break flavor in a branch name
+// flattens to single spaces in the metadata header.
+func TestRenderMarkdown_MetadataNewlinesFlattened(t *testing.T) {
+	p := loadPayloadFixture(t, "payload-full.json")
+	p.Metadata.Branch = "line1\nline2\r\nline3\rline4"
+	out, err := RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(headerOf(out), "Branch: line1 line2 line3 line4") {
+		t.Errorf("header %q does not flatten multi-line branch to spaces", headerOf(out))
 	}
 }
 
