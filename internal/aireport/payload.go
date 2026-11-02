@@ -80,6 +80,11 @@ type ReportPayload struct {
 	// the raw JSON fields. Not serialised in --format=json output.
 	Summary ReportSummary `json:"-"`
 
+	// Metadata identifies the report subject (module, branch, gaze
+	// version, date, selected sections). It feeds the deterministic
+	// markdown header.
+	Metadata ReportMetadata `json:"metadata"`
+
 	// CRAP holds the raw JSON from gaze crap --format=json.
 	// Nil when the CRAP analysis step failed.
 	CRAP json.RawMessage `json:"crap"`
@@ -100,6 +105,30 @@ type ReportPayload struct {
 	// Errors records step-level failures. A nil pointer value means the
 	// step succeeded. A non-nil pointer is the error message string.
 	Errors PayloadErrors `json:"errors"`
+
+	// Assessment holds the Go-computed grades, severities, and
+	// deterministic recommendations. Nil until the assessment is
+	// computed; serialised as null in that case.
+	Assessment *Assessment `json:"assessment"`
+}
+
+// ReportMetadata identifies the subject of a report. All values are
+// produced by gaze itself (never by an AI adapter).
+type ReportMetadata struct {
+	// ModulePath is the Go module path from go.mod.
+	ModulePath string `json:"module_path"`
+
+	// Branch is the CI branch name when known; omitted otherwise.
+	Branch string `json:"branch,omitempty"`
+
+	// GazeVersion is the gaze build version that produced the report.
+	GazeVersion string `json:"gaze_version"`
+
+	// Date is the report date in YYYY-MM-DD (UTC).
+	Date string `json:"date"`
+
+	// Sections lists the selected report sections in canonical order.
+	Sections []Section `json:"sections"`
 }
 
 // PayloadErrors records per-step failure messages for ReportPayload.

@@ -115,7 +115,8 @@ func TestRunProductionPipeline_RealPackage(t *testing.T) {
 		"",    // no pre-generated profile — use internal generation
 		false, // testShort
 		io.Discard,
-		pipelineStepFuncs{}, // zero value = real step functions
+		pipelineStepFuncs{},   // zero value = real step functions
+		AllSections().Steps(), // every section selected
 	)
 	if err != nil {
 		t.Fatalf("runProductionPipeline: %v", err)

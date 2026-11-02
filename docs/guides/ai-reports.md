@@ -1,16 +1,17 @@
 # AI Reports
 
-Gaze can pipe its analysis data to an external AI model to produce a human-readable quality report. The `gaze report --ai=<adapter>` command orchestrates four analysis operations (CRAP scoring, quality assessment, classification, and documentation scanning), combines the results into a JSON payload, and sends it to the chosen AI adapter for formatting.
+Gaze can pipe its analysis data to an external AI model to add judgment to a human-readable quality report. The `gaze report --ai=<adapter>` command orchestrates four analysis operations (CRAP scoring, quality assessment, classification, and documentation scanning), combines the results into a JSON payload, and sends it to the chosen AI adapter. Gaze renders the report itself; the adapter supplies only a validated summary and prioritized recommendations.
 
 ## How It Works
 
 1. Gaze runs its full analysis pipeline on the specified packages
 2. The results are combined into a single JSON payload
-3. The payload is sent to the AI adapter along with a system prompt (the gaze-reporter agent instructions)
-4. The AI returns a formatted markdown report
-5. The report is written to stdout (and optionally to `$GITHUB_STEP_SUMMARY`)
+3. Gaze grades the results and renders the report — tables, metrics, grades, and deterministic recommendations — from its own rubric
+4. The payload and the embedded report-mode system prompt are sent to the AI adapter. Gaze never reads the project's interactive `.opencode/agents/gaze-reporter.md`; it prints a notice when that file exists
+5. The adapter returns one JSON object holding a plain-prose summary and up to five prioritized recommendations, which Gaze validates before rendering them into the AI slots
+6. The report is written to stdout (and optionally to `$GITHUB_STEP_SUMMARY`)
 
-The AI adapter only formats the report — it does not perform any analysis. All metrics, scores, and classifications are computed deterministically by Gaze before the AI sees them.
+The AI adapter adds judgment only — it does not perform analysis, choose grades, or write the report. All metrics, scores, grade boundaries, and deterministic recommendations are computed by Gaze before the AI sees them, so identical analysis data always produces an identical report outside the AI slots.
 
 ## Supported Adapters
 
@@ -143,7 +144,7 @@ The host must be an absolute HTTP or HTTPS URL with a valid host component.
 
 ## OpenCode
 
-The OpenCode adapter invokes the `opencode` CLI as a subprocess. The system prompt is written as `.opencode/agents/gaze-reporter.md` in a temporary directory, because OpenCode reads agent definitions from that path.
+The OpenCode adapter invokes the `opencode` CLI as a subprocess. The system prompt is written as `.opencode/agents/gaze-headless.md` in a temporary directory, because OpenCode reads agent definitions from that path. That agent denies every tool and runs as a primary agent, so the model can only answer.
 
 ### Prerequisites
 
@@ -179,10 +180,10 @@ gaze report ./... --ai=opencode --model=opencode/claude-sonnet-4-6
 ### How It Works Internally
 
 1. A temp directory is created (`gaze-opencode-*/`)
-2. `.opencode/agents/gaze-reporter.md` is written inside it (with empty YAML frontmatter prepended)
-3. OpenCode is invoked: `opencode run --dir <tmpDir> --agent gaze-reporter --format default [-m <name>] ""`
+2. `.opencode/agents/gaze-headless.md` is written inside it, with frontmatter that sets `mode: primary` and denies every tool, followed by the embedded report-mode prompt
+3. OpenCode is invoked: `opencode run --dir <tmpDir> --agent gaze-headless --format json [-m <name>] ""`
 4. The JSON payload is piped to stdin
-5. Formatted report is read from stdout
+5. Only the final assistant text is extracted from the JSON event stream and validated against the answer contract
 6. Temp directory is cleaned up
 
 ## Common Options
@@ -211,6 +212,17 @@ gaze report ./... --ai=ollama --model=llama3.2 --ai-timeout=20m
 
 The timeout is applied to the subprocess execution or HTTP request context. If the adapter does not respond within the timeout, Gaze cancels the request and returns an error.
 
+### `--format=markdown`
+
+Render the report without any AI adapter:
+
+```bash
+gaze report ./... --format=markdown
+gaze report ./... --format=markdown --sections=crap,quality
+```
+
+`markdown` is deterministic: Gaze renders every section, grade, and recommendation itself, with no AI slots and no API key. Use it for a complete human-readable report in CI when no AI provider is available, or when you want byte-identical output for the same analysis data. `--sections` limits which analyses run and render (`crap`, `quality`, `classification`, `health`; default all).
+
 ### `--format=json`
 
 Skip the AI formatting step entirely and output the raw JSON payload:
@@ -220,6 +232,20 @@ gaze report ./... --format=json > report.json
 ```
 
 This is useful for CI threshold checks where you don't need a human-readable report, or for piping the data to your own formatting tool. No AI adapter or API key is required.
+
+## Answer Validation
+
+Every adapter's output passes the same validator before Gaze renders it, so a malformed or off-contract answer can never become the report. The answer must be exactly one JSON object:
+
+```json
+{"summary": "Plain-prose narrative.", "recommendations": ["First action.", "Second action."]}
+```
+
+- `summary` is 1–1,200 characters of plain English prose with no headings, lists, tables, links, or HTML
+- `recommendations` holds 1–5 single-line items of at most 400 characters each
+- non-Latin letters may not exceed 5% of the prose
+
+A rejected answer fails the run with a non-zero exit, and the error names the rule that rejected it (for example `summary_length` or `non_english`). The deterministic report is still written to stdout and to the step summary, with a `> ⚠️ AI narrative rejected:` callout in place of the AI slots. An adapter failure renders `> ⚠️ AI narrative unavailable:` instead. Gaze never echoes the raw adapter output into the report, and a run never passes on narration alone.
 
 ## GitHub Step Summary
 
@@ -239,13 +265,14 @@ The Ollama adapter does not perform pre-flight validation because it uses HTTP r
 
 ## Troubleshooting
 
-### "returned empty output"
+### "returned empty output" or a rejected answer
 
-The AI adapter ran successfully (exit code 0) but produced no output. Common causes:
+The AI adapter ran successfully (exit code 0) but produced no output, or its output failed the answer contract. The error names the failing validation rule (`empty_output`, `not_json`, `summary_length`, `non_english`, and others). Common causes:
 
 - **Invalid API key** — the CLI may write the error to stderr while exiting 0. Gaze includes truncated stderr in the error message to help diagnose this. Sensitive environment-variable values in that stderr are replaced with `[REDACTED:<VAR>]` markers before the snippet is included (see [Secret hygiene and stderr redaction](ci-integration.md#secret-hygiene-and-stderr-redaction)).
 - **Model not found** — verify the model name is correct for your adapter
 - **Rate limiting** — wait and retry
+- **Narration instead of JSON** — the model wrote prose around the answer or tried to use tools; the report-mode prompt forbids both, and the OpenCode adapter fails closed when a tool completes
 
 ### "not found on PATH"
 

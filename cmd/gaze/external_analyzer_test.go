@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/unbound-force/gaze/v2/internal/adapter"
+	"github.com/unbound-force/gaze/v2/internal/aireport"
+	"github.com/unbound-force/gaze/v2/internal/config"
 	"github.com/unbound-force/gaze/v2/internal/crap"
 )
 
@@ -838,7 +840,8 @@ func TestReportWithExternalAnalyzer_DocscanPopulated(t *testing.T) {
 
 	var stderr bytes.Buffer
 	analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
-		context.Background(), fakeBinaryPath, "python", moduleDir, []string{"./..."}, &stderr)
+		context.Background(), fakeBinaryPath, "python", moduleDir, []string{"./..."}, &stderr,
+		aireport.AllSections().Steps())
 	if err != nil {
 		t.Fatalf("buildExternalReportAnalyzeFunc: %v", err)
 	}
@@ -870,5 +873,288 @@ func TestReportWithExternalAnalyzer_DocscanPopulated(t *testing.T) {
 	}
 	if env.APICoverage["documented_symbols"] != float64(2) {
 		t.Errorf("api_coverage documented_symbols = %v, want 2", env.APICoverage["documented_symbols"])
+	}
+}
+
+// TestReportWithExternalAnalyzer_QualityPopulated verifies that the report
+// pipeline builds its quality section from the analyzer's test_mapping data
+// in the same JSON shape `gaze quality` emits, and that the summary values
+// the renderer needs land on the payload.
+func TestReportWithExternalAnalyzer_QualityPopulated(t *testing.T) {
+	moduleDir := t.TempDir()
+	goMod := filepath.Join(moduleDir, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module fake\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
+		context.Background(), fakeBinaryPath, "python", moduleDir, []string{"./..."}, &stderr,
+		aireport.AllSections().Steps())
+	if err != nil {
+		t.Fatalf("buildExternalReportAnalyzeFunc: %v", err)
+	}
+	defer cleanup()
+
+	payload, err := analyzeFunc([]string{"./..."}, moduleDir)
+	if err != nil {
+		t.Fatalf("analyzeFunc: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if payload.Errors.Quality != nil {
+		t.Fatalf("errors.quality = %q, want nil", *payload.Errors.Quality)
+	}
+	if payload.Errors.Classify != nil {
+		t.Fatalf("errors.classify = %q, want nil", *payload.Errors.Classify)
+	}
+	if payload.Quality == nil {
+		t.Fatal("payload.Quality is nil, want the external quality section")
+	}
+
+	// Same top-level shape as `gaze quality --format=json`.
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(payload.Quality, &topLevel); err != nil {
+		t.Fatalf("unmarshal quality payload: %v\nraw: %s", err, string(payload.Quality))
+	}
+	for _, key := range []string{"quality_reports", "quality_summary"} {
+		if _, ok := topLevel[key]; !ok {
+			t.Errorf("quality payload missing %q key", key)
+		}
+	}
+	if len(topLevel) != 2 {
+		t.Errorf("quality payload has %d top-level keys, want 2", len(topLevel))
+	}
+
+	var quality struct {
+		Reports []json.RawMessage `json:"quality_reports"`
+		Summary struct {
+			TotalTests              int     `json:"total_tests"`
+			AverageContractCoverage float64 `json:"average_contract_coverage"`
+			ClassificationCounts    struct {
+				Contractual int `json:"contractual"`
+				Incidental  int `json:"incidental"`
+				Ambiguous   int `json:"ambiguous"`
+			} `json:"classification_counts"`
+		} `json:"quality_summary"`
+	}
+	if err := json.Unmarshal(payload.Quality, &quality); err != nil {
+		t.Fatalf("unmarshal quality summary: %v", err)
+	}
+	if len(quality.Reports) == 0 {
+		t.Fatal("quality payload has no reports")
+	}
+	if quality.Summary.TotalTests != len(quality.Reports) {
+		t.Errorf("total_tests = %d, want %d", quality.Summary.TotalTests, len(quality.Reports))
+	}
+	if quality.Summary.AverageContractCoverage <= 0 {
+		t.Errorf("average_contract_coverage = %v, want > 0", quality.Summary.AverageContractCoverage)
+	}
+
+	counts := quality.Summary.ClassificationCounts
+	if counts.Contractual+counts.Ambiguous+counts.Incidental == 0 {
+		t.Fatal("classification_counts are empty")
+	}
+
+	// The payload summary mirrors the quality summary so the renderer never
+	// re-derives coverage or classification from the raw section.
+	if payload.Summary.AvgContractCoverage == nil {
+		t.Fatal("summary.avg_contract_coverage is nil")
+	}
+	if got, want := *payload.Summary.AvgContractCoverage, int(quality.Summary.AverageContractCoverage); got != want {
+		t.Errorf("summary avg contract coverage = %d, want %d", got, want)
+	}
+	if payload.Summary.Contractual != counts.Contractual ||
+		payload.Summary.Ambiguous != counts.Ambiguous ||
+		payload.Summary.Incidental != counts.Incidental {
+		t.Errorf("summary classification counts = (%d, %d, %d), want (%d, %d, %d)",
+			payload.Summary.Contractual, payload.Summary.Ambiguous, payload.Summary.Incidental,
+			counts.Contractual, counts.Ambiguous, counts.Incidental)
+	}
+}
+
+// TestReportWithExternalAnalyzer_QualityNoTestMapping verifies that a
+// selected quality step records a step error when the analyzer cannot supply
+// test_mapping, so the rendered report shows a warning callout instead of a
+// fabricated section.
+func TestReportWithExternalAnalyzer_QualityNoTestMapping(t *testing.T) {
+	payload := &aireport.ReportPayload{}
+	providers := &adapter.Providers{AnalyzerName: "test-analyzer"}
+
+	applyExternalReportQuality(payload, []string{"./..."}, t.TempDir(), providers, nil,
+		aireport.AllSections().Steps())
+
+	if payload.Quality != nil {
+		t.Errorf("payload.Quality = %s, want nil", string(payload.Quality))
+	}
+	if payload.Summary.AvgContractCoverage != nil {
+		t.Errorf("summary avg contract coverage = %d, want nil", *payload.Summary.AvgContractCoverage)
+	}
+	if payload.Errors.Quality == nil {
+		t.Fatal("errors.quality is nil, want the test_mapping warning")
+	}
+	if !strings.Contains(*payload.Errors.Quality, "does not support test_mapping") {
+		t.Errorf("errors.quality = %q, want a test_mapping warning", *payload.Errors.Quality)
+	}
+	if payload.Errors.Classify == nil {
+		t.Fatal("errors.classify is nil, want a skipped-step note")
+	}
+
+	report, err := aireport.RenderMarkdown(payload, aireport.AIOutcome{})
+	if err != nil {
+		t.Fatalf("render markdown: %v", err)
+	}
+	if !strings.Contains(report, "> ⚠️ Quality analysis unavailable:") {
+		t.Error("report is missing the quality unavailable callout")
+	}
+	if !strings.Contains(report, "> ⚠️ Classification analysis unavailable:") {
+		t.Error("report is missing the classification unavailable callout")
+	}
+}
+
+// TestReportWithExternalAnalyzer_QualityTestMappingError verifies that a
+// runtime test_mapping failure records a step error and never fabricates
+// coverage, so the rendered section is a warning callout.
+func TestReportWithExternalAnalyzer_QualityTestMappingError(t *testing.T) {
+	moduleDir := t.TempDir()
+	goMod := filepath.Join(moduleDir, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module fake\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	cfg := config.LoadFromDir(moduleDir, &stderr)
+
+	// The analyzer answers analyze, then exits, so the test_mapping call
+	// fails at the transport level while the capability is still advertised.
+	session := adapter.NewSession(fakeBinaryPath, []string{"--stdio", "--crash-after=analyze"},
+		moduleDir, []string{"./..."}, &stderr, cfg)
+	providers, err := session.Initialize()
+	if err != nil {
+		t.Fatalf("initialize analyzer: %v\nstderr: %s", err, stderr.String())
+	}
+	defer func() { _ = session.Close() }()
+
+	if !providers.Capabilities.TestMapping {
+		t.Fatal("fake analyzer does not advertise test_mapping")
+	}
+
+	payload := &aireport.ReportPayload{}
+	applyExternalReportQuality(payload, []string{"./..."}, moduleDir, providers, session,
+		aireport.AllSections().Steps())
+
+	if payload.Quality != nil {
+		t.Errorf("payload.Quality = %s, want nil", string(payload.Quality))
+	}
+	if payload.Summary.AvgContractCoverage != nil {
+		t.Errorf("summary avg contract coverage = %d, want nil", *payload.Summary.AvgContractCoverage)
+	}
+	if payload.Errors.Quality == nil {
+		t.Fatal("errors.quality is nil, want the test_mapping failure")
+	}
+	if !strings.Contains(*payload.Errors.Quality, "test_mapping failed") {
+		t.Errorf("errors.quality = %q, want a test_mapping failure", *payload.Errors.Quality)
+	}
+
+	report, err := aireport.RenderMarkdown(payload, aireport.AIOutcome{})
+	if err != nil {
+		t.Fatalf("render markdown: %v", err)
+	}
+	if !strings.Contains(report, "> ⚠️ Quality analysis unavailable:") {
+		t.Error("report is missing the quality unavailable callout")
+	}
+}
+
+// TestReportWithExternalAnalyzer_QualitySectionOnly verifies that a focused
+// section set builds the quality section even though the CRAP step is not
+// selected. Regression guard: the external path used to return an empty
+// payload when CRAP was unselected, publishing a header-only report.
+func TestReportWithExternalAnalyzer_QualitySectionOnly(t *testing.T) {
+	moduleDir := t.TempDir()
+	goMod := filepath.Join(moduleDir, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module fake\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	sections, err := aireport.ParseSections([]string{"quality"})
+	if err != nil {
+		t.Fatalf("ParseSections: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
+		context.Background(), fakeBinaryPath, "python", moduleDir, []string{"./..."}, &stderr,
+		sections.Steps())
+	if err != nil {
+		t.Fatalf("buildExternalReportAnalyzeFunc: %v", err)
+	}
+	defer cleanup()
+
+	payload, err := analyzeFunc([]string{"./..."}, moduleDir)
+	if err != nil {
+		t.Fatalf("analyzeFunc: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if payload.CRAP != nil {
+		t.Errorf("payload.CRAP = %s, want nil for a quality-only report", string(payload.CRAP))
+	}
+	if payload.Quality == nil {
+		t.Fatal("payload.Quality is nil, want the quality section for --sections=quality")
+	}
+	if payload.Errors.Quality != nil {
+		t.Fatalf("errors.quality = %q, want nil", *payload.Errors.Quality)
+	}
+	if payload.Summary.AvgContractCoverage == nil {
+		t.Fatal("summary.avg_contract_coverage is nil")
+	}
+}
+
+// TestReportWithExternalAnalyzer_ClassificationSectionOnly verifies that a
+// classification-only section set derives the classification counts from
+// test_mapping instead of publishing an empty report.
+func TestReportWithExternalAnalyzer_ClassificationSectionOnly(t *testing.T) {
+	moduleDir := t.TempDir()
+	goMod := filepath.Join(moduleDir, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module fake\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	sections, err := aireport.ParseSections([]string{"classification"})
+	if err != nil {
+		t.Fatalf("ParseSections: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
+		context.Background(), fakeBinaryPath, "python", moduleDir, []string{"./..."}, &stderr,
+		sections.Steps())
+	if err != nil {
+		t.Fatalf("buildExternalReportAnalyzeFunc: %v", err)
+	}
+	defer cleanup()
+
+	payload, err := analyzeFunc([]string{"./..."}, moduleDir)
+	if err != nil {
+		t.Fatalf("analyzeFunc: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if payload.Quality != nil {
+		t.Errorf("payload.Quality = %s, want nil for a classification-only report", string(payload.Quality))
+	}
+	if payload.Errors.Classify != nil {
+		t.Fatalf("errors.classify = %q, want nil when test_mapping supplies counts", *payload.Errors.Classify)
+	}
+	if payload.Summary.Contractual+payload.Summary.Ambiguous+payload.Summary.Incidental == 0 {
+		t.Fatal("classification counts are empty, want counts derived from test_mapping")
+	}
+
+	report, err := aireport.RenderMarkdown(payload, aireport.AIOutcome{})
+	if err != nil {
+		t.Fatalf("render markdown: %v", err)
+	}
+	if !strings.Contains(report, "## 🏷️ Classification Summary") {
+		t.Error("report is missing the classification section")
+	}
+	if strings.Contains(report, "> ⚠️ Classification analysis unavailable:") {
+		t.Error("report shows the classification unavailable callout")
 	}
 }

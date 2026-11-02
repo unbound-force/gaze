@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -228,46 +229,49 @@ func TestRun_ProgressSignals_JSON(t *testing.T) {
 // TestRun_TextFormat_WritesFormattedReport verifies that --format=text calls
 // the AI adapter and writes the formatted report to stdout.
 func TestRun_TextFormat_WritesFormattedReport(t *testing.T) {
-	report := "🔍 CRAP Analysis\n\n📊 Quality\n\n🧪 Classification\n\n🏥 Health"
-	fa := &FakeAdapter{Response: report}
+	fa := &FakeAdapter{Response: validAnswerJSON}
 	payload := &ReportPayload{CRAP: json.RawMessage(`{}`)}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	err := Run(RunnerOptions{
-		Patterns:     []string{"./..."},
-		Format:       "text",
-		Stdout:       &stdout,
-		Stderr:       &stderr,
-		Adapter:      fa,
-		SystemPrompt: "system instructions",
-		AnalyzeFunc:  fakeAnalyze(payload, nil),
+		Patterns:    []string{"./..."},
+		Format:      "text",
+		Stdout:      &stdout,
+		Stderr:      &stderr,
+		Adapter:     fa,
+		AnalyzeFunc: fakeAnalyze(payload, nil),
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if stdout.String() != report {
-		t.Errorf("stdout mismatch:\nwant: %q\ngot:  %q", report, stdout.String())
+	if !strings.Contains(stdout.String(), "# 🔍") {
+		t.Errorf("expected the deterministic report heading on stdout, got: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "<!-- gaze:ai-summary -->") {
+		t.Errorf("expected the AI summary slot on stdout, got: %q", stdout.String())
 	}
 	if len(fa.Calls) != 1 {
 		t.Errorf("expected 1 adapter call, got %d", len(fa.Calls))
 	}
-	if fa.Calls[0].SystemPrompt != "system instructions" {
-		t.Errorf("expected SystemPrompt passed through, got %q", fa.Calls[0].SystemPrompt)
+	if fa.Calls[0].SystemPrompt != ReportModePrompt() {
+		t.Errorf("expected the report-mode prompt, got %q", fa.Calls[0].SystemPrompt)
 	}
 }
 
-// TestRun_TextFormat_EmptyAdapterOutput_ReturnsError verifies FR-016: empty
-// AI adapter output triggers an error.
+// TestRun_TextFormat_EmptyAdapterOutput_ReturnsError verifies that empty AI
+// adapter output is rejected by the answer validator and that the
+// deterministic report is still published.
 func TestRun_TextFormat_EmptyAdapterOutput_ReturnsError(t *testing.T) {
 	fa := &FakeAdapter{Response: "   "}
 	payload := &ReportPayload{CRAP: json.RawMessage(`{}`)}
 
+	var stdout bytes.Buffer
 	err := Run(RunnerOptions{
 		Patterns:    []string{"./..."},
 		Format:      "text",
-		Stdout:      &bytes.Buffer{},
+		Stdout:      &stdout,
 		Stderr:      &bytes.Buffer{},
 		Adapter:     fa,
 		AnalyzeFunc: fakeAnalyze(payload, nil),
@@ -275,16 +279,26 @@ func TestRun_TextFormat_EmptyAdapterOutput_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty adapter output")
 	}
-	if !strings.Contains(err.Error(), "FR-016") {
-		t.Errorf("expected FR-016 in error message, got: %v", err)
+
+	var rejection *AnswerRejection
+	if !errors.As(err, &rejection) {
+		t.Fatalf("expected *AnswerRejection, got %T: %v", err, err)
+	}
+	if rejection.Rule != ruleEmptyOutput {
+		t.Errorf("Rule = %q, want %q", rejection.Rule, ruleEmptyOutput)
+	}
+	if !strings.Contains(stdout.String(), "AI narrative rejected") {
+		t.Errorf("expected a rejection callout on stdout, got: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "# 🔍") {
+		t.Errorf("expected the deterministic report on stdout, got: %q", stdout.String())
 	}
 }
 
 // TestRun_TextFormat_WritesStepSummary verifies that StepSummaryPath non-empty
 // causes the report to be appended to that file with the correct content.
 func TestRun_TextFormat_WritesStepSummary(t *testing.T) {
-	report := "# Report"
-	fa := &FakeAdapter{Response: report}
+	fa := &FakeAdapter{Response: validAnswerJSON}
 	payload := &ReportPayload{}
 
 	tmpFile := t.TempDir() + "/summary.md"
@@ -314,16 +328,18 @@ func TestRun_TextFormat_WritesStepSummary(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("reading step summary file: %v", readErr)
 	}
-	if string(data) != report {
-		t.Errorf("step summary content mismatch: want %q, got %q", report, string(data))
+	if string(data) != stdout.String() {
+		t.Errorf("step summary must match stdout:\nwant: %q\ngot:  %q", stdout.String(), string(data))
+	}
+	if !strings.Contains(string(data), "# 🔍") {
+		t.Errorf("expected the deterministic report in the step summary, got: %q", string(data))
 	}
 }
 
 // TestRun_TextFormat_UnwritableStepSummary_ReturnsNil verifies that an
 // unwritable StepSummaryPath emits a warning but returns nil (FR-008).
 func TestRun_TextFormat_UnwritableStepSummary_ReturnsNil(t *testing.T) {
-	report := "# Report"
-	fa := &FakeAdapter{Response: report}
+	fa := &FakeAdapter{Response: validAnswerJSON}
 	payload := &ReportPayload{}
 
 	var stdout bytes.Buffer
@@ -341,8 +357,8 @@ func TestRun_TextFormat_UnwritableStepSummary_ReturnsNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error on unwritable StepSummaryPath: %v", err)
 	}
-	if stdout.String() != report {
-		t.Errorf("expected stdout report despite StepSummary failure")
+	if !strings.Contains(stdout.String(), "# 🔍") {
+		t.Errorf("expected stdout report despite StepSummary failure, got: %q", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "warning") {
 		t.Errorf("expected warning on stderr for unwritable path, got: %q", stderr.String())
@@ -352,7 +368,7 @@ func TestRun_TextFormat_UnwritableStepSummary_ReturnsNil(t *testing.T) {
 // TestRun_TextFormat_ProgressSignals verifies that progress signals appear on
 // stderr during --format=text mode.
 func TestRun_TextFormat_ProgressSignals(t *testing.T) {
-	fa := &FakeAdapter{Response: "# Report"}
+	fa := &FakeAdapter{Response: validAnswerJSON}
 	payload := &ReportPayload{}
 	var stderr bytes.Buffer
 
@@ -374,7 +390,7 @@ func TestRun_TextFormat_ProgressSignals(t *testing.T) {
 // TestRun_DefaultFormat_TreatedAsText verifies that an unrecognised Format
 // value defaults to "text" behaviour.
 func TestRun_DefaultFormat_TreatedAsText(t *testing.T) {
-	fa := &FakeAdapter{Response: "# Report"}
+	fa := &FakeAdapter{Response: validAnswerJSON}
 	payload := &ReportPayload{}
 
 	err := Run(RunnerOptions{
@@ -630,5 +646,393 @@ func TestCheckZeroResultGate_NilPayload(t *testing.T) {
 	err := checkZeroResultGate(nil, cfg)
 	if err != nil {
 		t.Errorf("expected nil for nil payload, got: %v", err)
+	}
+}
+
+// TestValidateRunnerOpts_Formats verifies the accepted format set: native
+// formats (json, html, markdown) need no adapter, text requires one, and
+// empty or unrecognised values fall back to text.
+func TestValidateRunnerOpts_Formats(t *testing.T) {
+	tests := []struct {
+		format     string
+		wantFormat string
+		wantErr    bool
+	}{
+		{format: "json", wantFormat: "json"},
+		{format: "html", wantFormat: "html"},
+		{format: "markdown", wantFormat: "markdown"},
+		{format: "", wantFormat: "text", wantErr: true},
+		{format: "yaml", wantFormat: "text", wantErr: true},
+		{format: "text", wantFormat: "text", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.format, func(t *testing.T) {
+			opts := RunnerOptions{Format: tc.format}
+			err := validateRunnerOpts(&opts)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateRunnerOpts(%q) err = %v, wantErr %v", tc.format, err, tc.wantErr)
+			}
+			if opts.Format != tc.wantFormat {
+				t.Errorf("Format = %q, want %q", opts.Format, tc.wantFormat)
+			}
+		})
+	}
+}
+
+// TestRun_CopiesMetadataOntoPayload verifies that Run copies the caller's
+// metadata onto the payload with the effective sections in canonical
+// order, defaulting to every section when Sections is the zero value.
+func TestRun_CopiesMetadataOntoPayload(t *testing.T) {
+	quality, err := ParseSections([]string{"quality,crap"})
+	if err != nil {
+		t.Fatalf("ParseSections: %v", err)
+	}
+	tests := []struct {
+		name     string
+		sections SectionSet
+		want     []Section
+	}{
+		{name: "zero value selects all", want: AllSections().List()},
+		{name: "explicit canonical order", sections: quality, want: []Section{SectionCRAP, SectionQuality}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := &ReportPayload{}
+			var stdout bytes.Buffer
+			err := Run(RunnerOptions{
+				Patterns: []string{"./..."},
+				Format:   "json",
+				Sections: tc.sections,
+				Metadata: ReportMetadata{
+					ModulePath:  "github.com/example/project",
+					Branch:      "main",
+					GazeVersion: "v2.4.0",
+					Date:        "2026-11-01",
+					Sections:    []Section{SectionHealth},
+				},
+				Stdout:      &stdout,
+				Stderr:      &bytes.Buffer{},
+				AnalyzeFunc: fakeAnalyze(payload, nil),
+			})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			var decoded struct {
+				Metadata ReportMetadata `json:"metadata"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+				t.Fatalf("stdout is not valid JSON: %v", err)
+			}
+			md := decoded.Metadata
+			if md.ModulePath != "github.com/example/project" || md.Branch != "main" ||
+				md.GazeVersion != "v2.4.0" || md.Date != "2026-11-01" {
+				t.Errorf("metadata fields not copied: %+v", md)
+			}
+			if len(md.Sections) != len(tc.want) {
+				t.Fatalf("Sections = %v, want %v", md.Sections, tc.want)
+			}
+			for i := range tc.want {
+				if md.Sections[i] != tc.want[i] {
+					t.Errorf("Sections[%d] = %q, want %q", i, md.Sections[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestRun_MarkdownFormat_WritesReport verifies that --format=markdown writes
+// the deterministic report without an AI adapter and attaches the assessment.
+func TestRun_MarkdownFormat_WritesReport(t *testing.T) {
+	payload := loadPayloadFixture(t, "payload-full.json")
+
+	var stdout bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "markdown",
+		Stdout:      &stdout,
+		Stderr:      &bytes.Buffer{},
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"# 🔍 Gaze Full Quality Report",
+		"## 📊 CRAP Summary",
+		"## 🧪 Quality Summary",
+		"## 🏷️ Classification Summary",
+		"## 🏥 Overall Health Assessment",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("markdown report missing %q", want)
+		}
+	}
+	if strings.Contains(out, "gaze:ai-summary") {
+		t.Error("markdown format must not render AI slots")
+	}
+	if payload.Assessment == nil {
+		t.Fatal("payload.Assessment was not set")
+	}
+	if got := len(payload.Assessment.Scorecard); got != 5 {
+		t.Errorf("scorecard rows = %d, want 5", got)
+	}
+}
+
+// TestRun_MarkdownFormat_WritesStepSummary verifies the markdown report is
+// appended to GITHUB_STEP_SUMMARY.
+func TestRun_MarkdownFormat_WritesStepSummary(t *testing.T) {
+	payload := loadPayloadFixture(t, "payload-full.json")
+	tmpFile := t.TempDir() + "/summary.md"
+
+	var stdout bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:        []string{"./..."},
+		Format:          "markdown",
+		Stdout:          &stdout,
+		Stderr:          &bytes.Buffer{},
+		StepSummaryPath: tmpFile,
+		AnalyzeFunc:     fakeAnalyze(payload, nil),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	written, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("read step summary: %v", err)
+	}
+	if string(written) != stdout.String() {
+		t.Error("step summary does not match stdout report")
+	}
+}
+
+// TestRun_MarkdownFormat_ThresholdFailureStillWritesReport verifies the
+// report is written before the threshold error is returned.
+func TestRun_MarkdownFormat_ThresholdFailureStillWritesReport(t *testing.T) {
+	payload := loadPayloadFixture(t, "payload-full.json")
+
+	var stdout bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "markdown",
+		Stdout:      &stdout,
+		Stderr:      &bytes.Buffer{},
+		Thresholds:  ThresholdConfig{MaxCrapload: intPtr(1)},
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+	})
+	if err == nil {
+		t.Fatal("expected threshold failure")
+	}
+	if !strings.Contains(stdout.String(), "# 🔍 Gaze Full Quality Report") {
+		t.Error("report was not written before the threshold error")
+	}
+}
+
+// TestRun_JSONFormat_IncludesAssessment verifies the assessment travels with
+// the JSON payload.
+func TestRun_JSONFormat_IncludesAssessment(t *testing.T) {
+	payload := loadPayloadFixture(t, "payload-full.json")
+
+	var stdout bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "json",
+		Stdout:      &stdout,
+		Stderr:      &bytes.Buffer{},
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var decoded ReportPayload
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v", err)
+	}
+	if decoded.Assessment == nil {
+		t.Fatal("JSON output has no assessment")
+	}
+	if decoded.Assessment.RubricVersion != "1" {
+		t.Errorf("rubric_version = %q, want 1", decoded.Assessment.RubricVersion)
+	}
+	if got := len(decoded.Assessment.Scorecard); got != 5 {
+		t.Errorf("scorecard rows = %d, want 5", got)
+	}
+}
+
+// TestRun_TextPath_RejectedAnswer_PublishesReportAndFails verifies that an
+// answer failing validation produces a rejection callout, still publishes the
+// deterministic report to stdout and the Step Summary, never echoes the raw
+// adapter output, and fails with an *AnswerRejection naming the rule.
+func TestRun_TextPath_RejectedAnswer_PublishesReportAndFails(t *testing.T) {
+	const rawOutput = "# Gaze Report\n\nNarrative the model invented."
+
+	fa := &FakeAdapter{Response: rawOutput}
+	payload := &ReportPayload{CRAP: json.RawMessage(`{}`)}
+	summaryPath := filepath.Join(t.TempDir(), "summary.md")
+
+	var stdout bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:        []string{"./..."},
+		Format:          "text",
+		Stdout:          &stdout,
+		Stderr:          &bytes.Buffer{},
+		Adapter:         fa,
+		AnalyzeFunc:     fakeAnalyze(payload, nil),
+		StepSummaryPath: summaryPath,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a rejected answer")
+	}
+
+	var rejection *AnswerRejection
+	if !errors.As(err, &rejection) {
+		t.Fatalf("expected *AnswerRejection, got %T: %v", err, err)
+	}
+	if rejection.Rule != ruleSurroundingText {
+		t.Errorf("Rule = %q, want %q", rejection.Rule, ruleSurroundingText)
+	}
+
+	report := stdout.String()
+	if !strings.Contains(report, "# 🔍") {
+		t.Errorf("expected the deterministic report on stdout, got: %q", report)
+	}
+	if !strings.Contains(report, "> ⚠️ AI narrative rejected:") {
+		t.Errorf("expected a rejection callout on stdout, got: %q", report)
+	}
+	if strings.Contains(report, "Narrative the model invented") {
+		t.Errorf("stdout must not echo the raw adapter output, got: %q", report)
+	}
+
+	summary, readErr := os.ReadFile(summaryPath)
+	if readErr != nil {
+		t.Fatalf("reading step summary: %v", readErr)
+	}
+	if string(summary) != report {
+		t.Errorf("step summary differs from stdout")
+	}
+
+	if len(fa.Calls) != 1 {
+		t.Fatalf("adapter calls = %d, want 1", len(fa.Calls))
+	}
+	if fa.Calls[0].SystemPrompt != ReportModePrompt() {
+		t.Errorf("system prompt is not the report-mode prompt")
+	}
+}
+
+// TestRun_TextPath_AdapterError_PublishesUnavailable verifies that an adapter
+// failure renders the unavailable callout, still publishes the deterministic
+// report, and returns the adapter error rather than a rejection.
+func TestRun_TextPath_AdapterError_PublishesUnavailable(t *testing.T) {
+	fa := &FakeAdapter{Err: errors.New("adapter blew up")}
+	payload := &ReportPayload{CRAP: json.RawMessage(`{}`)}
+
+	var stdout bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "text",
+		Stdout:      &stdout,
+		Stderr:      &bytes.Buffer{},
+		Adapter:     fa,
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+	})
+	if err == nil {
+		t.Fatal("expected an error when the adapter fails")
+	}
+
+	report := stdout.String()
+	if !strings.Contains(report, "> ⚠️ AI narrative unavailable:") {
+		t.Errorf("expected an unavailable callout on stdout, got: %q", report)
+	}
+	if !strings.Contains(report, "# 🔍") {
+		t.Errorf("expected the deterministic report on stdout, got: %q", report)
+	}
+
+	var rejection *AnswerRejection
+	if errors.As(err, &rejection) {
+		t.Errorf("adapter failure must not be reported as a rejection: %v", err)
+	}
+}
+
+// TestRun_TextPath_JoinsAIAndThresholdErrors verifies that a rejected answer
+// combined with a failing threshold returns both errors, so callers can see
+// the AI failure through errors.As and the threshold failure in the message.
+func TestRun_TextPath_JoinsAIAndThresholdErrors(t *testing.T) {
+	maxCrapload := 5
+	payload := &ReportPayload{
+		Summary: ReportSummary{TotalFunctions: 20, CRAPload: intPtr(10)},
+		CRAP:    json.RawMessage(`{}`),
+	}
+	fa := &FakeAdapter{Response: "not an answer"}
+
+	var stdout, stderr bytes.Buffer
+	err := Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "text",
+		Stdout:      &stdout,
+		Stderr:      &stderr,
+		Adapter:     fa,
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+		Thresholds:  ThresholdConfig{MaxCrapload: &maxCrapload},
+	})
+	if err == nil {
+		t.Fatal("expected an error for a rejected answer and a failed threshold")
+	}
+
+	var rejection *AnswerRejection
+	if !errors.As(err, &rejection) {
+		t.Fatalf("expected the joined error to carry *AnswerRejection, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "one or more quality thresholds failed") {
+		t.Errorf("joined error lost the threshold failure: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "# 🔍") {
+		t.Errorf("expected the deterministic report on stdout, got: %q", stdout.String())
+	}
+}
+
+// TestRun_ZeroResultGate_SkippedWhenCRAPNotSelected verifies research R8: a
+// quality-only report has no function count to gate on, so the zero-result
+// gate must not fire.
+func TestRun_ZeroResultGate_SkippedWhenCRAPNotSelected(t *testing.T) {
+	sections, err := ParseSections([]string{"quality"})
+	if err != nil {
+		t.Fatalf("ParseSections: %v", err)
+	}
+
+	payload := &ReportPayload{
+		Quality: json.RawMessage(`{"quality_reports":[],"quality_summary":{"total_tests":0}}`),
+		Errors:  PayloadErrors{},
+	}
+	// TotalFunctions stays zero: the CRAP step never ran, so the zero-result
+	// gate has nothing to gate on. Contract coverage is supplied so the
+	// contract-coverage threshold itself passes.
+	payload.Summary.AvgContractCoverage = intPtr(80)
+
+	var stdout, stderr bytes.Buffer
+	err = Run(RunnerOptions{
+		Patterns:    []string{"./..."},
+		Format:      "json",
+		Sections:    sections,
+		Stdout:      &stdout,
+		Stderr:      &stderr,
+		AnalyzeFunc: fakeAnalyze(payload, nil),
+		Thresholds:  ThresholdConfig{MinContractCoverage: intPtr(0)},
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error for quality-only report, got: %v", err)
+	}
+
+	var decoded ReportPayload
+	if decErr := json.Unmarshal(stdout.Bytes(), &decoded); decErr != nil {
+		t.Fatalf("unmarshal stdout: %v", decErr)
+	}
+	// json.RawMessage unmarshals a JSON null as the bytes "null", so compare
+	// the content rather than the slice.
+	if string(decoded.CRAP) != "null" {
+		t.Errorf("expected null CRAP for a quality-only report, got %s", decoded.CRAP)
 	}
 }

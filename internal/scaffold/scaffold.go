@@ -94,8 +94,8 @@ type Result struct {
 // .opencode/) is a tool-owned file. Tool-owned files use
 // overwrite-on-diff behavior: they are replaced when their
 // content differs from the embedded version, even without --force.
-// User-owned files (agents/gaze-reporter.md, commands/gaze.md)
-// retain skip-if-present behavior.
+// User-owned files (only commands/gaze.md today) retain
+// skip-if-present behavior.
 //
 // Ownership is determined by an explicit list: all files under
 // references/ are tool-owned by directory convention, and specific
@@ -109,6 +109,7 @@ func isToolOwned(relPath string) bool {
 	}
 	switch relPath {
 	case "commands/speckit.testreview.md",
+		"agents/gaze-reporter.md",
 		"agents/gaze-test-generator.md",
 		"agents/divisor-gaze-testing.md",
 		"commands/gaze-fix.md",

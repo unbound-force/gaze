@@ -7,150 +7,91 @@ import (
 	"testing"
 )
 
-// scaffoldPromptRelPath is the path to the canonical gaze-reporter.md in the
-// scaffold package, relative to the module root.
-const scaffoldPromptRelPath = "internal/scaffold/assets/agents/gaze-reporter.md"
+// promptRequiredPhrases are the contract phrases the report-mode prompt
+// must carry (contracts/agents-and-prompts.md §A).
+var promptRequiredPhrases = []string{
+	`"summary"`,
+	`"recommendations"`,
+	"1200",
+	"400",
+	"Do not use tools",
+	"English",
+}
 
-// TestLoadPrompt_LocalFileWithFrontmatter verifies that a local
-// .opencode/agents/gaze-reporter.md with YAML frontmatter is loaded and
-// stripped before returning.
-func TestLoadPrompt_LocalFileWithFrontmatter(t *testing.T) {
-	workdir := t.TempDir()
-	agentsDir := filepath.Join(workdir, ".opencode", "agents")
-	if err := os.MkdirAll(agentsDir, 0755); err != nil {
-		t.Fatal(err)
+func TestReportModePrompt_Content(t *testing.T) {
+	prompt := ReportModePrompt()
+	if strings.TrimSpace(prompt) == "" {
+		t.Fatal("ReportModePrompt() returned an empty prompt")
 	}
-
-	content := "---\ndescription: test\n---\n\n# Real Content\n\nSome instructions."
-	if err := os.WriteFile(filepath.Join(agentsDir, "gaze-reporter.md"), []byte(content), 0644); err != nil {
-		t.Fatal(err)
+	if strings.HasPrefix(strings.TrimSpace(prompt), "---") {
+		t.Error("prompt must not start with YAML frontmatter")
 	}
-
-	got, err := LoadPrompt(workdir)
-	if err != nil {
-		t.Fatalf("LoadPrompt: %v", err)
+	for _, phrase := range promptRequiredPhrases {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("prompt is missing %q", phrase)
+		}
 	}
-
-	if strings.Contains(got, "description: test") {
-		t.Errorf("expected frontmatter stripped, got: %q", got)
-	}
-	if !strings.Contains(got, "# Real Content") {
-		t.Errorf("expected body content preserved, got: %q", got)
-	}
-	if strings.HasPrefix(got, "---") {
-		t.Errorf("expected no leading frontmatter delimiter, got: %q", got)
+	if !strings.Contains(prompt, "1 to 5") {
+		t.Error(`prompt is missing the "1 to 5" recommendation bound`)
 	}
 }
 
-// TestLoadPrompt_LocalFileWithoutFrontmatter verifies that a local file
-// without frontmatter is returned as-is.
-func TestLoadPrompt_LocalFileWithoutFrontmatter(t *testing.T) {
-	workdir := t.TempDir()
-	agentsDir := filepath.Join(workdir, ".opencode", "agents")
-	if err := os.MkdirAll(agentsDir, 0755); err != nil {
-		t.Fatal(err)
+func TestReportModePrompt_ExampleAnswerParses(t *testing.T) {
+	prompt := ReportModePrompt()
+	example, ok := fencedExampleAnswer(prompt)
+	if !ok {
+		t.Fatal("prompt has no ```json fenced example answer")
 	}
-
-	content := "# Just Instructions\n\nNo frontmatter here."
-	if err := os.WriteFile(filepath.Join(agentsDir, "gaze-reporter.md"), []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := LoadPrompt(workdir)
-	if err != nil {
-		t.Fatalf("LoadPrompt: %v", err)
-	}
-	if got != content {
-		t.Errorf("expected content unchanged, got: %q", got)
+	if _, err := ParseAIAnswer(example); err != nil {
+		t.Fatalf("prompt example answer does not pass ParseAIAnswer: %v", err)
 	}
 }
 
-// TestLoadPrompt_LocalFileAbsent_FallsBackToEmbedded verifies that when the
-// local file is absent, LoadPrompt returns the embedded default (non-empty).
-func TestLoadPrompt_LocalFileAbsent_FallsBackToEmbedded(t *testing.T) {
-	workdir := t.TempDir() // no .opencode/agents/gaze-reporter.md
-
-	got, err := LoadPrompt(workdir)
-	if err != nil {
-		t.Fatalf("LoadPrompt: %v", err)
+// fencedExampleAnswer returns the body of the prompt's last ```json block.
+func fencedExampleAnswer(prompt string) (string, bool) {
+	const fence = "```json"
+	start := strings.LastIndex(prompt, fence)
+	if start < 0 {
+		return "", false
 	}
-	if strings.TrimSpace(got) == "" {
-		t.Error("expected non-empty embedded default prompt")
+	rest := prompt[start+len(fence):]
+	rest = strings.TrimPrefix(rest, "\n")
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(rest[:end]), true
+}
+
+func TestReportModePrompt_Length(t *testing.T) {
+	prompt := ReportModePrompt()
+	lines := strings.Count(strings.TrimRight(prompt, "\n"), "\n") + 1
+	if lines > 40 {
+		t.Errorf("prompt is %d lines, want at most 40", lines)
 	}
 }
 
-// TestLoadPrompt_EmbeddedDefaultHasNoFrontmatter verifies that the embedded
-// default prompt (after stripping) does not begin with "---".
-func TestLoadPrompt_EmbeddedDefaultHasNoFrontmatter(t *testing.T) {
-	if strings.HasPrefix(strings.TrimSpace(defaultPromptRaw), "---") {
-		// defaultPromptRaw embeds the raw file including frontmatter;
-		// LoadPrompt strips it. Verify LoadPrompt strips correctly.
-		workdir := t.TempDir()
-		got, err := LoadPrompt(workdir)
+func TestReportModePrompt_NotScaffolded(t *testing.T) {
+	const marker = "Do not use tools, read files, or run commands."
+	root := filepath.Join("..", "scaffold", "assets")
+
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			t.Fatalf("LoadPrompt: %v", err)
+			return err
 		}
-		if strings.HasPrefix(got, "---") {
-			t.Errorf("embedded default prompt begins with frontmatter after LoadPrompt: %q", got[:50])
+		if d.IsDir() {
+			return nil
 		}
-	}
-}
-
-// TestEmbeddedPromptMatchesScaffold verifies that the embedded default prompt
-// in internal/aireport/assets/agents/gaze-reporter.md matches the canonical
-// copy in internal/scaffold/assets/agents/gaze-reporter.md (T-009: single
-// source of truth). If this test fails, run:
-//
-//	cp internal/scaffold/assets/agents/gaze-reporter.md internal/aireport/assets/agents/gaze-reporter.md
-func TestEmbeddedPromptMatchesScaffold(t *testing.T) {
-	modRoot := findModuleRoot(t)
-	scaffoldPath := filepath.Join(modRoot, scaffoldPromptRelPath)
-
-	scaffoldData, err := os.ReadFile(scaffoldPath)
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(data), marker) {
+			t.Errorf("%s contains the report-mode prompt; it must stay embedded only", path)
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("reading scaffold gaze-reporter.md: %v", err)
-	}
-
-	// defaultPromptRaw is the embedded file content.
-	if defaultPromptRaw != string(scaffoldData) {
-		t.Errorf("embedded prompt (internal/aireport/assets/agents/gaze-reporter.md) "+
-			"has drifted from scaffold canonical copy (%s).\n"+
-			"Fix: cp %s internal/aireport/assets/agents/gaze-reporter.md",
-			scaffoldPromptRelPath, scaffoldPath)
-	}
-}
-
-// TestStripFrontmatter_RemovesBlock verifies the stripping logic directly
-// using exact equality assertions.
-func TestStripFrontmatter_RemovesBlock(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		wantOut string // expected exact output after stripping
-	}{
-		{
-			name:    "standard YAML block",
-			input:   "---\nkey: value\n---\n\n# Body",
-			wantOut: "\n# Body",
-		},
-		{
-			name:    "no frontmatter",
-			input:   "# Just content",
-			wantOut: "# Just content",
-		},
-		{
-			name:    "opening delimiter only",
-			input:   "---\nno closing",
-			wantOut: "---\nno closing",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := stripFrontmatter(tc.input)
-			if got != tc.wantOut {
-				t.Errorf("stripFrontmatter(%q):\nwant: %q\ngot:  %q", tc.input, tc.wantOut, got)
-			}
-		})
+		t.Fatalf("walking %s: %v", root, err)
 	}
 }

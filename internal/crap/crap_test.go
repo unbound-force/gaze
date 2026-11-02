@@ -1082,7 +1082,7 @@ func TestReadModulePath_Valid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := readModulePath(dir)
+	got := ReadModulePath(dir)
 	if got != "github.com/user/repo" {
 		t.Errorf("expected 'github.com/user/repo', got %q", got)
 	}
@@ -1090,7 +1090,7 @@ func TestReadModulePath_Valid(t *testing.T) {
 
 func TestReadModulePath_NoGoMod(t *testing.T) {
 	dir := t.TempDir()
-	got := readModulePath(dir)
+	got := ReadModulePath(dir)
 	if got != "" {
 		t.Errorf("expected empty string, got %q", got)
 	}

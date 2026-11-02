@@ -163,3 +163,94 @@ func TestReportSummary_NotSerialised(t *testing.T) {
 		t.Errorf("ReportSummary values should not appear in JSON output, got: %s", data)
 	}
 }
+
+// TestReportPayload_MetadataAndAssessmentKeys verifies the spec-040 payload
+// contract: the top-level JSON keys are exactly the pre-existing set plus
+// "metadata" and "assessment", assessment serialises as null when absent,
+// and metadata.branch is omitted when empty.
+func TestReportPayload_MetadataAndAssessmentKeys(t *testing.T) {
+	p := &ReportPayload{
+		Metadata: ReportMetadata{
+			ModulePath:  "github.com/example/project",
+			GazeVersion: "v2.4.0",
+			Date:        "2026-11-01",
+			Sections:    []Section{SectionCRAP, SectionHealth},
+		},
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	want := []string{"metadata", "crap", "quality", "classify", "docscan", "errors", "assessment"}
+	if len(top) != len(want) {
+		t.Errorf("top-level keys = %d, want %d: %s", len(top), len(want), data)
+	}
+	for _, k := range want {
+		if _, ok := top[k]; !ok {
+			t.Errorf("missing top-level key %q in %s", k, data)
+		}
+	}
+	if _, ok := top["summary"]; ok {
+		t.Errorf("summary must not be serialised: %s", data)
+	}
+	if string(top["assessment"]) != "null" {
+		t.Errorf("assessment = %s, want null", top["assessment"])
+	}
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(top["metadata"], &meta); err != nil {
+		t.Fatalf("Unmarshal metadata: %v", err)
+	}
+	if _, ok := meta["branch"]; ok {
+		t.Errorf("empty branch must be omitted: %s", top["metadata"])
+	}
+	if got := string(meta["sections"]); got != `["crap","health"]` {
+		t.Errorf("sections = %s, want [\"crap\",\"health\"]", got)
+	}
+	if got := string(meta["module_path"]); got != `"github.com/example/project"` {
+		t.Errorf("module_path = %s", got)
+	}
+
+	p.Metadata.Branch = "main"
+	g := GradeB
+	v := 12.5
+	p.Assessment = &Assessment{
+		RubricVersion: "1",
+		Scorecard: []ScorecardRow{
+			{Dimension: "crapload", Label: "CRAPload", Value: &v, Grade: &g, Severity: SeverityModerate, Marker: "🟡", Detail: "d"},
+			{Dimension: "gaze_crapload", Label: "GazeCRAPload", Severity: SeverityUnavailable, Marker: "⚪"},
+		},
+		Recommendations: []Recommendation{{Severity: SeverityCritical, Marker: "🔴", Source: "fix_strategy", Text: "t", Function: "f", Line: 3}},
+	}
+	data, err = json.Marshal(p)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var back ReportPayload
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if back.Metadata.Branch != "main" {
+		t.Errorf("branch = %q, want main", back.Metadata.Branch)
+	}
+	if back.Assessment == nil || back.Assessment.RubricVersion != "1" || len(back.Assessment.Scorecard) != 2 {
+		t.Fatalf("assessment round-trip mismatch: %+v", back.Assessment)
+	}
+	row := back.Assessment.Scorecard[0]
+	if row.Value == nil || *row.Value != 12.5 || row.Grade == nil || *row.Grade != GradeB {
+		t.Errorf("scorecard row 0 = %+v", row)
+	}
+	if back.Assessment.Scorecard[1].Value != nil || back.Assessment.Scorecard[1].Grade != nil {
+		t.Errorf("unavailable row must keep null value/grade: %+v", back.Assessment.Scorecard[1])
+	}
+	if !strings.Contains(string(data), `"value":null`) || !strings.Contains(string(data), `"grade":null`) {
+		t.Errorf("expected explicit null value/grade in %s", data)
+	}
+	rec := back.Assessment.Recommendations[0]
+	if rec.Source != "fix_strategy" || rec.Line != 3 || rec.File != "" {
+		t.Errorf("recommendation round-trip = %+v", rec)
+	}
+}

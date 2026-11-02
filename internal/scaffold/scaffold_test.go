@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -122,8 +123,8 @@ func TestRun_SkipsExisting(t *testing.T) {
 	if !strings.Contains(output, "skipped:") {
 		t.Errorf("summary should mention 'skipped:', got:\n%s", output)
 	}
-	if !strings.Contains(output, "2 files skipped (use --force to overwrite)") {
-		t.Errorf("summary should mention 2 user-owned files skipped, got:\n%s", output)
+	if !strings.Contains(output, "1 file skipped (use --force to overwrite)") {
+		t.Errorf("summary should mention 1 user-owned file skipped, got:\n%s", output)
 	}
 }
 
@@ -633,10 +634,13 @@ func TestIsToolOwned(t *testing.T) {
 		{"commands/gaze-fix.md", true},
 		// Tool-owned: DCP configuration.
 		{"dcp.jsonc", true},
-		// Tool-owned: gaze-managed agent file.
+		// Tool-owned: gaze-managed agent files.
 		{"agents/divisor-gaze-testing.md", true},
-		// User-owned: agents.
-		{"agents/gaze-reporter.md", false},
+		{"agents/gaze-reporter.md", true},
+		// Tool-owned: gaze-test-generator agent file.
+		{"agents/gaze-test-generator.md", true},
+		// User-owned: agents outside the tool-owned list.
+		{"agents/custom.md", false},
 		// Legacy retired name must not match the tool-owned list.
 		{"agents/reviewer-testing.md", false},
 		// User-owned: other commands.
@@ -650,6 +654,160 @@ func TestIsToolOwned(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("isToolOwned(%q) = %v, want %v", tc.path, got, tc.want)
 		}
+	}
+}
+
+// TestRun_OverwritesCustomizedGazeReporter verifies FR-034: the
+// interactive gaze-reporter agent is tool-owned, so a customized copy
+// is replaced on the next gaze init even without --force.
+func TestRun_OverwritesCustomizedGazeReporter(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	var buf1 bytes.Buffer
+	if _, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf1}); err != nil {
+		t.Fatalf("first Run() returned error: %v", err)
+	}
+
+	// Simulate a local customization of the agent prompt.
+	agentPath := filepath.Join(dir, ".opencode", "agents", "gaze-reporter.md")
+	if err := os.WriteFile(agentPath, []byte("# custom\n"), 0o644); err != nil {
+		t.Fatalf("customizing agent file: %v", err)
+	}
+
+	var buf2 bytes.Buffer
+	result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf2})
+	if err != nil {
+		t.Fatalf("second Run() returned error: %v", err)
+	}
+
+	var updated bool
+	for _, f := range result.Updated {
+		if strings.HasSuffix(f, filepath.Join("agents", "gaze-reporter.md")) {
+			updated = true
+		}
+	}
+	if !updated {
+		t.Errorf("expected agents/gaze-reporter.md in Updated, got %v", result.Updated)
+	}
+
+	got, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("reading agent file: %v", err)
+	}
+	embedded, err := assetContent("agents/gaze-reporter.md")
+	if err != nil {
+		t.Fatalf("reading embedded asset: %v", err)
+	}
+	want := insertMarkerAfterFrontmatter(embedded, versionMarker("1.0.0"))
+	if !bytes.Equal(got, want) {
+		t.Errorf("agent file was not restored to the embedded copy (got %d bytes, want %d bytes)",
+			len(got), len(want))
+	}
+}
+
+// TestGazeReporterAgent_NoRenderingRules verifies FR-031: the
+// interactive /gaze agent consumes the deterministic renderer and
+// carries no rubric, emoji, or table templates of its own.
+func TestGazeReporterAgent_NoRenderingRules(t *testing.T) {
+	content, err := assetContent("agents/gaze-reporter.md")
+	if err != nil {
+		t.Fatalf("reading embedded agent asset: %v", err)
+	}
+	text := string(content)
+
+	forbidden := []string{
+		"Scoring Consistency Rules",
+		"±",
+		"\U0001F7E2", // green circle
+		"\U0001F7E1", // yellow circle
+		"\U0001F534", // red circle
+		"\u26AA",     // white circle
+		"Q1 — Safe",
+		"Q2 — Complex But Tested",
+		"Q3 — Needs Tests",
+		"Q4 — Dangerous",
+	}
+	for _, phrase := range forbidden {
+		if strings.Contains(text, phrase) {
+			t.Errorf("agent prompt must not contain %q", phrase)
+		}
+	}
+
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		for _, prefix := range []string{"| Metric |", "| Quadrant |", "| Dimension |", "| Grade |"} {
+			if strings.HasPrefix(trimmed, prefix) {
+				t.Errorf("agent prompt must not contain rendering table %q: %q", prefix, trimmed)
+			}
+		}
+		if reGradeRow.MatchString(trimmed) {
+			t.Errorf("agent prompt must not contain a grade table row: %q", trimmed)
+		}
+	}
+
+	// Frontmatter must be unchanged: subagent mode and the same tools.
+	for _, want := range []string{
+		"mode: subagent",
+		"  read: true",
+		"  bash: true",
+		"  write: false",
+		"  edit: false",
+		"  webfetch: false",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("agent prompt frontmatter must contain %q", want)
+		}
+	}
+
+	// It must consume the deterministic renderer in all three modes.
+	for _, want := range []string{
+		"gaze report --format=markdown",
+		"--sections=crap",
+		"--sections=quality",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("agent prompt must reference %q", want)
+		}
+	}
+}
+
+// reGradeRow matches a markdown table row whose first cell is a grade.
+var reGradeRow = regexp.MustCompile(`^\|\s*(A|A-|B\+|B|B-|C\+|C|C-|D|F)\s*\|`)
+
+// TestExampleReportMatchesGolden verifies DE-007 Layer 2: the example
+// report shipped with the agent is the renderer's own golden output, so
+// the documented shape cannot drift from the implementation.
+func TestExampleReportMatchesGolden(t *testing.T) {
+	content, err := assetContent("references/example-report.md")
+	if err != nil {
+		t.Fatalf("reading embedded example report: %v", err)
+	}
+	text := string(content)
+
+	if n := strings.Count(text, "```markdown"); n != 1 {
+		t.Fatalf("expected exactly one ```markdown block, found %d", n)
+	}
+	const opener = "```markdown\n"
+	start := strings.Index(text, opener)
+	body := text[start+len(opener):]
+	end := strings.Index(body, "\n```")
+	if end < 0 {
+		t.Fatal("markdown block is not closed")
+	}
+	got := body[:end+1]
+
+	goldenPath := filepath.Join("..", "..", "internal", "aireport", "testdata", "golden", "report-full.md")
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("reading golden report: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("example report block does not match %s (got %d bytes, want %d bytes)",
+			goldenPath, len(got), len(want))
 	}
 }
 

@@ -128,7 +128,41 @@ jobs:
 This pattern splits the quality gate into two steps:
 
 1. **Threshold check** (`--format=json`) — runs on every PR, no secrets needed, fails the build if thresholds are exceeded
-2. **AI report** (`--ai=opencode`) — runs on push to main only in this example (gated on `github.event_name == 'push'`); the [Reusable Workflow](#reusable-workflow) also runs it on same-repo PRs, where org secrets resolve. Requires an API key secret, produces a human-readable report in the GitHub Step Summary
+2. **AI report** (`--ai=opencode`) — runs on push to main only in this example (gated on `github.event_name == 'push'`); the [Reusable Workflow](#reusable-workflow) also runs it on same-repo PRs, where org secrets resolve. Requires an API key secret. The adapter supplies only the summary and recommendations, which Gaze validates and renders into the deterministic report, producing a human-readable Step Summary
+
+## Deterministic Reports and AI Judgment
+
+Gaze renders every report section itself: the tables, metrics, grades, and
+deterministic recommendations come from the analysis data, so identical data
+always produces identical output. In text mode the AI adapter adds only two
+things — a plain-prose summary and a prioritized recommendation list — as strict
+JSON that Gaze validates before rendering.
+
+That gives CI two useful properties:
+
+- **No secret needed for a full report.** `--format=markdown` produces the
+  complete report, including the Overall Health scorecard, without installing or
+  calling an AI provider:
+
+  ```yaml
+  - name: Gaze report
+    run: ./gaze report ./... --format=markdown --coverprofile=coverage.out
+  ```
+
+- **Invalid judgment fails loudly.** Gaze validates the adapter's answer against
+  a fixed contract: one JSON object with an English summary of 1–1,200
+  characters and 1–5 recommendations of at most 400 characters each. A rejected
+  answer exits non-zero even when every threshold passes, and the deterministic
+  report plus a `> ⚠️ AI narrative rejected:` callout are still written to
+  stdout and the step summary. A run never passes on narration alone.
+
+`gaze report` always uses its built-in report-mode prompt. A local
+`.opencode/agents/gaze-reporter.md` is ignored — Gaze prints a one-line notice
+to stderr — so a project-customized agent cannot change CI output.
+
+The [Reusable Workflow](#reusable-workflow) gains this behavior only once its
+`gaze-version` points at a release that contains it; until then it installs an
+older binary whose adapter output is not validated.
 
 ## Reusable Workflow
 

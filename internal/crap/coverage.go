@@ -219,7 +219,7 @@ func resolveFilePath(profileName string, moduleDir string) string {
 	//
 	// Strategy: strip the module prefix and join with moduleDir.
 	// Read go.mod to find the module path.
-	modulePath := readModulePath(moduleDir)
+	modulePath := ReadModulePath(moduleDir)
 	if modulePath == "" {
 		return ""
 	}
@@ -236,8 +236,10 @@ func resolveFilePath(profileName string, moduleDir string) string {
 	return ""
 }
 
-// readModulePath reads the module path from go.mod in the given directory.
-func readModulePath(dir string) string {
+// ReadModulePath reads the module path from the go.mod file in dir. It returns
+// the empty string when go.mod is missing, unreadable, or has no module
+// directive. Callers use it to derive the module path for report metadata.
+func ReadModulePath(dir string) string {
 	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {
 		return ""

@@ -186,7 +186,7 @@ The signal is automatically included in `ComputeScore` (in `score.go`), which su
 
 ## Adding a New Output Format
 
-Output formatters live with the command's existing report model. Analyze formatters live in `internal/report/`; CRAP formatters in `internal/crap/`; quality formatters in `internal/quality/`; and combined report formatters in `internal/aireport/`. Each family supports its existing text or JSON paths plus self-contained HTML where the command explicitly accepts it.
+Output formatters live with the command's existing report model. Analyze formatters live in `internal/report/`; CRAP formatters in `internal/crap/`; quality formatters in `internal/quality/`; and combined report formatters in `internal/aireport/`. Each family supports its existing text, markdown, or JSON paths plus self-contained HTML where the command explicitly accepts it.
 
 ### 1. Create the Formatter
 
