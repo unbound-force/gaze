@@ -119,7 +119,7 @@ func openCodeArgs(tmpDir, model string) []string {
 func extractAnswer(stdout, stderr []byte) (string, error) {
 	answer, err := extractFinalText(stdout)
 	if err != nil {
-		if errors.Is(errNoFinalText, err) {
+		if errors.Is(err, errNoFinalText) {
 			return "", fmt.Errorf("%w%s", err, formatStderrSuffix(stderr))
 		}
 		return "", err

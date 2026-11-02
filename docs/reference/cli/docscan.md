@@ -1,6 +1,6 @@
 # gaze docscan
 
-Scan the repository for Markdown documentation files and output a prioritized list as JSON. This command also feeds the full-mode documentation section of [`gaze report`](report.md) for document-enhanced [classification](../../concepts/classification.md).
+Scan the repository for Markdown documentation files and output a prioritized list as JSON. `gaze report` uses this data for its documentation line; document-enhanced [classification](../../concepts/classification.md) is available only through the `/gaze` command in OpenCode (full mode).
 
 Documents are prioritized by proximity to the target package:
 
