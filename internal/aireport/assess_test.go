@@ -519,3 +519,76 @@ func quadrantPtr(q crap.Quadrant) *crap.Quadrant { return &q }
 
 // strPtr returns a pointer to s.
 func strPtr(s string) *string { return &s }
+
+// TestCodeSpan_ExactLiterals pins the CommonMark code-span algorithm for
+// every backtick-position class, including the space-padding branch for
+// names that begin or end with a backtick (CommonMark forbids a backtick
+// adjacent to the delimiters, so the content is wrapped in spaces).
+func TestCodeSpan_ExactLiterals(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"plain", "`plain`"},
+		{"a`b", "``a`b``"},
+		{"a``b`c", "```a``b`c```"},
+		{"`x", "`` `x ``"},
+		{"x`", "`` x` ``"},
+		{"``", "``` `` ```"},
+	}
+
+	for _, tc := range cases {
+		if got := codeSpan(tc.in); got != tc.want {
+			t.Errorf("codeSpan(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestLongestBacktickRun pins the delimiter-width computation, including
+// the zero case for plain names and multi-backtick runs.
+func TestLongestBacktickRun(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"", 0},
+		{"plain", 0},
+		{"a`b", 1},
+		{"a``b`c", 2},
+		{"```", 3},
+		{"`a`", 1},
+	}
+
+	for _, tc := range cases {
+		if got := longestBacktickRun(tc.in); got != tc.want {
+			t.Errorf("longestBacktickRun(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestAssess_AmbiguousBoundaryNoRecommendation pins the boundary arms of
+// ambiguousClassificationRecommendation: a classification run with zero
+// effects, a nonzero ambiguous minority, and an exact tie must all emit no
+// ambiguous_classification recommendation. The tie is the fragile arm — a
+// `<=`→`<` regression would emit a spurious "50.0%" recommendation for it.
+func TestAssess_AmbiguousBoundaryNoRecommendation(t *testing.T) {
+	cases := []struct {
+		name    string
+		summary ReportSummary
+	}{
+		{"zero tallies with classification present", ReportSummary{}},
+		{"nonzero ambiguous minority", ReportSummary{Contractual: 9, Ambiguous: 3, Incidental: 3}},
+		{"nonzero exact tie", ReportSummary{Contractual: 2, Ambiguous: 3, Incidental: 1}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assessment := Assess(assessPayload(t, assessCrapReport(), 140, tc.summary))
+			for _, rec := range assessment.Recommendations {
+				if rec.Source == "ambiguous_classification" {
+					t.Fatalf("%s: spurious ambiguous_classification recommendation: %q", tc.name, rec.Text)
+				}
+			}
+		})
+	}
+}
