@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/charmbracelet/log"
 )
 
 // headlessAgentName is the opencode agent the adapter installs in its temp
@@ -115,15 +117,20 @@ func openCodeArgs(tmpDir, model string) []string {
 
 // extractAnswer reduces the opencode event stream to the final assistant text,
 // attaching the stderr snippet when the stream carried no final text so the
-// user can see why.
+// user can see why. Unparseable stream lines are counted onto the error and
+// warned about on success, so a mostly-corrupt stream never degrades
+// silently.
 func extractAnswer(stdout, stderr []byte) (string, error) {
-	answer, err := extractFinalText(stdout)
+	answer, skipped, err := extractFinalText(stdout)
 	if err != nil {
 		if errors.Is(err, errNoFinalText) {
-			return "", fmt.Errorf("%w%s", err, formatStderrSuffix(stderr))
+			return "", fmt.Errorf("%w%s%s", err, skippedLinesSuffix(skipped), formatStderrSuffix(stderr))
 		}
 		return "", err
 	}
 
+	if skipped > 0 {
+		log.Warn("opencode stream contained unparseable lines", "count", skipped)
+	}
 	return answer, nil
 }

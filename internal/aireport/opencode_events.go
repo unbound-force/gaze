@@ -68,37 +68,42 @@ type eventState struct {
 }
 
 // extractFinalText returns the final assistant text of an
-// `opencode run --format json` event stream.
+// `opencode run --format json` event stream, along with the number of
+// unparseable stream lines that were skipped.
 //
 // Only the text belonging to the last completed step is returned, so
 // narration emitted between tool calls can never reach the report. The
 // function is pure and never falls back to the raw stream. The event
 // shape and message selection follow the opcode-1.19.0 stream verified
 // in research R1.
-func extractFinalText(stdout []byte) (string, error) {
-	events, err := parseEvents(stdout)
+func extractFinalText(stdout []byte) (string, int, error) {
+	events, skipped, err := parseEvents(stdout)
 	if err != nil {
-		return "", err
+		return "", skipped, err
 	}
 
 	state := &eventState{}
 	for i := range events {
 		if err := state.handle(&events[i]); err != nil {
-			return "", err
+			return "", skipped, err
 		}
 	}
 
-	return state.finalText()
+	answer, err := state.finalText()
+	return answer, skipped, err
 }
 
-// parseEvents decodes one event per non-blank line.
+// parseEvents decodes one event per non-blank line and counts the lines
+// that fail to decode.
 //
-// Lines that are not JSON are skipped: the stream framing is
-// line-oriented, so a stray log line must not discard the events around
-// it. A stream with no decodable event is a failure.
-func parseEvents(stdout []byte) ([]openCodeEvent, error) {
+// Lines that fail to unmarshal into an event are skipped and counted: the
+// stream framing is line-oriented, so a stray log line must not discard the
+// events around it, and the count keeps a mostly-corrupt stream from
+// degrading silently. A stream with no decodable event is a failure.
+func parseEvents(stdout []byte) ([]openCodeEvent, int, error) {
 	lines := bytes.Split(stdout, []byte("\n"))
 	events := make([]openCodeEvent, 0, len(lines))
+	skipped := 0
 
 	for _, line := range lines {
 		line = bytes.TrimRight(line, "\r")
@@ -108,18 +113,29 @@ func parseEvents(stdout []byte) ([]openCodeEvent, error) {
 
 		var ev openCodeEvent
 		if err := json.Unmarshal(line, &ev); err != nil {
+			skipped++
 			continue
 		}
 		events = append(events, ev)
 	}
 
 	if len(events) == 0 {
-		return nil, fmt.Errorf(
-			"opencode produced no JSON events (expected --format json event stream; pinned opencode-ai 1.19.0)",
+		return nil, skipped, fmt.Errorf(
+			"opencode produced no JSON events (expected --format json event stream; pinned opencode-ai 1.19.0)%s",
+			skippedLinesSuffix(skipped),
 		)
 	}
 
-	return events, nil
+	return events, skipped, nil
+}
+
+// skippedLinesSuffix renders the unparseable-line count for error messages,
+// or an empty string when no lines were skipped.
+func skippedLinesSuffix(skipped int) string {
+	if skipped == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (skipped %d unparseable stream line(s))", skipped)
 }
 
 // handle folds one event into the accumulated state.
