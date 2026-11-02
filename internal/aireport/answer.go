@@ -81,16 +81,7 @@ func reject(rule, format string, args ...any) error {
 
 // truncateDetail bounds s to rejectionDetailBytes on a rune boundary.
 func truncateDetail(s string) string {
-	if len(s) <= rejectionDetailBytes {
-		return s
-	}
-
-	cut := rejectionDetailBytes
-	for cut > 0 && !utf8Start(s[cut]) {
-		cut--
-	}
-
-	return s[:cut]
+	return truncateOnRuneBoundary(s, rejectionDetailBytes)
 }
 
 // ParseAIAnswer validates raw adapter output and returns the answer.

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"unicode/utf8"
 )
 
 // errNoFinalText reports that the stream carried no final assistant
@@ -201,7 +200,7 @@ func errorEvent(ev *openCodeEvent) error {
 	}
 
 	detail := redactEnvValues(name+": "+message, os.Environ())
-	return fmt.Errorf("opencode reported an error: %s", truncateBytes(detail, maxAdapterErrorBytes))
+	return fmt.Errorf("opencode reported an error: %s", truncateOnRuneBoundary(detail, maxAdapterErrorBytes))
 }
 
 // finalText joins the text of the final step in first-seen order.
@@ -228,18 +227,4 @@ func (s *eventState) finalText() (string, error) {
 	}
 
 	return text, nil
-}
-
-// truncateBytes bounds s to max bytes, cutting on a rune boundary.
-func truncateBytes(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-
-	cut := max
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut--
-	}
-
-	return s[:cut]
 }

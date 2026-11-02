@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/unbound-force/gaze/v2/internal/crap"
 )
 
 // renderFixture loads a payload fixture, optionally restricts its
@@ -206,6 +208,127 @@ func TestRenderMarkdown_NewlineInCell(t *testing.T) {
 	if got, want := escapeCell("a|b"), `a\|b`; got != want {
 		t.Errorf("escapeCell = %q, want %q", got, want)
 	}
+}
+
+// TestEscapeCell_Markup pins the bracket and angle-bracket escaping that
+// keeps analysis-derived names from becoming links or HTML inside a table
+// cell. Without these cases the escaping branches can be deleted silently.
+func TestEscapeCell_Markup(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"link", "a[b](https://evil.example)", `a\[b\](https://evil.example)`},
+		{"html tag", "<script>alert(1)</script>", `\<script\>alert(1)\</script\>`},
+		{"html comment", "<!-- hidden -->", `\<!-- hidden --\>`},
+		{"pipe", "a|b", `a\|b`},
+		{"line breaks", "a\r\nb\nc\rd", "a b c d"},
+		{"all together", "x|[y](z)<w>", `x\|\[y\](z)\<w\>`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := escapeCell(tc.in); got != tc.want {
+				t.Errorf("escapeCell(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSanitizeProse_Markup pins prose escaping for callouts and
+// recommendation text, which are not table cells.
+func TestSanitizeProse_Markup(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"link", "[docs](https://evil.example)", `\[docs\](https://evil.example)`},
+		// ">" is intentionally left alone: it cannot open a tag, and
+		// escaping it would corrupt ordinary prose such as "(1201 > 1200)".
+		{"html tag", "<img src=x>", `\<img src=x>`},
+		{"line breaks", "one\ntwo\r\nthree\rfour", "one two three four"},
+		{"plain prose unchanged", "Decompose (a > b) at 50% coverage.", "Decompose (a > b) at 50% coverage."},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sanitizeProse(tc.in); got != tc.want {
+				t.Errorf("sanitizeProse(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRenderMarkdown_HostileDataEscaped is the render-level guard: hostile
+// analysis data must not produce a link or an HTML tag in a table cell, a
+// callout, or a recommendation line.
+func TestRenderMarkdown_HostileDataEscaped(t *testing.T) {
+	const hostile = "<script>[x](https://evil.example)"
+
+	p := loadPayloadFixture(t, "payload-full.json")
+
+	var report crap.Report
+	if err := json.Unmarshal(p.CRAP, &report); err != nil {
+		t.Fatalf("decode crap: %v", err)
+	}
+	report.Scores[0].Function = hostile
+	report.Summary.WorstCRAP[0].Function = hostile
+	p.CRAP = mustMarshalReport(t, report)
+
+	callout := hostile + "\nsecond line"
+	p.Errors.Docscan = &callout
+
+	assessment := Assess(p)
+	if len(assessment.Recommendations) > 0 {
+		assessment.Recommendations[0].Text = "Add tests for " + hostile + "."
+	}
+	p.Assessment = &assessment
+
+	// Render the mutated payload directly: renderFixture reloads the
+	// fixture, which would discard the hostile data.
+	sections, err := ParseSections([]string{"crap", "health"})
+	if err != nil {
+		t.Fatalf("ParseSections: %v", err)
+	}
+	p.Metadata.Sections = sections.List()
+
+	out, err := RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+
+	// The escaped form keeps the text visible (the renderer never drops
+	// data), but every bracket and angle bracket must be backslash-escaped
+	// so it can neither open a link nor start an HTML tag.
+	for _, r := range []string{"[", "]", "<"} {
+		for i := 0; i < len(out); i++ {
+			if string(out[i]) != r {
+				continue
+			}
+			if i == 0 || out[i-1] != '\\' {
+				t.Errorf("unescaped %q at offset %d in:\n%s", r, i, out)
+				break
+			}
+		}
+	}
+
+	if !strings.Contains(out, "script") {
+		t.Error("expected the hostile name to survive escaping, not be dropped")
+	}
+}
+
+// mustMarshalReport marshals a crap.Report for a renderer test.
+func mustMarshalReport(t *testing.T, report crap.Report) json.RawMessage {
+	t.Helper()
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal crap report: %v", err)
+	}
+
+	return data
 }
 
 func TestRenderMarkdown_FailedStepCallout(t *testing.T) {

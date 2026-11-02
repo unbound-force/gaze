@@ -500,8 +500,32 @@ func newRecommendation(severity Severity, source, text string) Recommendation {
 // codeSpan renders s as inline code, widening to a double-backtick
 // span when s itself contains a backtick.
 func codeSpan(s string) string {
-	if strings.Contains(s, "`") {
-		return "``" + s + "``"
+	delim := strings.Repeat("`", longestBacktickRun(s)+1)
+
+	// CommonMark requires padding when the content itself starts or ends
+	// with a backtick, otherwise it would fuse with the delimiter run.
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		return delim + " " + s + " " + delim
 	}
-	return "`" + s + "`"
+
+	return delim + s + delim
+}
+
+// longestBacktickRun returns the length of the longest backtick run in s.
+// The code-span delimiter must be longer than any internal run, otherwise
+// an embedded backtick would close the span early and let markup escape.
+func longestBacktickRun(s string) int {
+	longest, run := 0, 0
+	for _, r := range s {
+		if r != '`' {
+			run = 0
+			continue
+		}
+		run++
+		if run > longest {
+			longest = run
+		}
+	}
+
+	return longest
 }

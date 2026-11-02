@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/unbound-force/gaze/v2/internal/crap"
 	"github.com/unbound-force/gaze/v2/internal/docscan/apidoc"
@@ -251,22 +252,25 @@ func boundedFirstLine(s string) string {
 	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
 		s = s[:i]
 	}
-	if len(s) <= maxCalloutDetailBytes {
-		return s
-	}
-	cut := maxCalloutDetailBytes
-	for cut > 0 && !utf8Start(s[cut]) {
-		cut--
-	}
-	return s[:cut]
+	return truncateOnRuneBoundary(s, maxCalloutDetailBytes)
 }
 
 // maxCalloutDetailBytes bounds a callout's detail text.
 const maxCalloutDetailBytes = 200
 
-// utf8Start reports whether b starts a UTF-8 rune.
-func utf8Start(b byte) bool {
-	return b&0xC0 != 0x80
+// truncateOnRuneBoundary bounds s to at most max bytes, cutting back to the
+// nearest rune boundary. It returns s unchanged when it already fits.
+func truncateOnRuneBoundary(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+
+	return s[:cut]
 }
 
 // decodeStep decodes a step's raw JSON into dst, writing the

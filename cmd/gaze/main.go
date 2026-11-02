@@ -2567,18 +2567,11 @@ func applyExternalReportQuality(payload *aireport.ReportPayload, pats []string, 
 	}
 
 	if selected.Classify {
+		// A successful mapping reports whatever it found. An all-zero tally is
+		// a real result (the renderer shows a zero-row table), not a missing
+		// step, so it must not be reported as unavailable.
 		externalClassificationCounts(payload, section.Counts)
-		if !hasClassificationCounts(payload) {
-			skipped := "skipped: external analyzer mode"
-			payload.Errors.Classify = &skipped
-		}
 	}
-}
-
-// hasClassificationCounts reports whether the payload carries any
-// classification tally to render.
-func hasClassificationCounts(payload *aireport.ReportPayload) bool {
-	return payload.Summary.Contractual+payload.Summary.Ambiguous+payload.Summary.Incidental > 0
 }
 
 // applyExternalReportCRAP fills payload with the CRAP step computed by the
