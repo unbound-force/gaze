@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -425,11 +426,12 @@ func TestGoldenHelpers_SharedFiles(t *testing.T) {
 				t.Errorf("loadPayloadFixture(%s) = nil", name)
 			}
 		case ".md":
-			data, err := os.ReadFile(goldenPath(name))
-			if err != nil {
-				t.Fatalf("reading %s: %v", name, err)
+			// Every golden report on disk must be pinned by a case in
+			// TestRenderMarkdown_Golden; an unpinned file would never be
+			// regenerated or reviewed.
+			if strings.HasPrefix(name, "report-") && !slices.Contains(markdownGoldenNames, name) {
+				t.Errorf("%s has no TestRenderMarkdown_Golden case", name)
 			}
-			assertGolden(t, name, string(data))
 		}
 	}
 }

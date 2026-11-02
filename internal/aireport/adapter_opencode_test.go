@@ -290,6 +290,14 @@ func countGazeOpenCodeDirs(entries []os.DirEntry) int {
 
 // replayOpenCode runs Format against the fake binary replaying a stream
 // fixture, and returns the extracted answer.
+//
+// Layering note: the replay tests are guarded by testing.Short() because
+// they compile and start a subprocess for every stream fixture. The
+// incident regression tests deliberately are not guarded — they are the
+// required gate (FR-036, SC-001) and must run in the standard short suite.
+// The replay layer therefore adds per-fixture coverage on the long-suite
+// runs, while the incident gate keeps the fail-closed contract enforced
+// everywhere.
 func replayOpenCode(t *testing.T, stream string) (string, error) {
 	t.Helper()
 

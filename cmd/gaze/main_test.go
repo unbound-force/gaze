@@ -4286,40 +4286,36 @@ func loadReportFixture(t *testing.T, name string) *aireport.ReportPayload {
 	}
 
 	var fixture struct {
-		Summary struct {
-			TotalFunctions      int      `json:"total_functions"`
-			CRAPload            *int     `json:"crapload"`
-			GazeCRAPload        *int     `json:"gaze_crapload"`
-			AvgContractCoverage *int     `json:"avg_contract_coverage"`
-			SSADegraded         bool     `json:"ssa_degraded"`
-			SSADegradedPackages []string `json:"ssa_degraded_packages"`
-			Contractual         int      `json:"contractual"`
-			Ambiguous           int      `json:"ambiguous"`
-			Incidental          int      `json:"incidental"`
-			SkippedTests        int      `json:"skipped_tests"`
-			SkippedTestNames    []string `json:"skipped_test_names"`
-		} `json:"summary"`
+		Summary reportFixtureSummary `json:"summary"`
 	}
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatalf("decoding fixture summary %s: %v", name, err)
 	}
 
-	payload.Summary = aireport.ReportSummary{
-		TotalFunctions:      fixture.Summary.TotalFunctions,
-		CRAPload:            fixture.Summary.CRAPload,
-		GazeCRAPload:        fixture.Summary.GazeCRAPload,
-		AvgContractCoverage: fixture.Summary.AvgContractCoverage,
-		SSADegraded:         fixture.Summary.SSADegraded,
-		SSADegradedPackages: fixture.Summary.SSADegradedPackages,
-		Contractual:         fixture.Summary.Contractual,
-		Ambiguous:           fixture.Summary.Ambiguous,
-		Incidental:          fixture.Summary.Incidental,
-		SkippedTests:        fixture.Summary.SkippedTests,
-		SkippedTestNames:    fixture.Summary.SkippedTestNames,
-	}
+	payload.Summary = aireport.ReportSummary(fixture.Summary)
 
 	return &payload
 }
+
+// reportFixtureSummary mirrors the fixture's top-level summary block, which
+// ReportPayload keeps out of its own JSON. The conversion to
+// aireport.ReportSummary is a compile-time drift guard: adding, removing,
+// retyping, or reordering a field on either side breaks the build.
+type reportFixtureSummary struct {
+	TotalFunctions      int      `json:"total_functions"`
+	CRAPload            *int     `json:"crapload"`
+	GazeCRAPload        *int     `json:"gaze_crapload"`
+	AvgContractCoverage *int     `json:"avg_contract_coverage"`
+	SSADegraded         bool     `json:"ssa_degraded"`
+	SSADegradedPackages []string `json:"ssa_degraded_packages"`
+	Contractual         int      `json:"contractual"`
+	Ambiguous           int      `json:"ambiguous"`
+	Incidental          int      `json:"incidental"`
+	SkippedTests        int      `json:"skipped_tests"`
+	SkippedTestNames    []string `json:"skipped_test_names"`
+}
+
+var _ = aireport.ReportSummary(reportFixtureSummary{})
 
 // reportGoldenMetadata pins the header values the goldens record.
 func reportGoldenMetadata() aireport.ReportMetadata {
@@ -4956,8 +4952,12 @@ func TestRunReport_JSONSectionsNullForUnselected(t *testing.T) {
 			t.Errorf("%s = %s, want null", key, got)
 		}
 	}
-	if got := string(decoded["errors"]); strings.Contains(got, "\": \"") {
-		t.Errorf("errors entries should all be null, got %s", got)
+	var errs aireport.PayloadErrors
+	if decErr := json.Unmarshal(decoded["errors"], &errs); decErr != nil {
+		t.Fatalf("unmarshal errors: %v", decErr)
+	}
+	if errs.CRAP != nil || errs.Quality != nil || errs.Classify != nil || errs.Docscan != nil {
+		t.Errorf("unselected steps must carry no step error, got %+v", errs)
 	}
 }
 

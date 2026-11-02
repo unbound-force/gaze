@@ -42,6 +42,18 @@ func answerC() AIAnswer {
 	}
 }
 
+// markdownGoldenNames lists every golden markdown file the renderer tests
+// pin. TestGoldenHelpers_SharedFiles uses it to catch an orphaned golden on
+// disk, which would otherwise never be regenerated or reviewed.
+var markdownGoldenNames = []string{
+	"report-full.md",
+	"report-full-ai.md",
+	"report-full-rejected.md",
+	"report-crap.md",
+	"report-quality.md",
+	"report-partial.md",
+}
+
 // TestRenderMarkdown_Golden pins the rendered bytes of every report shape.
 func TestRenderMarkdown_Golden(t *testing.T) {
 	rejected := AIOutcome{
@@ -63,11 +75,24 @@ func TestRenderMarkdown_Golden(t *testing.T) {
 		{"partial", "payload-partial.json", nil, AIOutcome{}, "report-partial.md"},
 	}
 
+	pinned := make(map[string]bool, len(cases))
 	for _, tc := range cases {
+		pinned[tc.golden] = true
 		t.Run(tc.name, func(t *testing.T) {
 			got := renderFixture(t, tc.fixture, tc.outcome, tc.sections...)
 			assertGolden(t, tc.golden, got)
 		})
+	}
+
+	// The declared name list and the case table must agree in both
+	// directions, so neither can drift without a failure.
+	for _, name := range markdownGoldenNames {
+		if !pinned[name] {
+			t.Errorf("markdownGoldenNames lists %s but no case renders it", name)
+		}
+	}
+	if len(pinned) != len(markdownGoldenNames) {
+		t.Errorf("case table pins %d goldens, markdownGoldenNames lists %d", len(pinned), len(markdownGoldenNames))
 	}
 }
 
