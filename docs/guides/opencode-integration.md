@@ -84,7 +84,7 @@ The `--force` flag overrides both behaviors and overwrites all files uncondition
 When `gaze init` runs in a project that already uses unbound-force tooling (a `.uf/` directory exists), it registers the `divisor-gaze-testing` persona in the existing review configuration:
 
 - `.uf/reviewer-capabilities.yaml` — appends the `{agent: divisor-gaze-testing, capability: review, scopes: [test-quality]}` entry
-- `.uf/review-matrix.yaml` — swaps the generic `divisor-testing` advisor for `divisor-gaze-testing` in the `code`, `spec`, and `feedback` advisor lists (the `triage` list is untouched)
+- `.uf/review-matrix.yaml` — swaps the generic `divisor-testing` advisor for `divisor-gaze-testing` in the `code`, `spec`, `triage`, and `feedback` advisor lists (a matrix missing any of the four lists is skipped with a warning)
 
 The merge is idempotent and comment-preserving: files are rewritten only when the registration actually changes them, and operational comments (including the `# scaffolded by uf` marker) survive verbatim. Malformed or missing expected keys warn and are skipped — `gaze init` never fails on them.
 
