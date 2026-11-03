@@ -53,6 +53,7 @@ fake_opencode
 .uf/replicator/*.db-shm
 .uf/replicator/*.db-wal
 .uf/replicator/*.lock
+.uf/replicator/*.log
 # Workspace state under .uf/ (sibling clones and caches, feedback, progress)
 .uf/sibling-clones/
 .uf/sibling-cache/
