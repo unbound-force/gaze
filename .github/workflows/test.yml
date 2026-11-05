@@ -1,6 +1,7 @@
 # Test pipeline: unit + integration matrix (Go 1.24/1.25), e2e
 # self-checks, and a dogfooded gaze AI report job that consumes the
-# coverage artifact via the reusable workflow. The PR-safe gaze
+# coverage artifact via the reusable workflow and builds gaze from the
+# commit under test (build-from-source). The PR-safe gaze
 # threshold check (JSON, no secrets) gates every PR; the AI report
 # runs where the opencode-config secret resolves. Concurrency: PR
 # runs cancel on supersede; main runs queue (CI-012).
@@ -98,6 +99,8 @@ jobs:
     uses: ./.github/workflows/reusable_gaze_ai_report.yml
     with:
       coverage-artifact: coverage-out
+      # Dogfood the commit under test, not a pinned release.
+      build-from-source: true
       max-crapload: 38
       max-gaze-crapload: 6
       min-contract-coverage: 8

@@ -19,6 +19,9 @@
 #   the wiring still validates without secrets.
 # - Concurrency and cancellation policy is caller-owned: callers
 #   SHOULD define a concurrency group (CI-012).
+# - gaze is installed from the `gaze-version` release tag. The gaze
+#   repository itself sets `build-from-source: true` to dogfood the
+#   commit under test; any other module fails that path fast.
 name: Reusable Gaze AI Report
 
 on:
@@ -55,10 +58,15 @@ on:
         default: "1.19.0"
         type: string
       gaze-version:
-        description: "gaze release tag to install."
+        description: "gaze release tag to install. Ignored when build-from-source is true."
         required: false
         default: "v2.2.0"
         type: string
+      build-from-source:
+        description: "Build gaze from the checked-out tree instead of installing gaze-version. For the gaze repository's own dogfood job only; fails on any other module."
+        required: false
+        default: false
+        type: boolean
       go-version:
         description: "Go toolchain version for setup-go."
         required: false
@@ -100,10 +108,28 @@ jobs:
           name: ${{ inputs.coverage-artifact }}
           path: .
 
-      - name: Install gaze
+      - name: Install gaze (release)
+        if: ${{ !inputs.build-from-source }}
         env:
           GAZE_RELEASE: ${{ inputs.gaze-version }}
-        run: go install github.com/unbound-force/gaze/v2/cmd/gaze@"$GAZE_RELEASE"
+        run: |
+          go install github.com/unbound-force/gaze/v2/cmd/gaze@"$GAZE_RELEASE"
+          gaze --version
+
+      - name: Install gaze (source)
+        if: ${{ inputs.build-from-source }}
+        env:
+          EXPECTED_MODULE: github.com/unbound-force/gaze/v2
+        run: |
+          MODULE="$(go list -m 2>/dev/null || true)"
+          if [ "$MODULE" != "$EXPECTED_MODULE" ]; then
+            echo "::error::build-from-source requires the checked-out module to be $EXPECTED_MODULE (found '${MODULE:-none}'); set gaze-version instead"
+            exit 1
+          fi
+          # Stamp the commit so `gaze --version` records which tree
+          # produced the report (GITHUB_SHA is the checked-out commit).
+          go install -ldflags "-X main.commit=${GITHUB_SHA}" ./cmd/gaze
+          gaze --version
 
       - name: Install OpenCode
         if: env.HAS_OPENCODE_CONFIG == 'true'
