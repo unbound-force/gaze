@@ -126,9 +126,11 @@ jobs:
             echo "::error::build-from-source requires the checked-out module to be $EXPECTED_MODULE (found '${MODULE:-none}'); set gaze-version instead"
             exit 1
           fi
-          # Stamp the commit so `gaze --version` records which tree
+          # Stamp the same symbols GoReleaser does, so `gaze --version`
+          # and the published report header identify the tree that
           # produced the report (GITHUB_SHA is the checked-out commit).
-          go install -ldflags "-X main.commit=${GITHUB_SHA}" ./cmd/gaze
+          BUILD_DATE="$(git show -s --format=%cI HEAD)"
+          go install -ldflags "-X main.version=dev-${GITHUB_SHA:0:12} -X main.commit=${GITHUB_SHA} -X main.date=${BUILD_DATE}" ./cmd/gaze
           gaze --version
 
       - name: Install OpenCode

@@ -54,16 +54,19 @@ silently building some other `./cmd/gaze` or getting a confusing
 `Install gaze (release)` runs when `build-from-source` is false and
 `Install gaze (source)` when true, rather than branching inside one script.
 The step name in the log then states which path ran. Both end with
-`gaze --version`; the source build stamps `-X main.commit=${GITHUB_SHA}` so
-the version line names the commit that produced the report (the release
-path already carries its tag).
+`gaze --version`. The source build stamps the same three symbols as
+`.goreleaser.yaml`: `main.version` (`dev-<12-char SHA>`), `main.commit`
+(`GITHUB_SHA`), and `main.date` (the commit date). `main.version` feeds the
+report metadata, so the published report header names the commit as well as
+the job log.
 
 ### D4: `gaze-version` default unchanged here
 
 Callers pinned to `@vX.Y.Z` receive the default baked into that tag, so the
 bump to the first spec-040 release must land in the commit that is tagged.
 Bumping it now would point the default at a tag that does not yet exist and
-break any caller relying on the default from `@main`.
+break any caller relying on the default from `@main`. Issue #313 tracks the
+bump.
 
 ## Risks / Trade-offs
 
