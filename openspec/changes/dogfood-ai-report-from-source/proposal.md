@@ -107,5 +107,6 @@ commits. The module-path guard refuses to guess when the caller is not gaze.
 ### IV. Testability
 
 **Assessment**: PASS. The change is exercised on every push and same-repo PR
-by the dogfood job itself; `actionlint` and `yamllint` validate the workflow
-syntax and expressions locally and in CI.
+by the dogfood job itself; `yamllint` validates the workflow syntax in CI
+(via MegaLinter), and `actionlint` served as an additional local-only
+syntax check.
