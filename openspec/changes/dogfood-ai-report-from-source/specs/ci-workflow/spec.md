@@ -2,7 +2,7 @@
 
 ## ADDED Requirements
 
-### Requirement: Reusable AI report MAY build gaze from source
+### Requirement: Reusable AI report MUST support building gaze from source
 
 `.github/workflows/reusable_gaze_ai_report.yml` MUST accept an optional
 boolean `build-from-source` input defaulting to `false`. When `false`, the
@@ -25,8 +25,9 @@ workflow MUST install the `gaze-version` release exactly as before. When
   `build-from-source: true`
 - **WHEN** the reusable workflow job runs on a push or same-repo pull request
 - **THEN** gaze is built from the checked-out commit with
-  `go install ./cmd/gaze`
+  `go install ./cmd/gaze`, stamped with that commit's identity
 - **AND** `gaze-version` is not used
+- **AND** the report header's Gaze Version names the commit
 
 #### Scenario: Non-gaze caller enabling build-from-source fails fast
 
@@ -48,3 +49,11 @@ reusable workflow with `build-from-source: true`.
 - **WHEN** the `gaze-ai-report` job runs
 - **THEN** the report is produced by gaze built from the pushed commit, not
   by a pinned release
+
+## MODIFIED Requirements
+
+None.
+
+## REMOVED Requirements
+
+None.

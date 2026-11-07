@@ -29,8 +29,9 @@ regressions in, or validate fixes to, the code being changed.
   module is `github.com/unbound-force/gaze/v2`; any other module fails the
   job with an actionable `::error::`.
 - Both install paths print `gaze --version` so the job log records which
-  binary produced the report; the source build stamps the checked-out commit
-  into it.
+  binary produced the report; the source build stamps version, commit, and
+  date (as GoReleaser does), so the published report header also identifies
+  the commit.
 - `.github/workflows/test.yml` `gaze-ai-report` job passes
   `build-from-source: true`, so every push and same-repo PR dogfoods the
   exact commit under test (the PR merge commit on `pull_request`).
@@ -43,7 +44,9 @@ regressions in, or validate fixes to, the code being changed.
   is tagged as the release containing spec 040 (callers pinned to `@vX.Y.Z`
   receive the default baked into that tag), and the release is cut only after
   this change produces a correct report on `main`. That is a separate,
-  follow-up change.
+  follow-up change tracked by #313. This change makes #313's `test.yml`
+  caller-input bump unnecessary: the dogfood job no longer uses
+  `gaze-version`.
 - Any change to the scaffolded consumer workflow (`gaze init --ci`), which
   already passes `gaze-version` equal to its `uses:` pin.
 - Go code changes.
