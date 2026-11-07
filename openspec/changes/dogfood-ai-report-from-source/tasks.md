@@ -35,4 +35,4 @@ Tasks touching the same file must NOT carry [P] relative to each other.
   checkout, guard failure on a foreign module).
 - [ ] 3.3 After merge, confirm the `Gaze AI Report` step summary on `main`
   shows the spec 040 rendered report and `Install gaze (source)` logged the
-  built version. Only then proceed with the follow-up release change.
+  built version. Only then proceed with the follow-up release change (#313).
