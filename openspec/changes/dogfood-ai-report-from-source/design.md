@@ -22,7 +22,7 @@ failure recurred in run 41698377720.
 ### Non-Goals
 
 - Changing the `gaze-version` default or cutting a release (follow-up,
-  sequenced after this change is green on `main`).
+  tracked in #313, sequenced after this change is green on `main`).
 - Making `build-from-source` useful for repositories other than gaze.
 
 ## Decisions
