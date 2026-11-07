@@ -74,5 +74,7 @@ bump.
   040's answer contract. Intended: it surfaces the problem before a release
   ships it to consumers.
 - The dogfood job no longer validates the release-install path. Consumers
-  exercise it, and `gaze init --ci` scaffolds pin it explicitly; the step is
-  unchanged.
+  exercise it, and `gaze init --ci` scaffolds pin it explicitly; the step
+  is unchanged (the added `gaze --version` echo is byte-identical to the
+  source-path echo exercised on every push). A post-release smoke test
+  for release installability is tracked separately in #297.
