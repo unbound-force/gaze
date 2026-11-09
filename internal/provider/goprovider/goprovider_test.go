@@ -1,6 +1,7 @@
 package goprovider_test
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -175,5 +176,42 @@ func TestGoSideEffectAnalyzer_InvalidPackage(t *testing.T) {
 	_, err := analyzer.Analyze("github.com/nonexistent/package/does/not/exist")
 	if err == nil {
 		t.Fatal("expected error for non-existent package, got nil")
+	}
+}
+
+// TestCoverage_NestedRunReturnsError verifies that Coverage without a
+// pre-generated profile fails fast with ErrNestedCoverageRun inside a
+// gaze coverage collection instead of spawning go test again.
+func TestCoverage_NestedRunReturnsError(t *testing.T) {
+	t.Setenv("GAZE_COVERAGE_RUN", "1")
+	t.Setenv("PATH", "") // a spawn attempt would surface as an exec error
+
+	provider := goprovider.NewLineCoverageProvider(io.Discard)
+	_, err := provider.Coverage([]string{"./..."}, t.TempDir(), "")
+	if !errors.Is(err, goprovider.ErrNestedCoverageRun) {
+		t.Fatalf("Coverage error = %v, want ErrNestedCoverageRun", err)
+	}
+}
+
+// TestCoverage_NestedRunUsesPreGeneratedProfile verifies the nested-run
+// guard only blocks generation: a pre-generated profile still parses
+// inside a gaze coverage collection.
+func TestCoverage_NestedRunUsesPreGeneratedProfile(t *testing.T) {
+	t.Setenv("GAZE_COVERAGE_RUN", "1")
+
+	profilePath := filepath.Join(t.TempDir(), "cover.out")
+	profileData := "mode: set\n" +
+		"github.com/unbound-force/gaze/v2/internal/crap/crap.go:245.55,247.2 1 1\n"
+	if err := os.WriteFile(profilePath, []byte(profileData), 0644); err != nil {
+		t.Fatalf("writing test profile: %v", err)
+	}
+
+	provider := goprovider.NewLineCoverageProvider(io.Discard)
+	results, err := provider.Coverage([]string{"./..."}, moduleRoot(t), profilePath)
+	if err != nil {
+		t.Fatalf("Coverage with pre-generated profile returned error: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected non-empty coverage results from valid profile")
 	}
 }
