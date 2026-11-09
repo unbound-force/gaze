@@ -1,7 +1,9 @@
 package goprovider
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,5 +196,33 @@ func TestBuildGoTestCmd_EnvVarDeduplication(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected GAZE_COVERAGE_RUN=1 (not stale value) in cmd.Env")
+	}
+}
+
+func TestGenerateCoverProfile_NestedRunRefused(t *testing.T) {
+	// Inside a gaze coverage collection, generateCoverProfile must
+	// refuse before creating a profile or spawning go test. Otherwise
+	// a test that generates coverage for its own module re-runs
+	// itself without bound (each level runs `go test ./...` again).
+	t.Setenv("GAZE_COVERAGE_RUN", "1")
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	// With no go on PATH, an attempted spawn would fail with an exec
+	// error instead of ErrNestedCoverageRun.
+	t.Setenv("PATH", "")
+
+	path, err := generateCoverProfile(t.TempDir(), []string{"./..."}, false, io.Discard)
+	if !errors.Is(err, ErrNestedCoverageRun) {
+		t.Fatalf("generateCoverProfile error = %v, want ErrNestedCoverageRun", err)
+	}
+	if path != "" {
+		t.Errorf("generateCoverProfile path = %q, want empty", path)
+	}
+	entries, readErr := os.ReadDir(tmp)
+	if readErr != nil {
+		t.Fatalf("reading TMPDIR: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected no temp profile to be created, found %d entries", len(entries))
 	}
 }

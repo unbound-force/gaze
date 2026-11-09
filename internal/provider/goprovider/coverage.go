@@ -1,6 +1,7 @@
 package goprovider
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,6 +58,20 @@ func (p *GoLineCoverageProvider) Coverage(patterns []string, rootDir string, cov
 	return crap.ParseCoverProfile(profilePath, rootDir, p.Stderr)
 }
 
+// coverageRunEnv is set to "1" on the go test subprocess that
+// generates a coverage profile. Its presence means the current process
+// is already running inside a gaze coverage collection.
+const coverageRunEnv = "GAZE_COVERAGE_RUN"
+
+// ErrNestedCoverageRun is returned when coverage generation is
+// requested from inside a gaze coverage collection (GAZE_COVERAGE_RUN
+// is set). Running go test again from there would re-run the test
+// that requested it, recursing without bound when gaze measures a
+// module whose tests generate coverage for that same module.
+var ErrNestedCoverageRun = errors.New("nested coverage generation refused: " +
+	coverageRunEnv + " is set, so this process already runs inside a gaze coverage collection; " +
+	"pass a pre-generated --coverprofile instead")
+
 // generateCoverProfile runs go test to produce a coverage profile.
 // The profile is written to a temporary file to avoid clobbering
 // any existing cover.out in the user's working directory.
@@ -67,6 +82,9 @@ func (p *GoLineCoverageProvider) Coverage(patterns []string, rootDir string, cov
 // some packages fail but others produce valid coverage data.
 // See design decision D1 in ci-gate-integrity.
 func generateCoverProfile(moduleDir string, patterns []string, short bool, stderr io.Writer) (string, error) {
+	if os.Getenv(coverageRunEnv) != "" {
+		return "", ErrNestedCoverageRun
+	}
 	profilePath, err := createTempProfile()
 	if err != nil {
 		return "", err
@@ -84,9 +102,11 @@ func generateCoverProfile(moduleDir string, patterns []string, short bool, stder
 // full coverage (including long-running tests) leave it false.
 //
 // Recursive subprocess prevention is handled by the GAZE_COVERAGE_RUN=1
-// environment variable set in buildGoTestCmd, not by -short. Tests
-// that detect this env var can skip themselves to prevent infinite
-// subprocess chains when gaze analyzes its own test suite.
+// environment variable set in buildGoTestCmd, not by -short.
+// generateCoverProfile refuses to run when the variable is already
+// set (ErrNestedCoverageRun), so a chain never goes deeper than one
+// level. Tests that generate coverage for real skip themselves under
+// the variable, so the nested run spends no time on them.
 func runGoTestCoverage(profilePath, moduleDir string, patterns []string, short bool, stderr io.Writer) (string, error) {
 	cmd := buildGoTestCmd(profilePath, moduleDir, patterns, short)
 	output, err := cmd.CombinedOutput()
@@ -122,11 +142,11 @@ func buildGoTestCmd(profilePath, moduleDir string, patterns []string, short bool
 	// existing entry to avoid duplicates.
 	env := make([]string, 0, len(os.Environ())+1)
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "GAZE_COVERAGE_RUN=") {
+		if !strings.HasPrefix(e, coverageRunEnv+"=") {
 			env = append(env, e)
 		}
 	}
-	env = append(env, "GAZE_COVERAGE_RUN=1")
+	env = append(env, coverageRunEnv+"=1")
 	cmd.Env = env
 
 	return cmd

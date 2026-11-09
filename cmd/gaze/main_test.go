@@ -3427,6 +3427,9 @@ func TestSC004_PayloadContainsQuadrantCounts(t *testing.T) {
 // Uses the real four-step analysis pipeline with FakeAdapter (to exclude AI
 // network latency from the timing measurement).
 func TestSC005_AnalysisPerformance(t *testing.T) {
+	if os.Getenv("GAZE_COVERAGE_RUN") != "" {
+		t.Skip("skipping: GAZE_COVERAGE_RUN set (recursion guard)")
+	}
 	if testing.Short() {
 		t.Skip("TestSC005_AnalysisPerformance skipped in -short mode")
 	}
