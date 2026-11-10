@@ -42,6 +42,16 @@ The `gaze crap` command reads the `baseline` section from `.gaze.yaml` for basel
 
 The `--coverprofile` flag is the primary configuration point — providing a pre-generated profile avoids running `go test` again (useful in CI where tests have already run).
 
+### Nested coverage guard
+
+When Gaze spawns `go test -coverprofile` itself, it sets the `GAZE_COVERAGE_RUN` environment variable. If `gaze crap` inherits a non-empty `GAZE_COVERAGE_RUN` (the command runs inside a Gaze coverage collection, such as Gaze's own self-analyzing tests) and no `--coverprofile` is passed, coverage generation is refused with:
+
+```
+nested coverage generation refused: GAZE_COVERAGE_RUN is set, so this process already runs inside a gaze coverage collection; pass a pre-generated --coverprofile instead
+```
+
+Pass a pre-generated profile via `--coverprofile` to run inside such an environment. Normal (non-nested) runs are unaffected.
+
 Baseline detection order:
 1. `--baseline FILE` → use specified path (error if not found or empty)
 2. `.gaze.yaml` `baseline.file` → use configured path (skip silently if not found)

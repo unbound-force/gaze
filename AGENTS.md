@@ -319,6 +319,8 @@ Tests are organized into two CI suites that run in parallel:
 
 Use `testing.Short()` to guard tests that spawn external `go test` processes or analyze the entire module. These are too slow for the standard CI timeout.
 
+Self-analyzing tests that generate coverage through the real coverage pipeline (without a pre-generated profile) MUST also skip when `GAZE_COVERAGE_RUN` is non-empty (e.g. `if os.Getenv("GAZE_COVERAGE_RUN") != "" { t.Skip("skipping: GAZE_COVERAGE_RUN set (recursion guard)") }`): the nested-coverage guard refuses generation inside a Gaze coverage collection instead of recursing.
+
 ## Project Structure & Architecture
 
 Single binary CLI with layered internal packages:
