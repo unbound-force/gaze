@@ -214,4 +214,15 @@ func TestCoverage_NestedRunUsesPreGeneratedProfile(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("expected non-empty coverage results from valid profile")
 	}
+
+	// Verify per-result content, mirroring
+	// TestGoLineCoverageProvider_PreGeneratedProfile.
+	for _, r := range results {
+		if r.File == "" {
+			t.Error("expected non-empty File in FuncCoverage result")
+		}
+		if r.Percentage < 0 || r.Percentage > 100 {
+			t.Errorf("Coverage percentage %f out of [0, 100] range", r.Percentage)
+		}
+	}
 }
