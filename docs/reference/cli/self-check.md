@@ -28,6 +28,8 @@ The `gaze self-check` command does not read `.gaze.yaml`. It uses default CRAP o
 
 Internally, `self-check` delegates to the same CRAP pipeline as `gaze crap`, with the package pattern hardcoded to `./...` and the module directory resolved automatically.
 
+Because the pipeline is shared, `self-check` is subject to the nested coverage guard: when it inherits a non-empty `GAZE_COVERAGE_RUN` (i.e., it runs inside a Gaze coverage collection), coverage generation is refused with `ErrNestedCoverageRun` instead of recursing. Gaze's own self-analyzing tests skip under this variable. Normal runs are unaffected.
+
 ## Examples
 
 ### Basic self-check

@@ -108,6 +108,8 @@ gaze crap --format=html ./... > crap-report.html    # Offline HTML report
 
 `gaze crap` also reports each function's **cognitive complexity** (SonarSource-style, AST-based) and a **GazeCRAP-CC** score (a GazeCRAP variant substituting cognitive complexity for cyclomatic complexity). Enforce an upper bound with `--max-cognitive-complexity=<N>`. `gaze analyze` accepts the same flag as a gate-only check.
 
+Nested coverage runs are refused: when `GAZE_COVERAGE_RUN` is set in the environment (a Gaze command running inside a Gaze coverage collection) and no `--coverprofile` is passed, `gaze crap` fails fast with `ErrNestedCoverageRun` instead of recursing. Pass `--coverprofile` to run inside such an environment.
+
 For the CRAP formula, GazeCRAP, quadrants, and fix strategies, see [Scoring](docs/concepts/scoring.md). For all flags, see [`gaze crap` reference](docs/reference/cli/crap.md).
 
 ### `gaze quality` -- Test Quality Assessment
