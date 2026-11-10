@@ -226,3 +226,25 @@ func TestGenerateCoverProfile_NestedRunRefused(t *testing.T) {
 		t.Errorf("expected no temp profile to be created, found %d entries", len(entries))
 	}
 }
+
+func TestGenerateCoverProfile_ProceedsWhenUnset(t *testing.T) {
+	// The guard's negative direction: with GAZE_COVERAGE_RUN empty,
+	// generation must proceed past the recursion guard. The empty-string
+	// pin (rather than ambient unset) keeps this test correct inside the
+	// E2E self-check, which spawns the test suite with GAZE_COVERAGE_RUN=1
+	// set; an ambient-unset variant would fail there exactly when the
+	// guard works.
+	t.Setenv("GAZE_COVERAGE_RUN", "")
+	t.Setenv("TMPDIR", t.TempDir())
+	// With no go on PATH, a run that proceeds past the guard fails with
+	// an exec error instead of recursing.
+	t.Setenv("PATH", "")
+
+	_, err := generateCoverProfile(t.TempDir(), []string{"./..."}, false, io.Discard)
+	if err == nil {
+		t.Fatal("expected error from generateCoverProfile with empty PATH (go test cannot spawn), got nil")
+	}
+	if errors.Is(err, ErrNestedCoverageRun) {
+		t.Fatalf("generateCoverProfile error = %v, want a spawn error: the guard fired with GAZE_COVERAGE_RUN unset", err)
+	}
+}
