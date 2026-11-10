@@ -23,7 +23,7 @@
 
 ### Requirement: Self-analyzing tests skip under the recursion guard
 
-Every gaze test that generates coverage through the real `GoLineCoverageProvider` (without a pre-generated profile) MUST skip when `GAZE_COVERAGE_RUN` is non-empty. This covers `TestRunSelfCheck_TextFormat`, `TestRunSelfCheck_JSONFormat`, `TestSC005_AnalysisPerformance`, `TestRunCRAPStep_RealPackage` and `TestRunProductionPipeline_RealPackage`.
+Every gaze test that generates coverage through the real `GoLineCoverageProvider` (without a pre-generated profile) MUST skip when `GAZE_COVERAGE_RUN` is non-empty, regardless of which test adds coverage generation in the future. Current examples include `TestRunSelfCheck_TextFormat`, `TestRunSelfCheck_JSONFormat`, `TestSC005_AnalysisPerformance`, `TestRunCRAPStep_RealPackage`, `TestRunProductionPipeline_RealPackage`, and any test that repairs `TestSC002_GazeCRAPloadMatchBetweenCrapAndReport`'s generation leg; the enumeration is illustrative, not exhaustive.
 
 #### Scenario: Full local suite terminates
 - **GIVEN** the gaze module
