@@ -111,6 +111,14 @@ jobs:
             echo "::error::go install of github.com/unbound-force/gaze/v2/cmd/gaze@$GAZE_RELEASE failed after 3 attempts"
             exit 1
           fi
+          # Guard at the first invocation of the binary: if go install
+          # succeeded but GOPATH/bin is not on PATH, this is where the
+          # job would otherwise stop with a bare exit 127 and no
+          # annotation. Later steps inherit the same PATH.
+          if ! command -v gaze >/dev/null; then
+            echo "::error::gaze not found on PATH after go install (is GOPATH/bin on PATH?)"
+            exit 1
+          fi
           gaze --version
 
       # `go install` does not stamp main.version, so `gaze --version`
@@ -120,10 +128,10 @@ jobs:
         env:
           GAZE_RELEASE: ${{ steps.release.outputs.tag }}
         run: |
-          if ! GAZE_BIN="$(command -v gaze)"; then
-            echo "::error::gaze not found on PATH after go install (is GOPATH/bin on PATH?)"
-            exit 1
-          fi
+          # The Install step already proved gaze is on PATH (it ran
+          # `gaze --version` behind an explicit guard), so this lookup
+          # cannot fail; resolve the binary location for the check.
+          GAZE_BIN="$(command -v gaze)"
           BUILT="$(go version -m "$GAZE_BIN" | awk '$1 == "mod" && $2 == "github.com/unbound-force/gaze/v2" { print $3 }')"
           if [ "$BUILT" != "$GAZE_RELEASE" ]; then
             echo "::error::installed gaze module version '${BUILT:-none}' does not match release $GAZE_RELEASE"
