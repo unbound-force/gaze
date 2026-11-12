@@ -1,0 +1,79 @@
+# Install Canary
+# ==============
+# Exercises the consumer install path of the reusable AI-report
+# workflow (`Install gaze (release)` in reusable_gaze_ai_report.yml):
+#   go install github.com/unbound-force/gaze/v2/cmd/gaze@<tag>
+#   gaze --version
+# against the latest published GitHub release. The repository's own
+# dogfood job builds gaze from source (build-from-source: true), so
+# without this canary only consumer runs exercise that path.
+#
+# Runs daily on a schedule rather than on `release: published`:
+# GoReleaser publishes releases with GITHUB_TOKEN, and events created
+# with GITHUB_TOKEN do not trigger workflows, so a release trigger
+# would never fire. A schedule also catches breakage that happens
+# between releases (module proxy or checksum DB resolution, Go
+# toolchain drift against the release's go.mod). workflow_dispatch
+# allows an on-demand run, e.g. right after a release.
+name: Install Canary
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  install-latest-release:
+    name: go install latest release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Mirror the reusable workflow's toolchain default (go-version
+      # input, "1.25"). No checkout: consumers install from the module
+      # proxy, not from this tree.
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Resolve latest release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          TAG="$(gh release view --repo "$REPO" --json tagName --jq .tagName)"
+          if [ -z "$TAG" ]; then
+            echo "::error::could not resolve the latest release tag of $REPO"
+            exit 1
+          fi
+          echo "Latest release: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Same commands as the reusable workflow's `Install gaze (release)`.
+      - name: Install gaze (release)
+        env:
+          GAZE_RELEASE: ${{ steps.release.outputs.tag }}
+        run: |
+          go install github.com/unbound-force/gaze/v2/cmd/gaze@"$GAZE_RELEASE"
+          gaze --version
+
+      # `go install` does not stamp main.version, so `gaze --version`
+      # prints "dev"; the module build info records which version the
+      # proxy actually served.
+      - name: Verify installed module version
+        env:
+          GAZE_RELEASE: ${{ steps.release.outputs.tag }}
+        run: |
+          GAZE_BIN="$(command -v gaze)"
+          BUILT="$(go version -m "$GAZE_BIN" | awk '$1 == "mod" && $2 == "github.com/unbound-force/gaze/v2" { print $3 }')"
+          if [ "$BUILT" != "$GAZE_RELEASE" ]; then
+            echo "::error::installed gaze module version '${BUILT:-none}' does not match release $GAZE_RELEASE"
+            exit 1
+          fi
+          echo "Installed github.com/unbound-force/gaze/v2 $BUILT"
