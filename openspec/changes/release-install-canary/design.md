@@ -92,6 +92,13 @@ it would add a CI-001/002 SHA-pinning dependency for behavior three
 lines of bash provide. The job timeout rises from 10 to 15 minutes to
 cover the worst-case retry path.
 
+The retry also makes the canary more tolerant than the single-attempt
+consumer path it mirrors: a pass proves the release is eventually
+installable, not that a single-shot consumer run would have succeeded.
+The tradeoff is accepted — the canary exists to catch persistent
+breakage, not to replicate consumer transients — and retry parity in
+the reusable workflow remains a possible follow-up.
+
 ## Risks / Trade-offs
 
 - **Up to a day of detection latency** after a release. Accepted;
