@@ -22,6 +22,13 @@ on:
     - cron: "17 6 * * *"
   workflow_dispatch:
 
+# CI-012: a workflow_dispatch run supersedes an in-flight scheduled run
+# instead of overlapping it. Static group name: the canary installs the
+# latest release regardless of the triggering ref.
+concurrency:
+  group: install-canary
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
