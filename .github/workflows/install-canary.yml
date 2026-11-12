@@ -15,6 +15,14 @@
 # between releases (module proxy or checksum DB resolution, Go
 # toolchain drift against the release's go.mod). workflow_dispatch
 # allows an on-demand run, e.g. right after a release.
+#
+# Network-dependent commands (gh release view, go install) carry a
+# bounded inline retry (3 attempts, 10s backoff): the canary runs on a
+# schedule from a cold cache, and a single transient failure would
+# train the notification recipient to ignore the only signal that the
+# consumer install path works. The local verify step is deterministic
+# and is not retried. The job timeout (15 minutes) covers the
+# worst-case retry path.
 name: Install Canary
 
 on:
@@ -35,7 +43,7 @@ jobs:
   install-latest-release:
     name: go install latest release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -54,7 +62,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          TAG="$(gh release view --repo "$REPO" --json tagName --jq .tagName)"
+          # Bounded retry: gh release view hits the REST API and can fail
+          # transiently. The final attempt stays fatal via the empty-tag
+          # guard below.
+          TAG=""
+          for attempt in 1 2 3; do
+            if TAG="$(gh release view --repo "$REPO" --json tagName --jq .tagName)"; then
+              break
+            fi
+            echo "gh release view failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then
+              echo "retrying in 10s"
+              sleep 10
+            fi
+          done
           if [ -z "$TAG" ]; then
             echo "::error::could not resolve the latest release tag of $REPO"
             exit 1
@@ -67,7 +88,26 @@ jobs:
         env:
           GAZE_RELEASE: ${{ steps.release.outputs.tag }}
         run: |
-          go install github.com/unbound-force/gaze/v2/cmd/gaze@"$GAZE_RELEASE"
+          # Bounded retry: go install compiles the full module graph from
+          # a cold cache (cache: false) — proxy resolution, checksum-
+          # database lookup, ~40 module downloads — any of which can fail
+          # transiently. The final attempt stays fatal.
+          INSTALLED=false
+          for attempt in 1 2 3; do
+            if go install github.com/unbound-force/gaze/v2/cmd/gaze@"$GAZE_RELEASE"; then
+              INSTALLED=true
+              break
+            fi
+            echo "go install failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then
+              echo "retrying in 10s"
+              sleep 10
+            fi
+          done
+          if [ "$INSTALLED" = false ]; then
+            echo "::error::go install of github.com/unbound-force/gaze/v2/cmd/gaze@$GAZE_RELEASE failed after 3 attempts"
+            exit 1
+          fi
           gaze --version
 
       # `go install` does not stamp main.version, so `gaze --version`
