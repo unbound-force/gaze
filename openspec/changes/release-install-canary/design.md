@@ -42,6 +42,10 @@ Alternatives considered:
 A daily schedule covers both: it runs the latest release within a day of
 publication and keeps checking between releases. `workflow_dispatch` lets a
 maintainer run it immediately after a release. Cost is one short job per day.
+A CI-012 concurrency group keeps the two triggers from overlapping:
+`cancel-in-progress` is evaluated for the incoming run, so a
+`workflow_dispatch` run cancels an in-flight scheduled run, while a
+scheduled run queues behind an in-flight dispatch run.
 
 The cron minute (`17 6 * * *`, UTC) avoids the top of the hour, when
 scheduled runs are most often delayed.
@@ -78,8 +82,10 @@ single transient failure — `gh release view` against the REST API, or
 `go install` resolving ~40 modules from a cold cache — turns the daily
 job red and trains the notification recipient to ignore the only
 signal that the consumer install path works. Both commands now carry a
-bounded inline retry (3 attempts, 10 seconds between attempts); the
-final attempt stays fatal with the existing `::error::` diagnostics,
+bounded inline retry (3 attempts; 10 seconds between attempts for the
+REST-API resolve step, and 30 seconds for the install step, where
+module-proxy propagation can lag right after a release); the final
+attempt stays fatal with the existing `::error::` diagnostics,
 preserving the spec's MUST-fail contract. The local verify step is
 deterministic and is not retried. A retry `uses:` action was rejected:
 it would add a CI-001/002 SHA-pinning dependency for behavior three

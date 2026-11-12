@@ -17,7 +17,7 @@
 # allows an on-demand run, e.g. right after a release.
 #
 # Network-dependent commands (gh release view, go install) carry a
-# bounded inline retry (3 attempts, 10s backoff): the canary runs on a
+# bounded inline retry (3 attempts, 10-30s backoff): the canary runs on a
 # schedule from a cold cache, and a single transient failure would
 # train the notification recipient to ignore the only signal that the
 # consumer install path works. The local verify step is deterministic
@@ -30,12 +30,15 @@ on:
     - cron: "17 6 * * *"
   workflow_dispatch:
 
-# CI-012: a workflow_dispatch run supersedes an in-flight scheduled run
-# instead of overlapping it. Static group name: the canary installs the
-# latest release regardless of the triggering ref.
+# CI-012: a workflow_dispatch run never overlaps an in-flight scheduled
+# run. Static group name: the canary installs the latest release
+# regardless of the triggering ref. cancel-in-progress is evaluated for
+# the incoming run: a dispatch run cancels an in-flight nightly run,
+# while a scheduled run queues behind an in-flight dispatch run instead
+# of cancelling the maintainer's on-demand verification.
 concurrency:
   group: install-canary
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 permissions: {}
 
@@ -100,8 +103,8 @@ jobs:
             fi
             echo "go install failed (attempt $attempt of 3)"
             if [ "$attempt" -lt 3 ]; then
-              echo "retrying in 10s"
-              sleep 10
+              echo "retrying in 30s (module proxy propagation can lag right after a release)"
+              sleep 30
             fi
           done
           if [ "$INSTALLED" = false ]; then
