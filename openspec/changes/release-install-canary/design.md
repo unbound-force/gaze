@@ -71,6 +71,21 @@ and `go-version: "1.25"` matching the reusable workflow's `go-version`
 input default. Same pinned `actions/setup-go` SHA as the other workflows.
 Workflow-level `permissions: {}`, job-level `contents: read`.
 
+### D5: Bounded retry on the network-dependent commands
+
+Review feedback (PR #331) flagged the alert-fatigue failure mode: a
+single transient failure — `gh release view` against the REST API, or
+`go install` resolving ~40 modules from a cold cache — turns the daily
+job red and trains the notification recipient to ignore the only
+signal that the consumer install path works. Both commands now carry a
+bounded inline retry (3 attempts, 10 seconds between attempts); the
+final attempt stays fatal with the existing `::error::` diagnostics,
+preserving the spec's MUST-fail contract. The local verify step is
+deterministic and is not retried. A retry `uses:` action was rejected:
+it would add a CI-001/002 SHA-pinning dependency for behavior three
+lines of bash provide. The job timeout rises from 10 to 15 minutes to
+cover the worst-case retry path.
+
 ## Risks / Trade-offs
 
 - **Up to a day of detection latency** after a release. Accepted;
