@@ -117,7 +117,10 @@ jobs:
         env:
           GAZE_RELEASE: ${{ steps.release.outputs.tag }}
         run: |
-          GAZE_BIN="$(command -v gaze)"
+          if ! GAZE_BIN="$(command -v gaze)"; then
+            echo "::error::gaze not found on PATH after go install (is GOPATH/bin on PATH?)"
+            exit 1
+          fi
           BUILT="$(go version -m "$GAZE_BIN" | awk '$1 == "mod" && $2 == "github.com/unbound-force/gaze/v2" { print $3 }')"
           if [ "$BUILT" != "$GAZE_RELEASE" ]; then
             echo "::error::installed gaze module version '${BUILT:-none}' does not match release $GAZE_RELEASE"
