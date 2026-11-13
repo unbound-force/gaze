@@ -13,6 +13,10 @@ Tasks touching the same file must NOT carry [P] relative to each other.
 - [x] 1.1 Change the `gaze-version` default in
   `.github/workflows/reusable_gaze_ai_report.yml` to `v2.4.0` and add the
   keep-equal-to-release-tag comment (D1, D2).
+- [x] 1.2 Add `.github/scripts/validate-ai-report-default.sh` and its tests
+  `.github/scripts/test-validate-ai-report-default.sh` (D2, D3).
+- [x] 1.3 Run the gate as job `validate-ai-report-default` in `release.yml`
+  (a preflight dependency) and the tests in `test.yml`.
 
 ## 2. Documentation
 
@@ -24,7 +28,8 @@ Tasks touching the same file must NOT carry [P] relative to each other.
 ## 3. Verification and release
 
 - [x] 3.1 Constitution alignment per `proposal.md`.
-- [x] 3.2 `actionlint` and `yamllint` on the modified workflow.
+- [x] 3.2 `actionlint`, `yamllint`, and `shellcheck` on the modified
+  workflows and scripts; the gate's tests pass locally.
 - [ ] 3.3 After merge, tag this merge commit as `v2.4.0` via `release.yml`.
 - [ ] 3.4 After release, confirm a caller pinned to `@v2.4.0` without
   `gaze-version` installs v2.4.0, then close #313.

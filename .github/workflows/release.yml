@@ -9,12 +9,15 @@
 # re-run resilience), semver ordering, CI check status,
 # and unreleased commits before creating an annotated tag.
 #
-# Two local gates run before preflight, both offline and
+# Three local gates run before preflight, all offline and
 # unskippable: the module-major check (tag major vs. the
-# go.mod module path) and the workflow-floor check (tag
+# go.mod module path), the workflow-floor check (tag
 # vs. the minWorkflowTag floor that `gaze init --ci`
 # enforces; above-floor releases require the floor tag
-# to exist and contain the reusable AI-report workflow).
+# to exist and contain the reusable AI-report workflow),
+# and the AI-report default check (the reusable workflow's
+# gaze-version default must equal the tag, since callers
+# pinned to the tag inherit that default).
 #
 # After release, signs macOS archives with Apple Developer
 # ID, notarizes them, patches Homebrew cask checksums, and
@@ -81,9 +84,24 @@ jobs:
       - name: Validate release tag against workflow floor
         run: .github/scripts/validate-workflow-floor.sh -- "$RELEASE_TAG" .
 
+  validate-ai-report-default:
+    name: Validate AI Report Default
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Validate reusable AI-report gaze-version default against release tag
+        run: .github/scripts/validate-ai-report-default.sh -- "$RELEASE_TAG"
+
   preflight:
     name: Preflight
-    needs: [validate-module-major, validate-workflow-floor]
+    needs: [validate-module-major, validate-workflow-floor, validate-ai-report-default]
     uses: complytime/org-infra/.github/workflows/reusable_release_preflight.yml@0c784711926c9864f027ec565fd7c06a382d80f8  # v0.7.1
     with:
       tag: ${{ inputs.tag }}

@@ -61,7 +61,8 @@ on:
         description: "gaze release tag to install. Ignored when build-from-source is true."
         required: false
         # Keep equal to the release tag that ships this file, so callers
-        # pinned to @vX.Y.Z run that same release by default.
+        # pinned to @vX.Y.Z run that same release by default. Enforced at
+        # release time by .github/scripts/validate-ai-report-default.sh.
         default: "v2.4.0"
         type: string
       build-from-source:

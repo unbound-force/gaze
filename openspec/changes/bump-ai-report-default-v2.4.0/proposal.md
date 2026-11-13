@@ -20,13 +20,16 @@ report.
 - `gaze-version` default: `v2.2.0` to `v2.4.0`, with a comment beside it
   recording that the default must equal the release tag that ships the file.
 - `docs/guides/ci-integration.md`: inputs table default and the spec 040 note.
+- New release gate `.github/scripts/validate-ai-report-default.sh`, run by
+  a `validate-ai-report-default` job in `release.yml` before preflight. It
+  fails the release unless the `gaze-version` default equals the release
+  tag. Tests in `.github/scripts/test-validate-ai-report-default.sh` run in
+  `test.yml`.
 - `AGENTS.md`: Recent Changes entry.
 
 ### Out of scope
 
 - Cutting the release (`release.yml`), done separately after merge.
-- Automating the keep-equal rule (for example a release preflight check that
-  the default matches the tag). Worth considering, but a separate change.
 - `test.yml`: the dogfood job uses `build-from-source: true` and ignores
   `gaze-version`.
 
@@ -75,6 +78,8 @@ silently publishing it.
 
 ### IV. Testability
 
-**Assessment**: PASS. `actionlint` and `yamllint` validate the workflow; the
+**Assessment**: PASS. The keep-equal rule is enforced by an offline release
+gate with its own tests in CI (the dogfood job cannot exercise the default,
+since it builds from source). `actionlint` and `yamllint` validate the workflows; the
 released behavior was exercised on `main` by the dogfood job (run
 43251427781), and the scaffold goldens already expect `v2.4.0`.
