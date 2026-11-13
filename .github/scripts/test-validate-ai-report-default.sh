@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# Requires bash 4+ (mapfile). On macOS, /bin/bash is 3.2; use Homebrew bash.
+#
 # Tests for validate-ai-report-default.sh.
 #
 # Two layers:

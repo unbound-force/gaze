@@ -352,9 +352,10 @@ jobs:
     needs: test
     permissions:
       contents: read
-    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.3.0
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.4.0
     with:
       coverage-artifact: coverage-out
+      gaze-version: v2.4.0
       max-crapload: 38
       max-gaze-crapload: 6
       min-contract-coverage: 8
@@ -364,7 +365,9 @@ jobs:
 
 Pin `uses:` to a release tag that actually contains the workflow — it
 first ships in `v2.3.0`; older tags predate the file and fail to
-resolve. Pin the latest release tag when adopting.
+resolve. Pin the latest release tag when adopting, and set `gaze-version`
+to the same tag so the installed binary stays explicit when you bump the pin
+(`gaze init --ci` scaffolds it this way).
 
 The coverage profile must come from the same run and commit: both jobs
 check out the same SHA, so the profile's import paths map onto identical

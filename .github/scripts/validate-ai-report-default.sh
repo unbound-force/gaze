@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# Requires bash 4+ (mapfile). On macOS, /bin/bash is 3.2; use Homebrew bash.
+#
 # Release-time check that the reusable AI-report workflow's `gaze-version`
 # input default equals the tag being released.
 #
