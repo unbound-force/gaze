@@ -160,11 +160,12 @@ That gives CI two useful properties:
 `.opencode/agents/gaze-reporter.md` is ignored — Gaze prints a one-line notice
 to stderr — so a project-customized agent cannot change CI output.
 
-The [Reusable Workflow](#reusable-workflow) gains this behavior only once its
-`gaze-version` points at a release that contains it; until then it installs an
-older binary whose adapter output is not validated. (Gaze's own CI dogfoods the
-reusable workflow with `build-from-source: true`, so it always reports with the
-commit under test.)
+The [Reusable Workflow](#reusable-workflow) has this behavior from v2.4.0: its
+`gaze-version` default is `v2.4.0`, the first release that contains it. A
+caller that pins `uses:` below `@v2.4.0`, or passes an older `gaze-version`,
+installs a binary whose adapter output is not validated. (Gaze's own CI
+dogfoods the reusable workflow with `build-from-source: true`, so it always
+reports with the commit under test.)
 
 ## Reusable Workflow
 
@@ -189,7 +190,7 @@ thresholds.
 | `max-gaze-crapload` | number | no | — | Fail when the GazeCRAPload exceeds this value. |
 | `min-contract-coverage` | number | no | — | Fail when average contract coverage falls below this percentage. |
 | `opencode-version` | string | no | `1.19.0` | opencode-ai npm version to install. |
-| `gaze-version` | string | no | `v2.2.0` | gaze release tag to install. Ignored when `build-from-source` is `true`. |
+| `gaze-version` | string | no | `v2.4.0` | gaze release tag to install. Ignored when `build-from-source` is `true`. |
 | `build-from-source` | boolean | no | `false` | Build gaze from the checked-out tree instead of installing `gaze-version`. Intended only for the gaze repository's own dogfood job; fails unless the checked-out module is `github.com/unbound-force/gaze/v2`. |
 | `go-version` | string | no | `1.25` | Go toolchain version for the report job. |
 
@@ -351,9 +352,10 @@ jobs:
     needs: test
     permissions:
       contents: read
-    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.3.0
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.4.0
     with:
       coverage-artifact: coverage-out
+      gaze-version: v2.4.0
       max-crapload: 38
       max-gaze-crapload: 6
       min-contract-coverage: 8
@@ -363,7 +365,9 @@ jobs:
 
 Pin `uses:` to a release tag that actually contains the workflow — it
 first ships in `v2.3.0`; older tags predate the file and fail to
-resolve. Pin the latest release tag when adopting.
+resolve. Pin the latest release tag when adopting, and set `gaze-version`
+to the same tag so the installed binary stays explicit when you bump the pin
+(`gaze init --ci` scaffolds it this way).
 
 The coverage profile must come from the same run and commit: both jobs
 check out the same SHA, so the profile's import paths map onto identical

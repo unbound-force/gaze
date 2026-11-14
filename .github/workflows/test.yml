@@ -46,6 +46,10 @@ jobs:
         if: matrix.go-version == '1.25'
         run: .github/scripts/test-validate-workflow-floor.sh
 
+      - name: Test release AI-report default validation
+        if: matrix.go-version == '1.25'
+        run: .github/scripts/test-validate-ai-report-default.sh
+
       - name: Build
         run: go build ./...
 
