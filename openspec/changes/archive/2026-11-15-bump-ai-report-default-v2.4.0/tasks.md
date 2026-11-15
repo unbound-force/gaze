@@ -30,6 +30,6 @@ Tasks touching the same file must NOT carry [P] relative to each other.
 - [x] 3.1 Constitution alignment per `proposal.md`.
 - [x] 3.2 `actionlint`, `yamllint`, and `shellcheck` on the modified
   workflows and scripts; the gate's tests pass locally.
-- [ ] 3.3 After merge, tag this merge commit as `v2.4.0` via `release.yml`.
-- [ ] 3.4 After release, confirm a caller pinned to `@v2.4.0` without
+- [x] 3.3 After merge, tag this merge commit as `v2.4.0` via `release.yml`.
+- [x] 3.4 After release, confirm a caller pinned to `@v2.4.0` without
   `gaze-version` installs v2.4.0, then close #313.
