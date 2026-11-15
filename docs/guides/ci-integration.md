@@ -525,6 +525,24 @@ gaze crap --baseline path/to/other-baseline.json --coverprofile=coverage.out ./.
 
 When `--baseline` is specified explicitly, a missing or empty file is an error.
 
+### Migrating Historical Absolute-Path Baselines
+
+Baselines saved by gaze v1.9.x and earlier record absolute file paths, while current reports record module-relative paths. `gaze crap` reconciles the two representations automatically when it can, and fails with an actionable diagnostic when it cannot — it never silently treats every function as new and removed.
+
+| Situation | Action |
+|---|---|
+| Same checkout path as when the baseline was generated | Nothing — auto-reconciliation rewrites the absolute paths to module-relative form |
+| Relocated checkout (different machine or directory) | `gaze crap --baseline-root <old-module-root> ./...` once, then regenerate |
+| Historical root unknown or cross-OS baseline | Regenerate: `gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json` |
+
+For a relocated checkout, name the directory the baseline was generated under:
+
+```bash
+gaze crap --baseline-root /home/alice/gaze --coverprofile=coverage.out ./...
+```
+
+The path rewrite is deterministic full-prefix relativization — a wrong root produces paths that match nothing (surfaced by the zero-match warning on stderr) rather than silently mis-matched functions. When baseline paths sit under neither the current module directory nor `--baseline-root`, the run fails before any comparison output with the regenerate command and the `--baseline-root` remediation in the error message. Cross-OS baselines (e.g., generated on Windows) are not translatable and must be regenerated.
+
 ### Tuning Comparison Sensitivity
 
 Add a `baseline` section to `.gaze.yaml`:
