@@ -2,6 +2,7 @@ package aireport
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"unicode"
@@ -210,9 +211,13 @@ func TestRenderMarkdown_NewlineInCell(t *testing.T) {
 	}
 }
 
-// TestEscapeCell_Markup pins the bracket and angle-bracket escaping that
-// keeps analysis-derived names from becoming links or HTML inside a table
-// cell. Without these cases the escaping branches can be deleted silently.
+// TestEscapeCell_Markup pins the bracket, angle-bracket, and ampersand
+// escaping that keeps analysis-derived names from becoming links, HTML, or
+// entity-decoded autolink triggers inside a table cell. The ampersand cases
+// pin the plain-cell entity escape: a backslash-escaped "&" cannot open an
+// HTML character reference, so cmark-gfm cannot decode entity-encoded
+// autolink triggers after byte-level defanging. Without these cases the
+// escaping branches can be deleted silently.
 func TestEscapeCell_Markup(t *testing.T) {
 	cases := []struct {
 		name string
@@ -225,6 +230,13 @@ func TestEscapeCell_Markup(t *testing.T) {
 		{"pipe", "a|b", `a\|b`},
 		{"line breaks", "a\r\nb\nc\rd", "a b c d"},
 		{"all together", "x|[y](z)<w>", `x\|\[y\](z)\<w\>`},
+		{"benign ampersand", "R&D", `R\&D`},
+		// Hostile: "&#64;" carries no literal "@" for neutralizeAutolinks
+		// to defang, and cmark-gfm would decode the reference into the
+		// email autolink trigger; the backslash-escaped "&" keeps the
+		// reference from ever opening.
+		{"ampersand entity", "user&#64;host.example", `user\&#64;host.example`},
+		{"www entity prefix", "&#119;ww.evil.example", `\&#119;ww.evil.example`},
 	}
 
 	for _, tc := range cases {
@@ -237,7 +249,10 @@ func TestEscapeCell_Markup(t *testing.T) {
 }
 
 // TestSanitizeProse_Markup pins prose escaping for callouts and
-// recommendation text, which are not table cells.
+// recommendation text, which are not table cells. The ampersand cases
+// pin the entity-escape pair: a backslash-escaped "&" cannot open an
+// HTML character reference, so cmark-gfm cannot decode entity-encoded
+// autolink triggers after byte-level defanging.
 func TestSanitizeProse_Markup(t *testing.T) {
 	cases := []struct {
 		name string
@@ -248,6 +263,12 @@ func TestSanitizeProse_Markup(t *testing.T) {
 		// ">" is intentionally left alone: it cannot open a tag, and
 		// escaping it would corrupt ordinary prose such as "(1201 > 1200)".
 		{"html tag", "<img src=x>", `\<img src=x>`},
+		{"benign ampersand", "R&D", `R\&D`},
+		// Hostile: "&#64;" carries no literal "@" for neutralizeAutolinks
+		// to defang, and cmark-gfm would decode the reference into the
+		// email autolink trigger; the backslash-escaped "&" keeps the
+		// reference from ever opening.
+		{"ampersand entity", "user&#64;host.example", `user\&#64;host.example`},
 		{"line breaks", "one\ntwo\r\nthree\rfour", "one two three four"},
 		{"plain prose unchanged", "Decompose (a > b) at 50% coverage.", "Decompose (a > b) at 50% coverage."},
 	}
@@ -263,7 +284,10 @@ func TestSanitizeProse_Markup(t *testing.T) {
 
 // TestSanitizeHeaderValue_Pairs pins every headerEscaper pair exactly,
 // including the \r\n-before-\r/\n replacer ordering: reordered pairs would
-// flatten "a\r\nb" to two spaces instead of one.
+// flatten "a\r\nb" to two spaces instead of one. The ampersand cases pin
+// the entity-escape pair the same way: a backslash-escaped "&" cannot
+// open an HTML character reference, so cmark-gfm cannot decode
+// entity-encoded autolink triggers after byte-level defanging.
 func TestSanitizeHeaderValue_Pairs(t *testing.T) {
 	cases := []struct {
 		name string
@@ -279,6 +303,12 @@ func TestSanitizeHeaderValue_Pairs(t *testing.T) {
 		{"open angle", "a<b", `a\<b`},
 		{"close angle", "a>b", `a\>b`},
 		{"pipe", "a|b", `a\|b`},
+		{"ampersand", "a&b", `a\&b`},
+		{"benign ampersand", "R&D", `R\&D`},
+		// One replacer pass: the backslash inserted before "&" is not
+		// itself re-escaped, and the entity text survives verbatim, so
+		// the new pair leaves every existing pair's behavior intact.
+		{"ampersand entity", "a&amp;b", `a\&amp;b`},
 		{"newline flattens", "a\nb", "a b"},
 		{"carriage return flattens", "a\rb", "a b"},
 		{"crlf flattens to one space", "a\r\nb", "a b"},
@@ -290,6 +320,111 @@ func TestSanitizeHeaderValue_Pairs(t *testing.T) {
 				t.Errorf("sanitizeHeaderValue(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// entityFixture is one cell of the sink × trigger × encoding-family
+// matrix: a hostile value embedding one encoding of one autolink
+// trigger character, plus the exact bytes every non-code-span sink
+// must emit for it. The inputs deliberately avoid every other byte
+// the sinks escape (backslash, backtick, asterisk, underscore,
+// brackets, angle brackets, pipes, line breaks) and avoid literal
+// autolink triggers, so one want string pins all three sinks at
+// once — the only transform these inputs undergo is the universal
+// "&" escape, and the single interplay case's defanged brackets
+// escape identically ("\[", "\]") in all three escapers.
+type entityFixture struct {
+	name string
+	in   string
+	want string
+}
+
+// entityFixtures enumerates the complete matrix cell set from the
+// delta spec (Requirement 2, epic #337 rule 2): every trigger
+// character (`w`, `.`, `@`, `:`, `/`) crossed with every encoding
+// family — decimal numeric; hexadecimal numeric with lowercase `x`,
+// uppercase `X`, and mixed-case digits; named references (the `w`
+// cell is structurally impossible: no HTML5 named reference encodes
+// `w`); and hybrid literal-plus-entity strings. Each input embeds
+// the encoded trigger in the autolink context it completes when
+// cmark-gfm decodes it.
+var entityFixtures = []entityFixture{
+	// Decimal numeric: all five triggers.
+	{"decimal w", "&#119;ww.evil.example", `\&#119;ww.evil.example`},
+	{"decimal dot", "www&#46;evil.example", `www\&#46;evil.example`},
+	{"decimal at", "user&#64;host.example", `user\&#64;host.example`},
+	{"decimal colon", "https&#58;//evil.example", `https\&#58;//evil.example`},
+	{"decimal slash", "https:&#47;/evil.example", `https:\&#47;/evil.example`},
+	// Hexadecimal numeric: all five triggers, with lowercase `x`,
+	// uppercase `X`, and mixed-case digit forms.
+	{"hex w lowercase x", "&#x77;ww.evil.example", `\&#x77;ww.evil.example`},
+	{"hex w uppercase X", "&#X77;ww.evil.example", `\&#X77;ww.evil.example`},
+	{"hex dot lowercase x uppercase digit", "www&#x2E;evil.example", `www\&#x2E;evil.example`},
+	{"hex dot uppercase x lowercase digit", "www&#X2e;evil.example", `www\&#X2e;evil.example`},
+	{"hex at lowercase x", "user&#x40;host.example", `user\&#x40;host.example`},
+	{"hex at uppercase X", "user&#X40;host.example", `user\&#X40;host.example`},
+	{"hex colon lowercase x uppercase digit", "https&#x3A;//evil.example", `https\&#x3A;//evil.example`},
+	{"hex colon uppercase X", "https&#X3A;//evil.example", `https\&#X3A;//evil.example`},
+	{"hex colon lowercase x lowercase digit", "https&#x3a;//evil.example", `https\&#x3a;//evil.example`},
+	{"hex slash lowercase x uppercase digit", "https:&#x2F;/evil.example", `https:\&#x2F;/evil.example`},
+	{"hex slash uppercase x lowercase digit", "https:&#X2f;/evil.example", `https:\&#X2f;/evil.example`},
+	// Named references: `.`, `@`, `:`, `/` — `w` is structurally
+	// impossible in this family (no HTML5 named reference encodes it).
+	{"named dot", "www&period;evil.example", `www\&period;evil.example`},
+	{"named at", "user&commat;host.example", `user\&commat;host.example`},
+	{"named colon", "https&colon;//evil.example", `https\&colon;//evil.example`},
+	{"named slash", "https:&sol;/evil.example", `https:\&sol;/evil.example`},
+	// Hybrid literal-plus-entity strings.
+	{"hybrid decimal w plus named dots", "&#119;ww&period;evil&period;example", `\&#119;ww\&period;evil\&period;example`},
+	{"hybrid named email", "user&commat;host&period;example", `user\&commat;host\&period;example`},
+	{"hybrid named scheme", "https&colon;&sol;&sol;evil.example", `https\&colon;\&sol;\&sol;evil.example`},
+	{"hybrid decimal dots", "www&#46;evil&#46;example", `www\&#46;evil\&#46;example`},
+	// Interplay: the literal "www." trigger IS defanged by
+	// neutralizeAutolinks before the "&" escape runs, so the output
+	// shows both layers at once. The defanged brackets escape
+	// identically ("\[", "\]") in all three sinks.
+	{"hybrid literal www plus entity dot", "www.evil&#46;example", `www\[.\]evil\&#46;example`},
+}
+
+// TestNeutralizeEntityEncodedAutolinks is the spec-mandated entity
+// fixture matrix (delta spec Requirement 2, task 2.1): every
+// non-code-span sink crossed with every trigger character and every
+// encoding family, asserting exact escaped output bytes (TC-009).
+// cmark-gfm resolves HTML character references into text nodes
+// before the autolink extension post-processes the inline tree, so a
+// value like "&#119;ww.evil.example" — which carries no literal
+// trigger byte for neutralizeAutolinks to defang — reconstructs its
+// trigger after byte-level defanging and would linkify. The
+// universal "&" escape closes every family at once: a
+// backslash-escaped "&" cannot open a reference, so no encoding,
+// known or future, can decode at a non-code-span position.
+func TestNeutralizeEntityEncodedAutolinks(t *testing.T) {
+	sinks := []struct {
+		name string
+		fn   func(string) string
+	}{
+		{"sanitizeHeaderValue", sanitizeHeaderValue},
+		{"sanitizeProse", sanitizeProse},
+		{"escapeCell", escapeCell},
+	}
+	for _, sink := range sinks {
+		for _, fx := range entityFixtures {
+			t.Run(sink.name+"/"+fx.name, func(t *testing.T) {
+				got := sink.fn(fx.in)
+				if got != fx.want {
+					t.Errorf("%s(%q) = %q, want %q", sink.name, fx.in, got, fx.want)
+				}
+				// Exact-byte equality already implies it; assert the
+				// invariant by name so a want-string typo cannot mask
+				// a bare reference: every "&" in the emitted bytes
+				// must carry a preceding backslash.
+				for _, idx := range allIndexes(got, "&") {
+					if idx == 0 || got[idx-1] != '\\' {
+						t.Errorf("%s(%q) = %q: bare & at byte %d", sink.name, fx.in, got, idx)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -360,10 +495,228 @@ func TestRenderMarkdown_AutolinkTriggersDefanged(t *testing.T) {
 		t.Error("code-span function name was not rendered verbatim")
 	}
 
+	// Code-span immunity extends to entity references: "&#64;" inside a
+	// function name must stay verbatim in its backtick span. Code spans
+	// never interpret character references and the autolink extension
+	// never fires there, so escaping the "&" would only display the
+	// backslash.
+	report.Scores[0].Function = "parse&#64;Input"
+	report.Summary.WorstCRAP[0].Function = "parse&#64;Input"
+	p.CRAP = mustMarshalReport(t, report)
+	out, err = RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "`parse&#64;Input`") {
+		t.Error("entity-bearing function name was not rendered verbatim in its code span")
+	}
+	if strings.Contains(out, "`parse\\&#64;Input`") {
+		t.Error("code-span function name must not escape the ampersand; the backslash would display")
+	}
+
 	// A dotless address never linkifies under GFM, so it must pass through
 	// untouched rather than be mangled.
 	if got, want := sanitizeProse("ping user@localhost now"), "ping user@localhost now"; got != want {
 		t.Errorf("sanitizeProse = %q, want %q", got, want)
+	}
+}
+
+// scanUnescapedAmpsOutsideCodeSpans reports every byte offset of an
+// "&" that is neither backslash-escaped nor inside code-span content.
+//
+// Scanner rule (pinned in task 2.2): code spans are identified by a
+// backtick toggle over the emitted bytes. The toggle is sound in
+// these tests for three reasons — the first by construction, the
+// other two asserted as preconditions by assertScannerPreconditions
+// rather than assumed: (1) the hostile payloads carry no backtick
+// bytes, so no attacker byte shifts the toggle; (2) the fixture data
+// contains no "&" byte, so a misaligned toggle window has nothing to
+// mask or flag; and (3) the one backtick-bearing fixture value
+// ("parse`raw`Literal") embeds an even number of backticks inside
+// its double-backtick code span, so the toggle resynchronizes after
+// that cell even though it misclassifies the span's interior
+// boundaries. Hostile values that DO contain backticks are pinned by
+// the byte-exact sink assertions (TestNeutralizeEntityEncodedAutolinks,
+// TestRenderMarkdown_AutolinkTriggersDefanged), not by this scanner:
+// a stray attacker backtick would shift a toggle's boundaries and
+// could mask or misplace a span.
+func scanUnescapedAmpsOutsideCodeSpans(out string) []int {
+	var bad []int
+	inSpan := false
+	for i := 0; i < len(out); i++ {
+		switch out[i] {
+		case '`':
+			inSpan = !inSpan
+		case '&':
+			if !inSpan && (i == 0 || out[i-1] != '\\') {
+				bad = append(bad, i)
+			}
+		}
+	}
+	return bad
+}
+
+// assertScannerPreconditions checks the scanner's soundness premises
+// against reality instead of assuming them in a comment: the raw
+// fixture bytes must contain no "&" (so a misaligned toggle window
+// has nothing to mask or flag), and the rendered output must carry
+// an even number of backticks (so the toggle ends resynchronized —
+// an odd count would invert it for the remainder of the report).
+// Golden fixtures are routinely regenerated and edited, so these
+// premises can silently stop holding.
+func assertScannerPreconditions(t *testing.T, fixture, out string) {
+	t.Helper()
+	data, err := os.ReadFile(goldenPath(fixture))
+	if err != nil {
+		t.Fatalf("reading fixture %s: %v", fixture, err)
+	}
+	if strings.Contains(string(data), "&") {
+		t.Fatalf("scanner premise broken: fixture %s contains an & byte", fixture)
+	}
+	if n := strings.Count(out, "`"); n%2 != 0 {
+		t.Fatalf("scanner premise broken: rendered output carries an odd backtick count (%d); the toggle would not resynchronize", n)
+	}
+}
+
+// TestRenderMarkdown_EntityEncodedAutolinksDefanged is the
+// render-level half of the entity-bypass fix (delta spec Requirement
+// 1 scenarios, task 2.2): hostile values in the metadata branch,
+// module path, quality-step error string, and coverage-gap
+// description — carrying encodings from every family — must render
+// with the reference neutralized, and no "&" byte outside code-span
+// content may be unescaped anywhere in the emitted report. Two
+// renders are required because a failed quality step renders its
+// error string as the step-unavailable callout and suppresses the
+// gaps table, so the coverage-gap description cell needs a render
+// with quality data present.
+func TestRenderMarkdown_EntityEncodedAutolinksDefanged(t *testing.T) {
+	// Render A — metadata header and callout positions. The hostile
+	// values carry no backtick bytes, keeping the scanner's toggle
+	// boundaries exactly the code spans tableName emitted.
+	p := loadPayloadFixture(t, "payload-full.json")
+	p.Metadata.Branch = "&#119;ww.evil.example"                                                    // decimal w
+	p.Metadata.ModulePath = "mod&#x2E;ule&sol;repo"                                                // hex dot + named slash
+	qualityErr := "mail user&#x40;host.example via &#X3A;//relay and www&#46;evil&#46;example now" // hex at, hex colon, hybrid dots
+	p.Errors.Quality = &qualityErr
+
+	out, err := RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `Project: mod\&#x2E;ule\&sol;repo · Branch: \&#119;ww.evil.example`; !strings.Contains(headerOf(out), want) {
+		t.Errorf("header %q does not contain escaped hostile values %q", headerOf(out), want)
+	}
+	if want := `> ⚠️ Quality analysis unavailable: mail user\&#x40;host.example via \&#X3A;//relay and www\&#46;evil\&#46;example now`; !strings.Contains(out, want) {
+		t.Errorf("output does not contain escaped callout %q", want)
+	}
+	assertScannerPreconditions(t, "payload-full.json", out)
+	if bad := scanUnescapedAmpsOutsideCodeSpans(out); len(bad) > 0 {
+		t.Errorf("render A: unescaped & outside code spans at byte offsets %v", bad)
+	}
+
+	// Render B — the coverage-gap description cell, with quality
+	// data present so the gaps table renders.
+	p = loadPayloadFixture(t, "payload-full.json")
+	p.Metadata.Branch = "&#119;ww&period;evil&period;example" // hybrid decimal w + named dots
+	p.Metadata.ModulePath = "mod&#X2e;ule&commat;repo"        // hex mixed-case dot + named at
+
+	var quality qualityOutput
+	if err := json.Unmarshal(p.Quality, &quality); err != nil {
+		t.Fatalf("decode quality: %v", err)
+	}
+	quality.Summary.WorstCoverageTests[0].ContractCoverage.Gaps[0].Description = "see https&colon;//evil.example and user&#64;host.example"
+	raw, err := json.Marshal(quality)
+	if err != nil {
+		t.Fatalf("marshal quality: %v", err)
+	}
+	p.Quality = raw
+
+	out, err = RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `Project: mod\&#X2e;ule\&commat;repo · Branch: \&#119;ww\&period;evil\&period;example`; !strings.Contains(headerOf(out), want) {
+		t.Errorf("header %q does not contain escaped hostile values %q", headerOf(out), want)
+	}
+	if want := `see https\&colon;//evil.example and user\&#64;host.example`; !strings.Contains(out, want) {
+		t.Errorf("output does not contain escaped gap description %q", want)
+	}
+	assertScannerPreconditions(t, "payload-full.json", out)
+	if bad := scanUnescapedAmpsOutsideCodeSpans(out); len(bad) > 0 {
+		t.Errorf("render B: unescaped & outside code spans at byte offsets %v", bad)
+	}
+
+	// Render C — the AI-slot wiring: a validated answer whose summary
+	// and recommendations carry entity-encoded triggers must render
+	// escaped. The AI summary and AI-recommendations slots are
+	// distinct sanitizeProse call sites from the callout path pinned
+	// by render A, so a wiring regression there (dropping
+	// sanitizeProse from a slot) would otherwise be caught by no
+	// entity-bearing render test.
+	p = loadPayloadFixture(t, "payload-full.json")
+	answer := &AIAnswer{
+		Summary:         "see &#119;ww.evil.example for details",
+		Recommendations: []string{"Check user&commat;host.example next."},
+	}
+	out, err = RenderMarkdown(p, AIOutcome{Answer: answer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`see \&#119;ww.evil.example for details`,
+		`Check user\&commat;host.example next.`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not contain escaped AI-slot value %q", want)
+		}
+	}
+	assertScannerPreconditions(t, "payload-full.json", out)
+	if bad := scanUnescapedAmpsOutsideCodeSpans(out); len(bad) > 0 {
+		t.Errorf("render C: unescaped & outside code spans at byte offsets %v", bad)
+	}
+}
+
+// TestRenderMarkdown_BenignAmpersandParity pins design D4's
+// trade-off (delta spec Requirement 4, task 3.1): a benign "&" that
+// cannot continue a character reference renders identically to
+// before ("R\&D" displays as "R&D" under cmark-gfm), while a value
+// that IS a valid reference now renders verbatim ("a\&amp;b"
+// displays as "a&amp;b"; the pre-change renderer silently decoded it
+// to "a&b" inside an identifier). Both spec scenarios are pinned at
+// sink level (every non-code-span sink) and at render level.
+func TestRenderMarkdown_BenignAmpersandParity(t *testing.T) {
+	// Sink level: R&D and a&amp;b through every non-code-span sink.
+	cases := []struct{ in, want string }{
+		{"R&D", `R\&D`},
+		{"a&amp;b", `a\&amp;b`},
+	}
+	sinks := []struct {
+		name string
+		fn   func(string) string
+	}{
+		{"sanitizeHeaderValue", sanitizeHeaderValue},
+		{"sanitizeProse", sanitizeProse},
+		{"escapeCell", escapeCell},
+	}
+	for _, sink := range sinks {
+		for _, tc := range cases {
+			if got := sink.fn(tc.in); got != tc.want {
+				t.Errorf("%s(%q) = %q, want %q", sink.name, tc.in, got, tc.want)
+			}
+		}
+	}
+
+	// Render level: the metadata header positions from the spec
+	// scenarios — module path R&D, branch a&amp;b.
+	p := loadPayloadFixture(t, "payload-full.json")
+	p.Metadata.ModulePath = "R&D"
+	p.Metadata.Branch = "a&amp;b"
+	out, err := RenderMarkdown(p, AIOutcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `Project: R\&D · Branch: a\&amp;b`; !strings.Contains(headerOf(out), want) {
+		t.Errorf("header %q does not contain benign-parity values %q", headerOf(out), want)
 	}
 }
 
