@@ -183,6 +183,8 @@ git add .gaze/baseline.json && git commit -m "chore: add CRAP baseline"
 
 When `.gaze/baseline.json` exists, `gaze crap` auto-detects it and activates comparison mode. Each function is matched by `file:function` key, and CRAP/GazeCRAP deltas are computed. Functions are classified as `regression`, `improvement`, `unchanged`, `new`, `new_violation`, or `removed`.
 
+Historical baselines saved by gaze v1.9.x and earlier record absolute file paths; these are reconciled to module-relative form automatically (same checkout) or via `--baseline-root <old-module-root>` (relocated checkout), and otherwise fail with an actionable diagnostic rather than reporting every function as new and removed. See [Baseline path compatibility](docs/reference/cli/crap.md#baseline-path-compatibility).
+
 The comparison produces a pass/fail gate: exit code 1 when any regression or new-function violation (CRAP above threshold) is detected. This gate is independent of the `--max-crapload` / `--max-gaze-crapload` threshold gates.
 
 ### Overriding and Opting Out
