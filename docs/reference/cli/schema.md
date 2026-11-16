@@ -4,7 +4,7 @@ Print the JSON Schema (Draft 2020-12) that documents the structure of `gaze anal
 
 ## Synopsis
 
-```
+```text
 gaze schema [flags]
 ```
 

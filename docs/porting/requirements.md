@@ -204,7 +204,7 @@ These capabilities enhance Gaze but are not required for a conforming minimal po
 
 ## Capability Dependency Graph
 
-```
+```text
 R1 (Detection) ──→ R2 (Classification) ──→ O1 (Quality) ──→ R3 (CRAP + GazeCRAP)
                                                               ↓
                                                          R4 (Quadrants + Fix Strategies)
