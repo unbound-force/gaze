@@ -63,7 +63,7 @@ on:
         # Keep equal to the release tag that ships this file, so callers
         # pinned to @vX.Y.Z run that same release by default. Enforced at
         # release time by .github/scripts/validate-ai-report-default.sh.
-        default: "v2.4.0"
+        default: "v2.5.0"
         type: string
       build-from-source:
         description: "Build gaze from the checked-out tree instead of installing gaze-version. For the gaze repository's own dogfood job only; fails on any other module."
