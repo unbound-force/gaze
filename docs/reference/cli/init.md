@@ -162,7 +162,7 @@ A dev build (or any version below `v2.3.0`) fails closed instead of writing an u
 Error: gaze version "dev" cannot pin the CI workflow: the reusable AI-report workflow first ships in v2.3.0; install gaze from a release tag (>= v2.3.0) or pass --gaze-version
 ```
 
-Pass `--gaze-version v2.4.0` to pin an explicit release tag.
+Pass `--gaze-version v2.5.0` to pin an explicit release tag.
 
 ## See Also
 
