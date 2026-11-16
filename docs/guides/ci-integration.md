@@ -160,9 +160,12 @@ That gives CI two useful properties:
 `.opencode/agents/gaze-reporter.md` is ignored — Gaze prints a one-line notice
 to stderr — so a project-customized agent cannot change CI output.
 
-The [Reusable Workflow](#reusable-workflow) gains this behavior only once its
-`gaze-version` points at a release that contains it; until then it installs an
-older binary whose adapter output is not validated.
+The [Reusable Workflow](#reusable-workflow) has this behavior from v2.4.0: its
+`gaze-version` default is `v2.4.0`, the first release that contains it. A
+caller that pins `uses:` below `@v2.4.0`, or passes an older `gaze-version`,
+installs a binary whose adapter output is not validated. (Gaze's own CI
+dogfoods the reusable workflow with `build-from-source: true`, so it always
+reports with the commit under test.)
 
 ## Reusable Workflow
 
@@ -187,7 +190,8 @@ thresholds.
 | `max-gaze-crapload` | number | no | — | Fail when the GazeCRAPload exceeds this value. |
 | `min-contract-coverage` | number | no | — | Fail when average contract coverage falls below this percentage. |
 | `opencode-version` | string | no | `1.19.0` | opencode-ai npm version to install. |
-| `gaze-version` | string | no | `v2.2.0` | gaze release tag to install. |
+| `gaze-version` | string | no | `v2.4.0` | gaze release tag to install. Ignored when `build-from-source` is `true`. |
+| `build-from-source` | boolean | no | `false` | Build gaze from the checked-out tree instead of installing `gaze-version`. Intended only for the gaze repository's own dogfood job; fails unless the checked-out module is `github.com/unbound-force/gaze/v2`. |
 | `go-version` | string | no | `1.25` | Go toolchain version for the report job. |
 
 Secret `opencode-config` (optional): the consumer's entire strict-JSON
@@ -348,9 +352,10 @@ jobs:
     needs: test
     permissions:
       contents: read
-    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.3.0
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.4.0
     with:
       coverage-artifact: coverage-out
+      gaze-version: v2.4.0
       max-crapload: 38
       max-gaze-crapload: 6
       min-contract-coverage: 8
@@ -360,7 +365,9 @@ jobs:
 
 Pin `uses:` to a release tag that actually contains the workflow — it
 first ships in `v2.3.0`; older tags predate the file and fail to
-resolve. Pin the latest release tag when adopting.
+resolve. Pin the latest release tag when adopting, and set `gaze-version`
+to the same tag so the installed binary stays explicit when you bump the pin
+(`gaze init --ci` scaffolds it this way).
 
 The coverage profile must come from the same run and commit: both jobs
 check out the same SHA, so the profile's import paths map onto identical
@@ -517,6 +524,24 @@ gaze crap --baseline path/to/other-baseline.json --coverprofile=coverage.out ./.
 ```
 
 When `--baseline` is specified explicitly, a missing or empty file is an error.
+
+### Migrating Historical Absolute-Path Baselines
+
+Baselines saved by gaze v1.9.x and earlier record absolute file paths, while current reports record module-relative paths. `gaze crap` reconciles the two representations automatically when it can, and fails with an actionable diagnostic when it cannot — it never silently treats every function as new and removed.
+
+| Situation | Action |
+|---|---|
+| Same checkout path as when the baseline was generated | Nothing — auto-reconciliation rewrites the absolute paths to module-relative form |
+| Relocated checkout (different machine or directory) | `gaze crap --baseline-root <old-module-root> ./...` once, then regenerate |
+| Historical root unknown or cross-OS baseline | Regenerate: `gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json` |
+
+For a relocated checkout, name the directory the baseline was generated under:
+
+```bash
+gaze crap --baseline-root /home/alice/gaze --coverprofile=coverage.out ./...
+```
+
+The path rewrite is deterministic full-prefix relativization — a wrong root produces paths that match nothing (surfaced by the zero-match warning on stderr) rather than silently mis-matched functions. When baseline paths sit under neither the current module directory nor `--baseline-root`, the run fails before any comparison output with the regenerate command and the `--baseline-root` remediation in the error message. Cross-OS baselines (e.g., generated on Windows) are not translatable and must be regenerated.
 
 ### Tuning Comparison Sensitivity
 
