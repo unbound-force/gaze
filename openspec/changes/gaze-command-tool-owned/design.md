@@ -1,227 +1,229 @@
 ## Context
 
-`gaze init` ships nine `.opencode/` assets and classifies each as tool-owned or
-user-owned via `isToolOwned` (`internal/scaffold/scaffold.go`): everything under
-`references/` plus six exact matches (`commands/speckit.testreview.md`,
-`agents/gaze-reporter.md`, `agents/gaze-test-generator.md`,
-`agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `dcp.jsonc`).
-`commands/gaze.md` is the only user-owned `.opencode/` asset — written once on
-first scaffold, skipped forever after.
+`gaze init` scaffolds nine files into a consumer project's `.opencode/`
+tree. `processAssetFile` (`internal/scaffold/scaffold.go`) classifies each
+existing file via `isToolOwned(relPath)`: tool-owned files go to
+`handleToolOwnedFile` (overwrite-on-diff via `bytes.Equal`), everything
+else is skipped unless `--force`. `commands/gaze.md` is the only embedded
+asset on the user-owned side — the `isToolOwned` doc comment names it
+explicitly — so it is written once and never refreshed. Spec 040 flipped
+`agents/gaze-reporter.md` to tool-owned and deliberately kept
+`commands/gaze.md` user-owned; the issue #353 survey of 10 consumer repos
+shows that reservation now only preserves staleness: every observed diff
+against the v2.4.0 asset is undelivered upstream change, and several
+copies carry duplicate `dev`/`v1.8.0` version markers.
 
-The update path already exists and is content-driven: `processAssetFile`
-computes the candidate content (embedded asset bytes + current-version marker
-via `insertMarkerAfterFrontmatter`, which internally strips any existing marker
-per issue #279), then `handleToolOwnedFile` compares it byte-for-byte with the
-on-disk copy — equal means `skipped`, different means wholesale rewrite
-reported as `updated`. `printSummary` prints the
-`N file(s) skipped (use --force to overwrite)` hint only for skipped files
-whose path is **not** tool-owned.
+Mechanics that this design relies on, verified in the current source:
 
-Issue #353's audit of the 10 repos running gaze found zero local customization
-of `commands/gaze.md` — every difference from the current asset is undelivered
-upstream change (the #221 `<protect>` block, the spec 040 description,
-analyzer/language detection), and four repos carry duplicate scaffold markers
-(`dev` + `v1.8.0`) because the #279 marker dedup only runs when gaze rewrites
-a file, and this file is never rewritten. The embedded asset and its
-`.opencode/` mirror are already current and byte-identical
-(`TestEmbeddedAssetsMatchSource` green), so no asset content change is needed.
+- The marker is inserted into the *embedded* content before comparison
+  (`insertMarkerAfterFrontmatter`, which already strips existing markers
+  per issue #279), so a tool-owned update rewrites the file wholesale as
+  embedded asset + exactly one current marker.
+- The asset walk (`fs.WalkDir` over the embedded FS) only ever visits the
+  nine embedded paths plus the excluded `ci/` template subtree; no other
+  `.opencode/` path is read, written, or removed — including under
+  `--force`.
+- `printSummary` calls `isToolOwned` a second time, on `Skipped` display
+  paths, to count user-owned skips for the `use --force to overwrite`
+  hint; the CI workflow (`.github/workflows/gaze-ai-report.yml`) is the
+  remaining user-owned scaffold output and still feeds that hint.
+- `scaffold.Run` sits at the dogfood GazeCRAPload gate ceiling
+  (max-gaze-crapload 6, zero headroom) on gaze's own CI.
 
 ## Goals / Non-Goals
 
 ### Goals
 
-- `commands/gaze.md` classified tool-owned, so a plain `gaze init` re-run
-  overwrites a stale or locally edited copy with the embedded content and
-  reports it as `updated: .opencode/commands/gaze.md (content changed)`.
-- Every rewrite of the file — tool-owned update or `--force` — leaves exactly
-  one current version marker, collapsing the duplicates observed in #353.
-- The `--force` skip hint fires exactly when a genuinely user-owned file was
-  skipped (the CI workflow), and no longer on plain identical re-runs.
-- Separately-named command files (the customization escape hatch) are
-  structurally untouched, with or without `--force`.
-- Documentation describes the new ownership and the escape hatch; every
-  scenario in the delta spec is covered by a named test.
+- `commands/gaze.md` becomes tool-owned: overwrite-on-diff without
+  `--force`, reported as `updated`
+- A documented, structurally guaranteed escape hatch for customized
+  `/gaze` commands (`commands/gaze-local.md` or any non-embedded path)
+- Escape-hatch discoverability at the moment of update (one summary tip
+  line)
+- Duplicate-marker copies healed by the first update
+- Documentation matching the new ownership model everywhere it is stated
 
 ### Non-Goals
 
-- No embedded asset content changes — `internal/scaffold/assets/commands/gaze.md`
-  and `.opencode/commands/gaze.md` stay byte-identical; the 9-file manifest is
-  unchanged.
-- No changes to marker insertion/dedup logic, the CI workflow's ownership
-  (user-owned forever), CLI flags, exit codes, or JSON output.
-- No migration or backfill tooling — consumers self-heal on their next plain
-  `gaze init` after upgrading.
-- No changes to `.uf` registration, orphan cleanup, or anything outside
-  `internal/scaffold/` and the two documentation files.
-- No in-place customization support for the shipped `/gaze` — the escape hatch
-  is a separately-named file, deliberately.
+- Changing any embedded asset content (the nine-file byte-identical
+  mirror manifest is untouched)
+- Changing the CI workflow's user-owned skip-if-present semantics
+- Changing `--force` semantics or marker insertion/placement rules
+- Scaffolding a `gaze-local.md` template or adding any tenth embedded
+  asset
+- Detecting whether an existing `gaze.md` is "stale" versus
+  "customized" (not reliably possible without shipping historical asset
+  versions; see D3)
 
 ## Decisions
 
-### D1: One-line classification flip in the existing `isToolOwned` switch
+### D1: Flip via one `isToolOwned` exact-match entry
 
-Add `"commands/gaze.md"` to the exact-match case list, exactly as
-`commands/gaze-fix.md` and the agent files already are — and exactly as spec
-040 (FR-034) did for `agents/gaze-reporter.md`. No new mechanism, no new code
-path. The classification stays a pure function of the path, independent of
-file content, marker state, or local edits, as the delta spec requires.
+Add `"commands/gaze.md"` to the existing exact-match `switch` in
+`isToolOwned`, and rewrite the function's doc comment: the "user-owned
+files (only commands/gaze.md today)" sentence and the "commands/
+directory contains both user-owned (gaze.md) and tool-owned files"
+rationale no longer hold — after the flip, all nine embedded `.opencode/`
+assets are tool-owned and the only user-owned scaffold output is the CI
+workflow (classified by its dedicated write path, not this list).
 
-The `isToolOwned` GoDoc is refreshed: the "user-owned files (only
-`commands/gaze.md` today)" note and the mixed-directory rationale are
-obsolete. The new rationale keeps the explicit-list design: the switch is an
-auditable declaration of which shipped files auto-update, and **unlisted
-paths still default to user-owned/skip-if-present**, so a future asset
-missing from the list degrades conservatively (skipped, reported) rather than
-surprise-overwriting. `Run`'s doc-comment ownership sentences are refreshed
-to match (no `.opencode/` asset remains user-owned; the CI workflow is the
-user-owned file).
+Alternatives considered:
 
-### D2: Update-on-diff and marker machinery inherited unchanged
+- **Invert the default** (all embedded assets tool-owned, maintain a
+  user-owned exception list): smaller future diffs, but it changes
+  `isToolOwned`'s contract for arbitrary paths — `printSummary` relies
+  on it returning `false` for the CI workflow path and for anything
+  outside the embedded set, and an open-ended default weakens that. The
+  explicit list keeps each embedded file's classification a deliberate,
+  reviewed act.
+- **Directory-prefix convention for `commands/`**: rejected — users add
+  their own files under `.opencode/commands/` (this repo itself has 30+),
+  and a prefix rule would misclassify them if the function is ever
+  consulted for non-embedded paths.
 
-`processAssetFile` and `handleToolOwnedFile` already implement the required
-semantics; the flip routes `commands/gaze.md` into them. Walking the delta
-spec's scenarios through the existing mechanics:
+### D2: Escape hatch is a convention, not code
 
-- **Stale content / local edits**: on-disk bytes ≠ embedded-plus-current-marker
-  → wholesale rewrite → `Result.Updated` → summary line
-  `updated: .opencode/commands/gaze.md (content changed)`.
-- **Identical copy**: `bytes.Equal` → `skipped` (the file still appears in
-  `Result.Skipped` and the `skipped:` summary lines; only the hint changes,
-  see D3).
-- **Marker-only drift**: a copy whose body matches the asset but whose marker
-  carries a different version is not byte-equal to the candidate (which
-  carries the current run's marker) → rewritten with the current marker and
-  reported as updated.
-- **Duplicate markers**: the old copy — one marker or two — differs from the
-  candidate, which carries exactly one current marker, so the rewrite
-  collapses the duplicates. `insertMarkerAfterFrontmatter`'s internal
-  `removeExistingMarker` (#279) additionally guarantees single-marker output
-  even if a future embedded asset regressed to shipping a marker.
-- **`--force`**: the `exists && !opts.Force` gate bypasses ownership
-  entirely (`writeNewFile` → `overwritten`), unconditionally, like every
-  other scaffolded file.
+The escape hatch needs no production change: the asset walk structurally
+never writes a non-embedded path, so `commands/gaze-local.md` (or any
+other name) is user-owned by construction — untouched even by `--force`.
+OpenCode maps `.opencode/commands/*.md` to slash commands by filename, so
+`/gaze-local` works with zero gaze involvement. The nine-file manifest
+stays nine; no template is scaffolded that nobody asked for.
 
-The candidate content is derived solely from the embedded asset, so every
-rewrite is deterministic, version-pinned, and independent of what was on disk.
+Alternative considered: scaffolding a commented-out `gaze-local.md`
+template — rejected as manifest growth and noise (Minimal Assumptions:
+users who customize already have a file to rename; users who don't
+should not get one).
 
-### D3: Skip-hint behavior changes by classification, not by code
+### D3: Update-time tip in `printSummary`, gated on `Updated` only
 
-`printSummary`'s hint counter re-consults `isToolOwned` over `Result.Skipped`,
-so no `printSummary` change is needed:
+When `commands/gaze.md` lands in `Result.Updated`, `printSummary` prints
+one deterministic line after the per-file lists, naming
+`commands/gaze-local.md` as the preservation path (exact wording fixed
+in tasks; tests assert a stable `gaze-local.md` substring). Gating:
 
-- Plain identical re-run: all nine assets are tool-owned → the counter is
-  zero → the hint is absent. (The `Gaze OpenCode integration already up to
-  date:` header remains the "everything is current" signal.)
-- `gaze init --ci` re-run with an existing workflow: the CI workflow's
-  display path (`.github/workflows/gaze-ai-report.yml`) has no `.opencode/`
-  prefix, so the path normalization leaves it intact and `isToolOwned`
-  returns false → it counts → the hint fires as
-  `1 file skipped (use --force to overwrite)`.
+- **Updated** — yes. This is the surprise moment: a diff (stale or
+  customized) was just overwritten. The prior version is in git, so the
+  tip is actionable after the fact: recover, rename, keep.
+- **Created** — no. Nothing was lost; a fresh adopter does not need an
+  opt-out lesson.
+- **Overwritten via `--force`** — no. The user explicitly requested the
+  overwrite.
+- **Skipped identical** — no. Nothing changed.
 
-Post-change, the hint's semantics become exactly "a file you could only
-replace with `--force` was skipped" — which is what it always claimed.
+The tip lives in `printSummary`, not `Run`, because `Run` is the function
+at the GazeCRAPload dogfood gate ceiling (D6) and `printSummary` already
+owns summary-adjacent guidance (the `--force` hint). Implementation sets
+a flag inside the existing `Updated` loop — `Run` gains no branches.
 
-### D4: The escape hatch is structural, not a feature
+Alternatives considered:
 
-`Run`'s asset walk iterates only the embedded assets (`fs.WalkDir` over
-`assets/`), so any filename gaze does not ship — `commands/gaze-local.md`,
-say — is never read, written, or removed. Customizing `/gaze` means keeping
-the customization in a separately-named command file; no allowlist, blocklist,
-or configuration is introduced. This replaces the current "customize this
-file" advice in the docs.
+- **Docs-only discoverability**: rejected — the overwrite moment is the
+  only time a customizing user is guaranteed to be looking; a guide they
+  have not read does not help then.
+- **One-time notice** (print only on the first update ever): rejected —
+  requires persisted state (a marker or config key), violating Minimal
+  Assumptions for a marginal noise reduction. The recurring cost is one
+  line, only on runs where the command file actually changed.
+- **Pre-overwrite warning with a backup**: rejected — gaze cannot
+  distinguish stale from customized copies without shipping historical
+  asset versions, and interactive confirmation does not fit `init`'s
+  non-interactive model. The survey found zero customized copies; the
+  escape hatch plus git recoverability covers the residual risk.
 
-### D5: Test strategy — every delta-spec scenario gets a named test
+### D4: Marker healing rides the existing update path
 
-Existing tests updated:
+`handleToolOwnedFile` writes the freshly rendered content (embedded
+asset + single current marker, via `insertMarkerAfterFrontmatter` /
+`removeExistingMarker` from issue #279). The first tool-owned update of a
+duplicate-marker copy therefore rewrites it into exactly one current
+marker with no new code. A regression test pins this (the survey found
+real copies with `dev` + `v1.8.0` markers).
 
-- `TestIsToolOwned`: flip `commands/gaze.md` to `true`; negative probes for
-  unshipped paths (`commands/gaze-local.md`, `commands/speckit.analyze.md`,
-  `agents/custom.md`) keep the default-deny branch verified.
-- `TestRun_SkipsExisting`: the hint assertion flips to **absence** on the
-  plain identical re-run; the skip-breakdown comment is corrected (it
-  currently claims "2 user-owned + 7 tool-owned" — the pre-change reality is
-  1 user-owned + 8 tool-owned, and post-change 9 tool-owned).
-- `TestRun_ReScaffoldNonForceSingleMarker`: the user-owned `else` branch is
-  dead post-change (all nine assets are tool-owned); restructure so the
-  tool-owned assertions cover `commands/gaze.md` (current marker present, old
-  marker replaced).
-- `TestRun_OverwriteOnDiff_ToolOwned`: arithmetic is unchanged (2 updated +
-  7 skipped) — only the stale count comments are corrected; optionally add
-  `commands/gaze.md` to `TestRun_OverwriteOnDiff_SkipsIdentical`'s
-  tool-owned enumeration.
+### D5: Byte-identity invariant untouched
 
-New tests (all `Run()`-level with `t.TempDir()`, per the existing patterns):
+No file under `.opencode/` or `internal/scaffold/assets/` changes. The
+ownership flip is metadata about the write path (`isToolOwned`), not
+asset content. `TestEmbeddedAssetsMatchSource`, the AGENTS.md File Sync
+Invariants table, and the nine-file manifest are all unaffected —
+implementation must confirm this (a dedicated task) so a well-meaning
+"also update the asset" edit cannot slip in.
 
-- `TestRun_UpdatesStaleGazeCommand` — stale content and local-edit variants
-  (scenarios 1 and 3 of the first requirement).
-- `TestRun_GazeCommandMarkerOnlyDriftRewritten` — marker-only drift rewrites.
-- `TestRun_GazeCommandDuplicateMarkersCollapsed` — the #353 shape: two
-  markers plus old content, run at `v2.5.0`, exactly one
-  `<!-- scaffolded by gaze v2.5.0 -->` marker and content equal to the
-  embedded asset with that marker.
-- `TestRun_SeparatelyNamedCommandsUntouched` — a `gaze-local.md` survives
-  runs with and without `--force` byte-for-byte.
-- `TestProcessAssetFile_UserOwnedSkipRetained` — direct unit test of the
-  retained user-owned skip branch, which is no longer reachable through
-  `Run()` with the current manifest. Without this, the ownership model's
-  other half loses coverage the moment the flip lands.
-- `TestRun_CI_SkipIfPresent` (in `ci_test.go`) extended with the
-  hint assertion for the `--ci` re-run.
+### D6: GazeCRAPload gate discipline
 
-Unchanged and required to stay green without modification:
-`TestEmbeddedAssetsMatchSource`, `TestAssetPaths_Returns9Files`,
-`TestRun_ForceOverwrites` (its 9 overwritten already includes `gaze.md`),
-`TestRun_ReScaffoldSingleMarker` (the `--force` marker path now covers
-`gaze.md` automatically), `TestProtectTagPlacement`, and the `cmd/gaze`
-init tests (verified: they assert first-run creation only).
+The dogfood gate (max-gaze-crapload 6) has zero headroom on
+`scaffold.Run`. The change is shaped to respect it: `isToolOwned` gains a
+case constant (no branching), and the tip adds one flag + one
+conditional to `printSummary` while `Run` stays branch-free. The
+implementation MUST verify the dogfood gate stays green (CI's
+`gaze-ai-report` job, thresholds 38/6/8). If any scaffold function trips
+a gate, the fix is decomposition (extract a helper), never touching the
+gate — per the AGENTS.md gatekeeping-integrity rule.
 
-### D6: Documentation updates
+### D7: Documentation sweep derived from full-text grep
 
-- `docs/guides/opencode-integration.md`: Commands table row flips to
-  Tool-owned; the "Tool-Owned vs User-Owned Files" section is rewritten (the
-  user-owned `.opencode/` set is empty, the tool-owned list gains
-  `commands/gaze.md`, and the escape-hatch paragraph replaces the customize
-  advice); the Upgrading walkthrough's prose and sample output move
-  `commands/gaze.md` from the `skipped:` line to the `updated:` lines.
-- `docs/reference/cli/init.md`: `--force` flag row, directory-tree
-  annotation, ownership bullet, and re-initialize prose.
-- `README.md` needs no change (verified: it contains no ownership references
-  for this file).
-- A website documentation issue in `unbound-force/website` is required before
-  merge (user-facing `gaze init` behavior change — Website Documentation
-  Gate).
+Per the documented repo learning, the sweep is derived from grepping the
+docs tree for `gaze.md` / `user-owned`, not from the obvious tables.
+Confirmed touch points:
 
-### Constitution alignment
+- `docs/guides/opencode-integration.md` — Commands ownership table row
+  (`commands/gaze.md` → Tool-owned), the "Tool-Owned vs User-Owned
+  Files" section (user-owned paragraph becomes the CI workflow + escape
+  hatch; tool-owned enumeration adds `commands/gaze.md`), the Upgrading
+  section (sample output now shows the `updated:` line and tip;
+  migration note for customized copies: rename to `gaze-local.md`
+  before upgrading, or recover from git and rename after)
+- `docs/reference/cli/init.md` — `--force` flag row ("existing
+  user-owned files are skipped" wording), scaffolded-files tree comment
+  (`# /gaze command definition (user-owned)`), the user-owned bullet,
+  the "On subsequent runs" paragraph, and any sample init output
+- `docs/guides/ci-integration.md` — the CI workflow "user-owned after
+  first write" statement stays true; verified, no change
+- `README.md` — verified to contain no ownership claims (command table
+  row only); no change
 
-The proposal assesses all four Gaze constitution principles as PASS; this
-design implements that assessment and adds nothing that revisits it. Against
-the org constitution: **Autonomous Collaboration** — the shipped `/gaze`
-command is the collaboration artifact between gaze and the host agent, and a
-command that disagrees with the agent it delegates to (spec 040) is a
-degraded artifact contract; D1/D2 keep it current. **Composability First** —
-D4 keeps `gaze init` independently usable with zero consumer configuration.
-**Observable Quality** — summary lines and version markers are provenance
-output, and D3 makes the hint truthful. **Testability** — D5 exercises the
-flip through `Run()`-level tests plus one direct unit test for the branch
-`Run()` can no longer reach, with no external services.
+### D8: Website documentation issue sequencing
+
+The change is user-facing (`gaze init` behavior), so the AGENTS.md
+Website Documentation Gate applies: a `docs:` issue in
+`unbound-force/website` must exist before the PR merges. Per the
+documented org learning, it is filed before or alongside the review
+council dispatch — filing it after leaves a blocking HIGH finding at
+council time for a five-minute task. The issue states what changed, why
+it matters, and which pages need updating.
+
+### D9: PR targets upstream
+
+`origin` is the jflowers fork; the PR targets `unbound-force/gaze`.
+Recorded here so the apply/finale phases route correctly; no code
+impact.
 
 ## Risks / Trade-offs
 
-- **Local customizations are overwritten, irreversibly.** Accepted: the
-  10-repo audit found none; the identical trade-off was accepted for
-  `agents/gaze-reporter.md` in spec 040 (FR-034); the escape hatch
-  (separately-named command) is documented. No backup mechanism is
-  introduced — that would be new scope for a case with zero observed
-  instances.
-- **The user-owned branch in `processAssetFile` becomes unreachable via
-  `Run()`.** Retained deliberately as the default-deny safety default (D1)
-  and kept verified by direct unit test (D5) rather than deleted — deleting
-  it would remove the conservative failure mode for any future asset missing
-  from the list.
-- **One-time observable output change.** Consumers' first post-upgrade
-  `gaze init` reports `updated:` lines where they previously saw `skipped:`,
-  and plain re-runs drop the `--force` hint. Expected and desired; no exit
-  code or machine-readable contract changes.
-- **Dev-build marker churn.** A dev-built gaze rewrites the marker to
-  `dev` on update — identical to every other tool-owned file today, not new
-  behavior.
+- **Customized `/gaze` copies are overwritten on the first post-upgrade
+  init.** Accepted: the survey found zero customized copies across 10
+  repos; the prior version is git-recoverable; the escape hatch plus
+  update-time tip is the permanent opt-out; and the alternative
+  (continued staleness) is the defect being fixed.
+- **The tip recurs on every release that changes the command asset.**
+  Accepted: one line, only when the file actually changed, and genuinely
+  relevant each time it prints.
+- **`--force` hint disappears from plain-init up-to-date runs** (no
+  user-owned `.opencode/` file can be skipped). This is a correctness
+  improvement — the hint now only fires for the CI workflow, the one
+  file it still describes — but it is an observable output change that
+  tests and docs must reflect.
+- **Gate headroom.** If `printSummary`'s added branch trips a dogfood
+  gate, the mitigation is decomposition (D6), which risks review churn
+  but not design change.
+
+## Constitution Alignment
+
+This design implements the proposal's Constitution Alignment
+(Gaze constitution v1.3.0): the flip restores Accuracy (scaffolded
+command matches the shipped asset; markers become truthful), keeps
+Minimal Assumptions (escape hatch is a filename convention, no new
+state or configuration), improves Actionable Output (the `updated:`
+line and the escape-hatch tip name the exact file and the exact
+opt-out path), and preserves Testability (pure-function ownership
+decision plus `t.TempDir` end-to-end tests, no external services).
