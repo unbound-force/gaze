@@ -4,7 +4,7 @@ Run CRAP analysis on Gaze's own source code. Serves as both a dogfooding exercis
 
 ## Synopsis
 
-```
+```text
 gaze self-check [flags]
 ```
 

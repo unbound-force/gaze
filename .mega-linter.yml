@@ -13,12 +13,34 @@ ENABLE_LINTERS:
 # Exclude spec templates, opencode config, and testdata from linting
 FILTER_REGEX_EXCLUDE: '(\.specify/templates/|\.opencode/|testdata/)'
 
-# Exclude spec markdown files from markdownlint (they use non-standard
-# formatting). Embedded asset mirrors are byte-identical copies of
-# .opencode/ sources (TestEmbeddedAssetsMatchSource) and must never be
-# reformatted independently. Dewey learnings (.uf/) regenerate on every
-# retrospective and openspec/changes/ artifacts embed workflow template
-# text — both are machine-generated, so hand-fixing is not durable.
-MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: '(\.specify/|\.opencode/|specs/|\.uf/|openspec/changes/|internal/scaffold/assets/|internal/aireport/assets/)'
+# Markdownlint scope policy — four ownership buckets (design D1, openspec
+# change reduce-markdownlint-noise-from-generated): user-owned, generated,
+# tool-owned, historical. Default-open: paths not matched below are
+# user-owned (README.md, AGENTS.md, CLAUDE.md, docs/**) and stay linted.
+# Excluded fragments in regex order — bucket and reason (hand-fixing is
+# not durable, or the content is not author-owned):
+#   \.specify/                 tool-owned   Speckit templates
+#   \.opencode/                tool-owned   UF/gaze-init scaffolded agents, commands, references
+#   specs/                     historical   Speckit point-in-time specs and synced OpenSpec main specs (also covers openspec/specs/); structured artifacts, not prose
+#   \.uf/                      generated    Dewey learnings; regenerate on every retrospective, hand-fixing is not durable
+#   openspec/changes/          generated    machine-authored workflow artifacts embedding template text; unanchored, so archive/ is covered too
+#   internal/scaffold/assets/  generated    byte-identical embedded mirror of .opencode/ sources (TestEmbeddedAssetsMatchSource); never reformat independently
+#   internal/aireport/assets/  generated    embedded (go:embed) AI prompt asset maintained with the Go source; not author-owned prose
+#   openspec/schemas/          tool-owned   vendored with the @fission-ai/openspec schema; templates intentionally conflict with MD041/MD033/MD024
+MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: '(\.specify/|\.opencode/|specs/|\.uf/|openspec/changes/|internal/scaffold/assets/|internal/aireport/assets/|openspec/schemas/)'
+
+# Markdownlint gate is blocking (design D3, openspec change
+# reduce-markdownlint-noise-from-generated): MegaLinter v9.3.0 registers
+# markdownlint with is_formatter: true, so disable_errors defaults to true —
+# every markdownlint finding this repo ever reported was a warning
+# ("non blocking error(s)") that never failed the check. This override makes
+# any markdownlint violation fail the Markdown check. Chosen over
+# FORMATTERS_DISABLE_ERRORS: false because the per-linter knob states the
+# intent precisely and cannot change behavior for future formatters added
+# to ENABLE_LINTERS. Trade-off accepted: with the docs debt fixed to zero
+# and generated/tool-owned paths excluded above, any future violation in a
+# linted (user-owned) file is a genuine regression that should block.
+# Re-verify the formatter default if the MegaLinter version pin is bumped.
+MARKDOWN_MARKDOWNLINT_DISABLE_ERRORS: false
 
 SHOW_ELAPSED_TIME: true

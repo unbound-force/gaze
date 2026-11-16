@@ -6,11 +6,12 @@ Gaze computes two risk scores for every function: **CRAP** (using line coverage)
 
 CRAP (Change Risk Anti-Patterns) measures the risk of changing a function by combining cyclomatic complexity with test coverage:
 
-```
+```text
 CRAP(m) = comp^2 * (1 - cov/100)^3 + comp
 ```
 
 Where:
+
 - **comp** = cyclomatic complexity (minimum 1)
 - **cov** = line coverage percentage (0–100)
 
@@ -28,11 +29,12 @@ The [CRAPload](../reference/glossary.md#crapload) is the count of functions with
 
 GazeCRAP uses the same formula as CRAP but substitutes [contract coverage](../reference/glossary.md#contract-coverage) for line coverage:
 
-```
+```text
 GazeCRAP(m) = comp^2 * (1 - contract_cov/100)^3 + comp
 ```
 
 Where:
+
 - **comp** = cyclomatic complexity
 - **contract_cov** = contract coverage percentage (0–100), the ratio of [contractual](../reference/glossary.md#contractual) side effects that are asserted on by tests
 
@@ -48,7 +50,7 @@ The [GazeCRAPload](../reference/glossary.md#gazecrapload) is the count of functi
 
 Every function with both CRAP and GazeCRAP scores is classified into one of four quadrants based on whether each score exceeds its respective threshold:
 
-```
+```text
                     GazeCRAP < threshold    GazeCRAP >= threshold
                   ┌─────────────────────┬─────────────────────────────┐
 CRAP < threshold  │  Q1 Safe            │  Q3 Simple But              │
@@ -106,7 +108,7 @@ func Add(a, b int) int {  // complexity: 1, line coverage: 0%
 }
 ```
 
-- **CRAP** = 1^2 * (1 - 0/100)^3 + 1 = 1 * 1 + 1 = **2**
+- **CRAP** = 1^2 \* (1 - 0/100)^3 + 1 = 1 \* 1 + 1 = **2**
 - Below threshold (15). No fix strategy needed.
 
 ### Example 2: Complex Function, Good Coverage
@@ -117,7 +119,7 @@ func ProcessOrder(order *Order) error {  // complexity: 12, line coverage: 85%
 }
 ```
 
-- **CRAP** = 12^2 * (1 - 85/100)^3 + 12 = 144 * 0.003375 + 12 = 0.486 + 12 = **12.5**
+- **CRAP** = 12^2 \* (1 - 85/100)^3 + 12 = 144 \* 0.003375 + 12 = 0.486 + 12 = **12.5**
 - Below threshold (15). Safe despite high complexity because coverage is strong.
 
 ### Example 3: Complex Function, No Coverage
@@ -128,7 +130,7 @@ func ValidateConfig(cfg *Config) error {  // complexity: 8, line coverage: 0%
 }
 ```
 
-- **CRAP** = 8^2 * (1 - 0/100)^3 + 8 = 64 * 1 + 8 = **72**
+- **CRAP** = 8^2 \* (1 - 0/100)^3 + 8 = 64 \* 1 + 8 = **72**
 - Above threshold (15). Fix strategy: `add_tests` (complexity 8 < threshold 15, so tests alone will fix it).
 
 ### Example 4: The Q3 Problem
@@ -139,7 +141,7 @@ func SaveUser(db *DB, user *User) error {  // complexity: 3, line coverage: 95%
 }
 ```
 
-- **CRAP** = 3^2 * (1 - 95/100)^3 + 3 = 9 * 0.000125 + 3 = **3.0**
+- **CRAP** = 3^2 \* (1 - 95/100)^3 + 3 = 9 \* 0.000125 + 3 = **3.0**
 - **GazeCRAP** (contract coverage: 0%) = 3^2 * (1 - 0/100)^3 + 3 = 9 + 3 = **12**
 - CRAP says safe. GazeCRAP says safe too (12 < 15). But if the GazeCRAP threshold were set to 10, this would be Q3 — tests run the code but don't verify the `ReceiverMutation` or `ErrorReturn`.
 
@@ -151,7 +153,7 @@ func ReconcileState(ctx context.Context, state *State) error {
 }
 ```
 
-- **CRAP** = 18^2 * (1 - 20/100)^3 + 18 = 324 * 0.512 + 18 = 165.9 + 18 = **183.9**
+- **CRAP** = 18^2 \* (1 - 20/100)^3 + 18 = 324 \* 0.512 + 18 = 165.9 + 18 = **183.9**
 - **GazeCRAP** = 18^2 * (1 - 0/100)^3 + 18 = 324 + 18 = **342**
 - Both above threshold. Quadrant: Q4 Dangerous. Fix strategy: `decompose` (complexity 18 >= threshold 15).
 

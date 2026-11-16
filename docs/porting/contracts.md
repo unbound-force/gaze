@@ -95,7 +95,7 @@ Classification determines whether a side effect is **contractual** (part of the 
 
 A port MUST compute a confidence score using this formula:
 
-```
+```text
 score = base_confidence + tier_boost(effect_type) + sum(signal_weights) - contradiction_penalty
 ```
 
@@ -218,7 +218,7 @@ Scoring combines cyclomatic complexity with coverage to produce risk metrics.
 
 A port MUST compute the CRAP score using this exact formula:
 
-```
+```text
 CRAP(m) = complexity² × (1 - coverage/100)³ + complexity
 ```
 
@@ -237,7 +237,7 @@ Where:
 
 GazeCRAP uses the same formula as CRAP but substitutes **contract coverage** for line coverage:
 
-```
+```text
 GazeCRAP(m) = complexity² × (1 - contract_coverage/100)³ + complexity
 ```
 

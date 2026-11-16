@@ -57,6 +57,7 @@ Confidence score boundaries that determine how side effects are labeled.
 **Constraint**: `contractual` must be strictly greater than `incidental`. If this constraint is violated (either in the config file or via CLI flag overrides), Gaze exits with an error explaining which source caused the invalid configuration.
 
 **Label assignment logic**:
+
 - Confidence >= `contractual` → **contractual**
 - Confidence < `incidental` → **incidental**
 - Otherwise → **ambiguous**
@@ -119,6 +120,7 @@ All fields are optional — when omitted, sensible defaults are used.
 | `new_function_threshold` | `float64` | `30` | > 0 | CRAP score above which a new function (not present in the baseline) is flagged as a violation. New functions below this threshold are reported as informational. |
 
 **Validation rules**:
+
 - `epsilon` must be >= 0. A negative epsilon produces an error.
 - `new_function_threshold` must be > 0. A zero or negative value produces an error.
 
@@ -184,7 +186,6 @@ Several CLI flags override config file values. The CLI flag always takes precede
 | `--config` | — (specifies file path) | [`analyze`](cli/analyze.md), [`quality`](cli/quality.md), [`docscan`](cli/docscan.md) |
 | `--baseline` | `baseline.file` | [`crap`](cli/crap.md) |
 
-
 **Override semantics**: A CLI flag value of `-1` (the default) means "use the config file value." Any other value in the valid range (1–99) overrides the config. The threshold coherence constraint (`contractual > incidental`) is validated after merging CLI and config values.
 
 ## Validation Rules
@@ -201,7 +202,7 @@ Several CLI flags override config file values. The CLI flag always takes precede
 
 When configuration is invalid, Gaze produces actionable error messages that identify the source:
 
-```
+```text
 # Invalid threshold from config file
 contractual threshold (40) must be greater than incidental threshold (50); check config file .gaze.yaml
 
