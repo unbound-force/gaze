@@ -6,7 +6,7 @@ When contract coverage data is available (via the integrated quality pipeline), 
 
 ## Synopsis
 
-```
+```text
 gaze crap [packages...] [flags]
 ```
 
@@ -36,7 +36,6 @@ At least one package pattern is required. Use `./...` to analyze the entire modu
 | `--baseline-root` | `string` | `""` | Module root the baseline was generated under. Reconciles historical absolute-path baselines from relocated checkouts to module-relative paths before comparison. Inert when the baseline is module-relative or absent; no `.gaze.yaml` equivalent. See [Baseline path compatibility](#baseline-path-compatibility). |
 | `--gate-on-change` | `string` | `""` | Fail if any function modified in the current changeset exceeds the CRAP threshold. Accepts a git ref (e.g., `origin/main`, `HEAD~3`) or `staged` for index-only changes. Requires `git` on PATH. |
 
-
 ## Configuration Interaction
 
 The `gaze crap` command reads the `baseline` section from `.gaze.yaml` for baseline comparison settings (`file`, `epsilon`, `new_function_threshold`). The integrated quality pipeline (which provides contract coverage for GazeCRAP) also uses classification thresholds from the config file internally.
@@ -47,13 +46,14 @@ The `--coverprofile` flag is the primary configuration point — providing a pre
 
 When Gaze spawns `go test -coverprofile` itself, it sets the `GAZE_COVERAGE_RUN` environment variable. If `gaze crap` inherits a non-empty `GAZE_COVERAGE_RUN` (the command runs inside a Gaze coverage collection, such as Gaze's own self-analyzing tests) and no `--coverprofile` is passed, coverage generation is refused with:
 
-```
+```text
 nested coverage generation refused: GAZE_COVERAGE_RUN is set, so this process already runs inside a gaze coverage collection; pass a pre-generated --coverprofile instead
 ```
 
 Pass a pre-generated profile via `--coverprofile` to run inside such an environment. Normal (non-nested) runs are unaffected.
 
 Baseline detection order:
+
 1. `--baseline FILE` → use specified path (error if not found or empty)
 2. `.gaze.yaml` `baseline.file` → use configured path (skip silently if not found)
 3. Default `.gaze/baseline.json` → use if exists (skip silently if not found)
@@ -68,7 +68,7 @@ See [Configuration Reference](../configuration.md) for full details on the `base
 gaze crap ./...
 ```
 
-```
+```text
 CRAP Scores
 ═══════════════════════════════════════════════════════════════
 
@@ -93,7 +93,7 @@ gaze crap ./... --max-crapload=10 --max-gaze-crapload=5
 
 Exits with code 1 if CRAPload exceeds 10 or GazeCRAPload exceeds 5. Prints a CI summary line to stderr:
 
-```
+```text
 CRAPload: 5/10 (PASS) | GazeCRAPload: 3/5 (PASS)
 ```
 
@@ -138,7 +138,7 @@ gaze crap --coverprofile=coverage.out ./...
 
 When a baseline is loaded, the text output appends comparison sections:
 
-```
+```text
 Baseline Comparison
 ═══════════════════════════════════════════════════════════════
 
@@ -209,7 +209,6 @@ JSON output includes a `changed_functions` array with per-function pass/fail sta
 |------|---------|
 | `0` | Analysis succeeds with no regressions, no new-function violations, no threshold failures, and no change gate failures |
 | `1` | At least one regression detected, a new-function violation found, a `--max-crapload` / `--max-gaze-crapload` threshold exceeded, or a `--gate-on-change` violation |
-
 
 The baseline comparison gate, threshold gates (`--max-crapload`, `--max-gaze-crapload`), and change gate (`--gate-on-change`) are evaluated independently — exit code is 1 if any gate fails. Comparison output is always written regardless of threshold results.
 When no baseline is loaded, exit code depends only on threshold flags (exit 0 if no thresholds are set).

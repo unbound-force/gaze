@@ -185,7 +185,7 @@ func TestSC001_ComprehensiveDetection(t *testing.T) { ... }  // acceptance test
 
 Real Go packages in `testdata/src/` directories, loaded via `go/packages`:
 
-```
+```text
 internal/analysis/testdata/src/basic/    # simple functions for testing
 internal/classify/testdata/              # classification test fixtures
 internal/quality/testdata/               # quality assessment fixtures
@@ -222,7 +222,7 @@ Report output is verified to fit within 80-column terminals.
 
 [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 type: description
 ```
 
@@ -230,7 +230,7 @@ Types: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`
 
 Examples:
 
-```
+```text
 feat: add GazeCRAP quadrant classification
 fix: recover from SSA builder panics in goroutines
 docs: add architecture overview
@@ -260,7 +260,7 @@ All changes that modify production code, test code, or CI configuration must be 
 
 For numbered feature specs under `specs/NNN-name/`:
 
-```
+```text
 specify → clarify → plan → tasks → implement
 ```
 
@@ -270,7 +270,7 @@ Each spec directory contains `spec.md`, `plan.md`, `tasks.md`, and optional rese
 
 For targeted changes under `openspec/changes/name/`:
 
-```
+```text
 propose → design → specs → tasks → apply
 ```
 

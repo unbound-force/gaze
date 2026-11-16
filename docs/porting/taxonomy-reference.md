@@ -114,7 +114,7 @@ For explanations and rationale, see [contracts.md](contracts.md). For capability
 
 ### Confidence Score Formula
 
-```
+```text
 score = clamp(base + tier_boost + sum(signal_weights) - contradiction_penalty, 0, 100)
 ```
 

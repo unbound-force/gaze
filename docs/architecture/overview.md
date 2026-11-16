@@ -24,7 +24,7 @@ Gaze is a single-binary CLI tool that performs static analysis on Go source code
 
 The following diagram shows how data flows through Gaze from CLI invocation to output:
 
-```
+```text
                           CLI Layer (cmd/gaze/)
                                   |
                           Flag parsing & routing
@@ -165,7 +165,7 @@ Each effect type is a string constant. The tier determines the confidence boost 
 
 Arrows indicate "imports" relationships. Only `internal/` packages are shown.
 
-```
+```text
 taxonomy  (leaf — no internal deps)
     ^
     |

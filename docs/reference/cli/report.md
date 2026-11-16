@@ -48,7 +48,7 @@ The `--coverprofile` flag is the key CI optimization — pass a coverage profile
 
 When Gaze spawns `go test -coverprofile` itself, it sets the `GAZE_COVERAGE_RUN` environment variable. If `gaze report` inherits a non-empty `GAZE_COVERAGE_RUN` (the command runs inside a Gaze coverage collection, such as Gaze's own self-analyzing tests) and no `--coverprofile` is passed, coverage generation is refused with:
 
-```
+```text
 nested coverage generation refused: GAZE_COVERAGE_RUN is set, so this process already runs inside a gaze coverage collection; pass a pre-generated --coverprofile instead
 ```
 

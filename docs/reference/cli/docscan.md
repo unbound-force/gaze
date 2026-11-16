@@ -12,7 +12,7 @@ Documents are prioritized by proximity to the target package:
 
 ## Synopsis
 
-```
+```text
 gaze docscan [package] [flags]
 ```
 
@@ -43,6 +43,7 @@ The `--config` flag loads `.gaze.yaml` for document scanning settings:
 | `classification.doc_scan.timeout` | `string` | `"30s"` | Maximum duration for document scanning (Go duration format) |
 
 **Default exclude patterns**:
+
 - `vendor/**`
 - `node_modules/**`
 - `.git/**`

@@ -15,6 +15,7 @@
 
 When performing code review, read the applicable
 Divisor agent from .opencode/agents/:
+
 - divisor-guard.md — intent drift, constitution
 - divisor-architect.md — structure, patterns, DRY
 - divisor-adversary.md — security, error handling

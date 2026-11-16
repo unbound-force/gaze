@@ -33,7 +33,7 @@ Fenced block callouts render as styled blocks in GitHub/GitLab, making contract 
 > - `CallbackInvocation` — incidental (internal wiring)
 ```
 
-Each entry is `> - `TypeName` — contractual|incidental`, optionally followed by a human-readable note after the label. Entries are separated by newlines; a line starting with `>` that is not an entry keeps the block open, while a non-`>` line ends the block.
+Each entry is ``> - `TypeName` — contractual|incidental``, optionally followed by a human-readable note after the label. Entries are separated by newlines; a line starting with `>` that is not an entry keeps the block open, while a non-`>` line ends the block.
 
 ## Sidecar File
 
