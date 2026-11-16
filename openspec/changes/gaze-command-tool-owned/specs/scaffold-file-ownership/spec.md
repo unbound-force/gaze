@@ -1,137 +1,98 @@
 ## ADDED Requirements
 
-### Requirement: `commands/gaze.md` is tool-owned
+### Requirement: Tool-owned `/gaze` command file
 
-`gaze init` MUST classify the scaffolded `.opencode/commands/gaze.md`
-as a tool-owned file. On re-runs without `--force`, an existing copy
-whose content differs from the embedded asset MUST be overwritten with
-the embedded content and reported in the summary as updated; an
-identical copy MUST be skipped. `--force` MUST overwrite it
-unconditionally, like every other scaffolded file. The classification
-lives in `isToolOwned` and MUST NOT depend on file content, marker
-state, or the presence of local edits.
+`commands/gaze.md` MUST be classified as tool-owned by `gaze init` and
+use overwrite-on-diff semantics: when the file exists and its content
+differs from the embedded asset (rendered with the current version
+marker), `gaze init` MUST replace it without `--force` and report it as
+`updated` in the summary. The embedded asset content and the nine-file
+byte-identical mirror manifest MUST NOT change.
 
-#### Scenario: Stale command updated on plain re-run
+#### Scenario: Stale copy is updated
 
-- **GIVEN** a project scaffolded by an older gaze release whose
-  `.opencode/commands/gaze.md` differs from the embedded asset of the
-  current gaze binary
+- **GIVEN** a project whose `commands/gaze.md` was scaffolded by an
+  older gaze and differs from the current embedded asset
 - **WHEN** `gaze init` runs without `--force`
-- **THEN** `.opencode/commands/gaze.md` MUST be overwritten with the
-  embedded content
-- **AND** the summary MUST report it as
-  `updated: .opencode/commands/gaze.md (content changed)`
+- **THEN** the file MUST be replaced with the embedded asset content
+  plus exactly one current-version marker
+- **AND** the summary MUST report it under `updated:`
 
-#### Scenario: Identical command skipped
+#### Scenario: Identical copy is skipped
 
-- **GIVEN** a project whose `.opencode/commands/gaze.md` is
-  byte-identical to the embedded asset with the current version marker
-  inserted
+- **GIVEN** a project whose `commands/gaze.md` is byte-identical to the
+  embedded asset rendered with the current version marker
 - **WHEN** `gaze init` runs without `--force`
-- **THEN** the file MUST NOT be rewritten
-- **AND** the summary MUST report it as skipped
+- **THEN** the file MUST be skipped and appear under `skipped:`
+- **AND** it MUST NOT be counted by the `--force` hint (no user-owned
+  `.opencode/` file was skipped)
 
-#### Scenario: Local customization overwritten
+#### Scenario: First-run creation is unchanged
 
-- **GIVEN** a `.opencode/commands/gaze.md` containing local edits
+- **GIVEN** a project with no `commands/gaze.md`
+- **WHEN** `gaze init` runs
+- **THEN** the file MUST be created and reported under `created:` with
+  exactly one current-version marker
+
+#### Scenario: Duplicate version markers are healed
+
+- **GIVEN** a project whose `commands/gaze.md` contains two or more
+  `<!-- scaffolded by gaze ... -->` marker lines
+- **WHEN** `gaze init` updates the file
+- **THEN** the result MUST contain exactly one marker, carrying the
+  current gaze version
+
+#### Scenario: Customized copy is overwritten
+
+- **GIVEN** a project whose `commands/gaze.md` carries local
+  customizations that differ from the embedded asset
 - **WHEN** `gaze init` runs without `--force`
-- **THEN** the local edits MUST be overwritten, because the file is
-  tool-owned
-- **AND** the on-disk content MUST equal the embedded asset with the
-  current version marker inserted
+- **THEN** the file MUST be overwritten with the embedded asset content
+  (the documented preservation path is the escape hatch below; the
+  prior version remains recoverable from version control)
 
-#### Scenario: Separately-named commands untouched
+### Requirement: Custom command escape hatch
 
-- **GIVEN** a `.opencode/commands/` directory containing command files
-  gaze does not ship (for example `gaze-local.md`)
-- **WHEN** `gaze init` runs with or without `--force`
-- **THEN** those files MUST NOT be read, modified, or removed
+`gaze init` MUST NOT read, write, or remove any `.opencode/commands/`
+path outside the nine embedded assets — including under `--force`. Any
+such path (conventionally `commands/gaze-local.md`) is a user-owned
+escape hatch for a customized `/gaze` command, and OpenCode exposes it
+as a slash command by filename with no gaze involvement.
 
-### Requirement: Single current version marker after rewrite
+#### Scenario: Escape-hatch file untouched without `--force`
 
-Whenever `gaze init` rewrites `commands/gaze.md` — through the
-tool-owned update path or through `--force` — the result MUST contain
-exactly one `<!-- scaffolded by gaze <version> -->` marker, carrying
-the version of the rewriting run and placed after the YAML frontmatter.
-This MUST also hold when the pre-existing file carries multiple
-markers (the `dev` plus `v1.8.0` duplicates observed in issue #353),
-because marker deduplication runs on every rewrite.
-
-#### Scenario: Duplicate markers collapsed
-
-- **GIVEN** a `.opencode/commands/gaze.md` carrying two scaffold
-  markers and content older than the embedded asset
-- **WHEN** `gaze init` runs without `--force` with version `v2.5.0`
-- **THEN** the rewritten file MUST contain exactly one marker:
-  `<!-- scaffolded by gaze v2.5.0 -->`
-- **AND** the rewritten content MUST match the embedded asset with that
-  marker inserted
-
-#### Scenario: Marker-only drift still rewrites
-
-- **GIVEN** a `.opencode/commands/gaze.md` whose content matches the
-  embedded asset but whose marker carries a different version
-- **WHEN** `gaze init` runs without `--force`**
-- **THEN** the file MUST be rewritten so the marker carries the current
-  version, and the summary MUST report it as updated
-
-### Requirement: User-owned skip hint fires only for user-owned files
-
-The scaffold summary's `N file(s) skipped (use --force to overwrite)`
-hint MUST fire exactly when at least one skipped file is user-owned.
-Because no `.opencode/` asset is user-owned after this change, a plain
-`gaze init` re-run with unchanged content MUST NOT print the hint. The
-CI workflow written by `gaze init --ci` remains user-owned, so a
-`--ci` re-run with an existing workflow MUST still print the hint.
-
-#### Scenario: Plain identical re-run without hint
-
-- **GIVEN** a project scaffolded by the current gaze binary with no
-  local modifications
+- **GIVEN** a project with a customized `.opencode/commands/gaze-local.md`
 - **WHEN** `gaze init` runs without `--force`
-- **THEN** the summary MUST NOT contain `use --force to overwrite`
+- **THEN** the file's content MUST be byte-identical before and after
+- **AND** it MUST NOT appear in any summary list (`created`, `skipped`,
+  `overwritten`, `updated`, `removed`)
 
-#### Scenario: CI workflow skip keeps the hint
+#### Scenario: Escape-hatch file untouched under `--force`
 
-- **GIVEN** a project with an existing
-  `.github/workflows/gaze-ai-report.yml`
-- **WHEN** `gaze init --ci` runs without `--force`
-- **THEN** the summary MUST contain
-  `1 file skipped (use --force to overwrite)`
+- **GIVEN** a project with a customized `.opencode/commands/gaze-local.md`
+- **WHEN** `gaze init --force` runs
+- **THEN** the file's content MUST be byte-identical before and after
+- **AND** it MUST NOT appear in any summary list
 
-### Requirement: Scaffold invariants preserved
+### Requirement: Escape-hatch guidance on update
 
-This change alters ownership classification only. The 9-file embedded
-asset manifest MUST be unchanged, and `.opencode/commands/gaze.md`
-MUST remain byte-identical to
-`internal/scaffold/assets/commands/gaze.md`.
+When `gaze init` updates `commands/gaze.md`, the summary MUST print a
+one-line tip naming `commands/gaze-local.md` as the path that preserves
+a customized command. The tip MUST NOT print when the file is created,
+skipped as identical, or overwritten via `--force`.
 
-#### Scenario: Asset mirror remains byte-identical
+#### Scenario: Tip printed on update
 
-- **GIVEN** the gaze repository after this change
-- **WHEN** `TestEmbeddedAssetsMatchSource` runs
-- **THEN** it MUST pass with no changes to either copy of
-  `commands/gaze.md`
+- **GIVEN** a project whose `commands/gaze.md` differs from the
+  embedded asset
+- **WHEN** `gaze init` runs without `--force` and updates the file
+- **THEN** the summary output MUST contain a tip line that names
+  `commands/gaze-local.md`
 
-#### Scenario: Manifest unchanged
+#### Scenario: No tip on identical skip or creation
 
-- **WHEN** the embedded asset paths are enumerated
-- **THEN** exactly 9 files MUST ship, identical to the pre-change
-  manifest
-
-### Requirement: Documentation reflects tool ownership
-
-User-facing documentation MUST describe `commands/gaze.md` as
-tool-owned, MUST NOT advise customizing it, and MUST direct users who
-need a custom `/gaze` command to a separately-named command file that
-gaze never touches.
-
-#### Scenario: Ownership documentation updated
-
-- **GIVEN** the documentation rendered after this change
-- **WHEN** a reader consults the file-ownership guidance in
-  `docs/guides/opencode-integration.md` or `docs/reference/cli/init.md`
-- **THEN** `commands/gaze.md` MUST be documented as tool-owned with
-  overwrite-on-diff behavior
-- **AND** the separately-named-command escape hatch MUST be documented
-  as the supported way to customize `/gaze`
+- **GIVEN** a project whose `commands/gaze.md` is identical to the
+  embedded asset, or a fresh project receiving the file for the first
+  time
+- **WHEN** `gaze init` runs without `--force`
+- **THEN** the summary output MUST NOT contain the escape-hatch tip

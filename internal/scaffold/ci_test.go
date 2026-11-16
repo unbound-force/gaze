@@ -368,6 +368,13 @@ func TestRun_CI_SkipIfPresent(t *testing.T) {
 	if !strings.Contains(buf2.String(), "skipped: "+ciWorkflowPath) {
 		t.Errorf("summary should report the workflow as skipped, got:\n%s", buf2.String())
 	}
+	// Pins the --force hint's only surviving trigger: since
+	// commands/gaze.md became tool-owned, the CI workflow is the
+	// one user-owned file a re-run can skip, so the summary must
+	// print the hint naming exactly one file.
+	if !strings.Contains(buf2.String(), "1 file skipped (use --force to overwrite)") {
+		t.Errorf("summary should print the --force hint for the skipped CI workflow, got:\n%s", buf2.String())
+	}
 
 	// Rerun with --force: the file is regenerated (edits gone) and
 	// reported as overwritten.
