@@ -7,6 +7,7 @@ permission:
   bash: deny
   webfetch: deny
 ---
+<!-- scaffolded by gaze dev -->
 
 # Role: The Tester
 

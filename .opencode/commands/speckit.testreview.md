@@ -1,6 +1,7 @@
 ---
 description: Perform a read-only testability analysis of spec artifacts by delegating to the divisor-gaze-testing agent in Spec Review Mode.
 ---
+<!-- scaffolded by gaze dev -->
 
 <protect>
 ## User Input

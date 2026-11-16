@@ -13,6 +13,7 @@ tools:
   edit: true
   webfetch: false
 ---
+<!-- scaffolded by gaze dev -->
 
 # Role: Test Generator
 

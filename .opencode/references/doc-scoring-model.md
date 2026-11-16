@@ -43,3 +43,4 @@ After recalculation, re-derive labels from updated confidence scores:
 | ≥ 80 | contractual |
 | 50–79 | ambiguous |
 | < 50 | incidental |
+<!-- scaffolded by gaze dev -->

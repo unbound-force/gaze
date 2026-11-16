@@ -143,3 +143,4 @@ coverage produces a CRAP score of 342 and lands it in Q4 Dangerous.
 3. Treat the 9 ambiguous effects as documentation work: Gaze cannot credit
    tests for contracts it cannot classify, so the 43% contract coverage
    understates what the suite actually verifies.
+<!-- scaffolded by gaze dev -->

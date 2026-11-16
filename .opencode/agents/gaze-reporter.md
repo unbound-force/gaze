@@ -12,6 +12,7 @@ tools:
   edit: false
   webfetch: false
 ---
+<!-- scaffolded by gaze dev -->
 
 # Gaze Reporter Agent
 
