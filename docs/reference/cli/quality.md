@@ -6,7 +6,7 @@ The target package must have existing `*_test.go` files.
 
 ## Synopsis
 
-```
+```text
 gaze quality [packages...] [flags]
 ```
 
@@ -78,7 +78,7 @@ HTML reports are self-contained files with inline styling. They do not load exte
 gaze quality ./internal/crap
 ```
 
-```
+```text
 Test Quality Report
 ═══════════════════════════════════════════════════════════════
 

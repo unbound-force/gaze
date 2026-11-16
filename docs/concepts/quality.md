@@ -53,7 +53,7 @@ This is the core of quality assessment: linking each detected assertion to the s
 
 For each assertion site, Gaze tries these passes in order, stopping at the first match:
 
-**Pass 1 — Direct Identity (confidence 75)**
+#### Pass 1 — Direct Identity (confidence 75)
 
 Walk the assertion expression's AST looking for identifiers whose `types.Object` matches a traced side effect variable. This handles the common case where a test assigns the target's return value and asserts on it directly:
 
@@ -64,7 +64,7 @@ if got != 5 { t.Errorf(...) }  // "got" maps to ReturnValue
 
 The bridge between SSA and AST works by finding the AST assignment statement that contains the target call, then mapping each left-hand-side identifier to the corresponding return value side effect by position.
 
-**Pass 1b — Helper Bridge (confidence 70)**
+#### Pass 1b — Helper Bridge (confidence 70)
 
 When an assertion is inside a helper function (depth > 0), the helper's parameter objects are bridged back to the caller's argument objects. For example:
 
@@ -76,7 +76,7 @@ func assertEqual(t *testing.T, got, want int) {
 assertEqual(t, result, 42)  // "result" bridges to helper's "got"
 ```
 
-**Pass 2 — Indirect Root Resolution (confidence 65)**
+#### Pass 2 — Indirect Root Resolution (confidence 65)
 
 If Pass 1 finds no match, resolve composite expressions (selectors, index expressions, built-in calls) to their root identifier using `resolveExprRoot`. This handles patterns like:
 
@@ -85,7 +85,7 @@ if result.Name != "expected" { ... }  // resolves result.Name → result
 if len(results) != 3 { ... }          // resolves len(results) → results
 ```
 
-**Pass 3 — Inline Call (confidence 60)**
+#### Pass 3 — Inline Call (confidence 60)
 
 Detects assertions where the target function is called inline without assigning its return value:
 
@@ -93,7 +93,7 @@ Detects assertions where the target function is called inline without assigning 
 if c.Value() != 5 { t.Errorf(...) }  // Value() is the target, called inline
 ```
 
-**Pass 4 — Container Unwrap (confidence 55)**
+#### Pass 4 — Container Unwrap (confidence 55)
 
 Traces data flow forward from the return value through field access, type assertions, and transformation calls (like `json.Unmarshal`) to the assertion expression. This handles patterns where a test unpacks a complex return value:
 
@@ -105,7 +105,7 @@ json.Unmarshal(body, &data)
 if data["key"] != "value" { ... }  // traces back through unmarshal to result
 ```
 
-**Pass 5 — AI-Assisted Mapping (confidence 50)**
+#### Pass 5 — AI-Assisted Mapping (confidence 50)
 
 When all mechanical passes fail, an optional AI mapper evaluates the semantic relationship between the assertion and the target function's side effects. AI mappings receive the lowest confidence (50) and are only used when configured.
 
@@ -127,11 +127,12 @@ Unmapped assertions are excluded from both contract coverage and over-specificat
 
 [Contract coverage](../reference/glossary.md#contract-coverage) is the ratio of contractual side effects that are asserted on:
 
-```
+```text
 contract_coverage = covered_contractual / total_contractual * 100
 ```
 
 Where:
+
 - **total_contractual** = count of side effects classified as [contractual](../reference/glossary.md#contractual) (effects with no classification are conservatively treated as contractual)
 - **covered_contractual** = count of contractual effects that have at least one assertion mapping
 
@@ -145,7 +146,7 @@ Where:
 
 [Over-specification](../reference/glossary.md#over-specification-score) measures how many assertions target [incidental](../reference/glossary.md#incidental) side effects:
 
-```
+```text
 over_specification_ratio = incidental_assertions / total_mapped_assertions
 ```
 

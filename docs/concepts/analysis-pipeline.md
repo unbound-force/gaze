@@ -4,7 +4,7 @@ Gaze detects [side effects](side-effects.md) through a multi-phase static analys
 
 ## Pipeline Overview
 
-```
+```text
 ┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌─────────┐
 │  Load    │───>│ AST Analysis │───>│ SSA Analysis │───>│ Combine │──> AnalysisResult
 │ Packages │    │              │    │              │    │ Results │

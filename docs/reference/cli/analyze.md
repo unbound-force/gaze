@@ -6,7 +6,7 @@ Side effects are categorized into priority tiers (P0–P4) from the [side effect
 
 ## Synopsis
 
-```
+```text
 gaze analyze [packages...] [flags]
 ```
 
@@ -54,7 +54,7 @@ See [Configuration Reference](../configuration.md) for all `.gaze.yaml` options.
 gaze analyze ./internal/crap
 ```
 
-```
+```text
 Function: Formula
   Package: github.com/unbound-force/gaze/v2/internal/crap
   Signature: func Formula(complexity int, coveragePct float64) float64
