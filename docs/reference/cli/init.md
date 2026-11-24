@@ -16,7 +16,7 @@ This command takes no positional arguments. It always operates on the current wo
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--force` | `bool` | `false` | Overwrite existing files. Without this flag, existing user-owned files are skipped. |
+| `--force` | `bool` | `false` | Overwrite all scaffolded files — the nine `.opencode/` assets even when their content is identical, and the CI workflow when run with `--ci`. Without this flag, `.opencode/` files update automatically when their content differs; only the user-owned CI workflow needs `--force` to be regenerated. |
 | `--ci` | `bool` | `false` | Also scaffold `.github/workflows/gaze-ai-report.yml`, a starter caller for gaze's reusable AI-report workflow. Requires a `go.mod` at the repository root; skipped with a warning otherwise. |
 | `--gaze-version` | `string` | `""` | Gaze release tag (`>= v2.3.0`) pinning the scaffolded CI workflow's `uses:` reference. Requires `--ci`. |
 
@@ -31,7 +31,7 @@ The `init` command creates 9 files with the following directory structure:
 │   ├── gaze-test-generator.md    # Test generation agent
 │   └── divisor-gaze-testing.md   # Test-quality reviewer persona for review councils
 ├── commands/
-│   ├── gaze.md                   # /gaze command definition (user-owned)
+│   ├── gaze.md                   # /gaze command definition (tool-owned)
 │   ├── gaze-fix.md               # /gaze fix command definition
 │   └── speckit.testreview.md     # /speckit.testreview command definition
 ├── dcp.jsonc                     # DCP context-preservation configuration
@@ -42,10 +42,10 @@ The `init` command creates 9 files with the following directory structure:
 
 ### File Ownership Model
 
-Gaze uses a mixed ownership model for scaffolded files:
+All nine `.opencode/` files scaffolded by `init` are tool-owned. The only user-owned scaffold output is the CI workflow that `--ci` writes (see [CI Workflow Scaffolding](#ci-workflow-scaffolding)):
 
-- **User-owned files** (`commands/gaze.md`): Created once, never overwritten on subsequent `gaze init` runs (unless `--force` is used). Users can customize this file.
-- **Tool-owned files** (everything under `references/`, plus `agents/gaze-reporter.md`, `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`): Updated automatically on `gaze init` if the content has changed, and reported as `updated`. These files are maintained by Gaze and should not be manually edited — local customizations to `agents/gaze-reporter.md` are overwritten.
+- **Tool-owned files** (everything under `references/`, plus `agents/gaze-reporter.md`, `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`): Updated automatically on `gaze init` if the content has changed, and reported as `updated`. These files are maintained by Gaze and should not be manually edited — local customizations to any of them, including `commands/gaze.md`, are overwritten.
+- **Escape hatch for customized commands:** gaze only ever writes the nine embedded `.opencode/` paths, so any other path under `.opencode/` is yours. To keep a customized `/gaze` command, name it `commands/gaze-local.md`: OpenCode maps it to `/gaze-local`, and gaze never writes that path, even under `--force`. When `commands/gaze.md` is updated, the init summary ends with a tip naming this escape hatch.
 
 ### Divisor Review-Config Registration
 
@@ -109,7 +109,19 @@ Run /gaze for quality reports and /speckit.testreview for testability analysis.
 gaze init
 ```
 
-On subsequent runs, user-owned files are skipped and tool-owned files are updated if their content has changed. In projects with a `.uf/` directory, the persona registration is idempotent (already-registered files are not rewritten), and a gaze-marked legacy `.opencode/agents/reviewer-testing.md` orphan is removed with a `removed:` summary line.
+On subsequent runs, all nine `.opencode/` files are updated when their content has changed and skipped when identical — `--force` is never needed to receive updates. When `commands/gaze.md` is updated, the summary ends with a tip naming the `commands/gaze-local.md` escape hatch:
+
+```text
+Gaze OpenCode integration initialized:
+  skipped: .opencode/agents/divisor-gaze-testing.md (already exists)
+  ...
+  updated: .opencode/commands/gaze.md (content changed)
+
+Run /gaze for quality reports and /speckit.testreview for testability analysis.
+Tip: commands/gaze.md is tool-owned; to keep a customized /gaze command, name it commands/gaze-local.md (gaze never writes that path).
+```
+
+The CI workflow is the one scaffold output that does not update automatically: an existing workflow is skipped on `gaze init --ci` runs, and `--force` regenerates it. In projects with a `.uf/` directory, the persona registration is idempotent (already-registered files are not rewritten), and a gaze-marked legacy `.opencode/agents/reviewer-testing.md` orphan is removed with a `removed:` summary line.
 
 ### Force overwrite all files
 
@@ -117,7 +129,7 @@ On subsequent runs, user-owned files are skipped and tool-owned files are update
 gaze init --force
 ```
 
-Overwrites all files, including user-customized agent prompts and commands.
+Overwrites all nine `.opencode/` assets even when their content is identical, and regenerates an existing CI workflow when run with `--ci`. Non-embedded paths such as `commands/gaze-local.md` are never written, even under `--force`.
 
 ### Scaffold the CI workflow
 
@@ -150,7 +162,7 @@ A dev build (or any version below `v2.3.0`) fails closed instead of writing an u
 Error: gaze version "dev" cannot pin the CI workflow: the reusable AI-report workflow first ships in v2.3.0; install gaze from a release tag (>= v2.3.0) or pass --gaze-version
 ```
 
-Pass `--gaze-version v2.4.0` to pin an explicit release tag.
+Pass `--gaze-version v2.5.0` to pin an explicit release tag.
 
 ## See Also
 
