@@ -94,15 +94,20 @@ type Result struct {
 // .opencode/) is a tool-owned file. Tool-owned files use
 // overwrite-on-diff behavior: they are replaced when their
 // content differs from the embedded version, even without --force.
-// User-owned files (only commands/gaze.md today) retain
-// skip-if-present behavior.
+// All nine embedded .opencode/ assets are tool-owned; the only
+// user-owned scaffold output is the CI workflow
+// (.github/workflows/gaze-ai-report.yml), which is classified by
+// its dedicated write path (writeCIWorkflow), never by this list.
 //
 // Ownership is determined by an explicit list: all files under
-// references/ are tool-owned by directory convention, and specific
-// command files are tool-owned by exact match. This approach is
-// necessary because the commands/ directory contains both
-// user-owned files (gaze.md) and tool-owned files
-// (speckit.testreview.md).
+// references/ are tool-owned by directory convention, and the
+// remaining embedded assets are tool-owned by exact match. The
+// list shape is deliberate (gaze-command-tool-owned design D1
+// rejected the inverted default — tool-owned unless excepted):
+// an explicit list keeps each embedded file's classification a
+// deliberate, reviewed act, and it keeps non-embedded paths (the
+// CI workflow, user files under .opencode/commands/) firmly
+// user-owned — printSummary's --force hint relies on that false.
 func isToolOwned(relPath string) bool {
 	if strings.HasPrefix(relPath, "references/") {
 		return true
@@ -113,6 +118,7 @@ func isToolOwned(relPath string) bool {
 		"agents/gaze-test-generator.md",
 		"agents/divisor-gaze-testing.md",
 		"commands/gaze-fix.md",
+		"commands/gaze.md",
 		"dcp.jsonc":
 		return true
 	}
@@ -794,7 +800,22 @@ func Run(opts Options) (*Result, error) {
 }
 
 // printSummary writes a human-readable summary of the scaffold
-// operation to w.
+// operation to w. When the tool-owned commands/gaze.md appears in
+// Result.Updated, the summary closes with a one-line escape-hatch
+// tip naming commands/gaze-local.md — a path the asset walk
+// structurally never writes — as the way to keep a customized
+// /gaze command.
+//
+// The tip gates on Updated only (gaze-command-tool-owned design
+// D3): an update is the surprise moment — a local diff was just
+// overwritten — and the only outcome where the opt-out lesson is
+// still actionable, since the prior version is recoverable from
+// git. A first-run creation lost nothing, an identical skip
+// changed nothing, and a --force overwrite was explicitly
+// requested, so none of those print the tip. The detection flag
+// is set inside the Updated loop here rather than in Run, which
+// sits at the dogfood GazeCRAPload gate ceiling and must gain no
+// branches (design D6).
 func printSummary(w io.Writer, r *Result) {
 	if len(r.Created) > 0 || len(r.Overwritten) > 0 || len(r.Updated) > 0 ||
 		len(r.Registered) > 0 || len(r.Removed) > 0 {
@@ -812,8 +833,15 @@ func printSummary(w io.Writer, r *Result) {
 	for _, f := range r.Overwritten {
 		_, _ = fmt.Fprintf(w, "  overwritten: %s\n", f)
 	}
+	// gazeCmdUpdated gates the escape-hatch tip printed after the
+	// per-file lists; see the function doc for the gating rationale.
+	var gazeCmdUpdated bool
 	for _, f := range r.Updated {
 		_, _ = fmt.Fprintf(w, "  updated: %s (content changed)\n", f)
+		rel := strings.TrimPrefix(f, filepath.Join(".opencode")+string(filepath.Separator))
+		if rel == "commands/gaze.md" {
+			gazeCmdUpdated = true
+		}
 	}
 	for _, f := range r.Registered {
 		_, _ = fmt.Fprintf(w, "  registered: %s (divisor-gaze-testing)\n", f)
@@ -841,6 +869,14 @@ func printSummary(w io.Writer, r *Result) {
 			word = "files"
 		}
 		_, _ = fmt.Fprintf(w, "%d %s skipped (use --force to overwrite).\n", userSkipped, word)
+	}
+
+	// Escape-hatch tip (design D3), printed after the --force hint:
+	// like that hint it annotates one per-file list (updated: here,
+	// skipped: there), and the lists print skipped: before updated:.
+	// Whenever it fires it is the summary's final line.
+	if gazeCmdUpdated {
+		_, _ = fmt.Fprintln(w, "Tip: commands/gaze.md is tool-owned; to keep a customized /gaze command, name it commands/gaze-local.md (gaze never writes that path).")
 	}
 }
 
