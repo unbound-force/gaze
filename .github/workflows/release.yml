@@ -1,24 +1,31 @@
 # Release
 # =======
-# Release pipeline triggered via workflow_dispatch.
-# Delegates to org-infra reusable workflows for preflight
-# validation and GoReleaser execution with supply chain
-# artifacts (cosign signatures and SBOMs).
+# One-click release via workflow_dispatch. The pipeline itself lives in
+# jflowers/ship's go-release.yml, shared with the other unbound-force Go
+# tools.
 #
-# Preflight validates semver format, tag uniqueness (with
-# re-run resilience), semver ordering, CI check status,
-# and unreleased commits before creating an annotated tag.
+# Three local gates run first, all offline and unskippable: the
+# module-major check (tag major vs. the go.mod module path), the
+# workflow-floor check (tag vs. the minWorkflowTag floor that `gaze init
+# --ci` enforces; above-floor releases require the floor tag to exist and
+# contain the reusable AI-report workflow), and the AI-report default
+# check (the reusable workflow's gaze-version default must equal the tag,
+# since callers pinned to the tag inherit that default).
 #
-# Two local gates run before preflight, both offline and
-# unskippable: the module-major check (tag major vs. the
-# go.mod module path) and the workflow-floor check (tag
-# vs. the minWorkflowTag floor that `gaze init --ci`
-# enforces; above-floor releases require the floor tag
-# to exist and contain the reusable AI-report workflow).
+# Then ship runs:
+#   settings    signing needs all of the MACOS_* secrets or none; a partial
+#               set fails before anything is tagged (none = unsigned)
+#   preflight   org-infra: semver, tag uniqueness (with re-run resilience),
+#               semver ordering, CI on HEAD, unreleased commits; creates
+#               the annotated tag
+#   release     org-infra: GoReleaser with cosign signatures and SBOMs
+#   sign-macos  Developer ID signing + notarization of the darwin archives,
+#               re-uploaded with checksums.txt rewritten to match
+#   cask        every sha256 set from the final checksums.txt, checked with
+#               brew audit, pushed to unbound-force/homebrew-tap
 #
-# After release, signs macOS archives with Apple Developer
-# ID, notarizes them, patches Homebrew cask checksums, and
-# pushes to the Homebrew tap.
+# The workflow keeps the name "Release": post-release-install-check.yml
+# runs when a "Release" run completes.
 #
 # Fixes: https://github.com/unbound-force/unbound-force/issues/428
 
@@ -81,318 +88,47 @@ jobs:
       - name: Validate release tag against workflow floor
         run: .github/scripts/validate-workflow-floor.sh -- "$RELEASE_TAG" .
 
-  preflight:
-    name: Preflight
-    needs: [validate-module-major, validate-workflow-floor]
-    uses: complytime/org-infra/.github/workflows/reusable_release_preflight.yml@0c784711926c9864f027ec565fd7c06a382d80f8  # v0.7.1
-    with:
-      tag: ${{ inputs.tag }}
-      ci_checks: '["Unit + Integration Tests (Go 1.24)", "Unit + Integration Tests (Go 1.25)", "MegaLinter"]'
-      skip_semver_check: ${{ inputs.skip_semver_check }}
-      skip_ci_checks: ${{ inputs.skip_ci_checks }}
-      skip_unreleased_check: ${{ inputs.skip_unreleased_check }}
-      allow_prerelease: true
-    permissions:
-      contents: write
-      checks: read
-
-  release:
-    name: Release
-    needs: preflight
-    if: needs.preflight.outputs.tag != ''
-    uses: complytime/org-infra/.github/workflows/reusable_release_goreleaser.yml@0c784711926c9864f027ec565fd7c06a382d80f8  # v0.7.1
-    with:
-      tag: ${{ needs.preflight.outputs.tag }}
-    permissions:
-      contents: write
-      id-token: write
-
-  check-signing-secrets:
-    name: Check Signing Secrets
-    needs: preflight
-    if: needs.preflight.outputs.tag != ''
-    runs-on: ubuntu-latest
-    permissions: {}
-    timeout-minutes: 5
-    outputs:
-      has_signing_secrets: ${{ steps.check-secrets.outputs.has_secrets }}
-    steps:
-      - name: Check signing secrets
-        id: check-secrets
-        run: |
-          if [ -z "$MACOS_SIGN_P12" ]; then
-            echo "::warning::Signing configuration missing: MACOS_SIGN_P12"
-          fi
-          if [ -z "$MACOS_SIGN_PASSWORD" ]; then
-            echo "::warning::Signing configuration missing: MACOS_SIGN_PASSWORD"
-          fi
-          if [ -z "$MACOS_SIGN_IDENTITY" ]; then
-            echo "::warning::Signing configuration missing: MACOS_SIGN_IDENTITY"
-          fi
-          if [ -z "$MACOS_NOTARY_KEY" ]; then
-            echo "::warning::Signing configuration missing: MACOS_NOTARY_KEY"
-          fi
-          if [ -z "$MACOS_NOTARY_KEY_ID" ]; then
-            echo "::warning::Signing configuration missing: MACOS_NOTARY_KEY_ID"
-          fi
-          if [ -z "$MACOS_NOTARY_ISSUER_ID" ]; then
-            echo "::warning::Signing configuration missing: MACOS_NOTARY_ISSUER_ID"
-          fi
-          if [ -n "$MACOS_SIGN_P12" ] && [ -n "$MACOS_SIGN_PASSWORD" ] && [ -n "$MACOS_SIGN_IDENTITY" ] && [ -n "$MACOS_NOTARY_KEY" ] && [ -n "$MACOS_NOTARY_KEY_ID" ] && [ -n "$MACOS_NOTARY_ISSUER_ID" ]; then
-            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-
-  push-unsigned-cask:
-    name: Push Unsigned Cask
-    needs: [preflight, release, check-signing-secrets]
-    if: >-
-      needs.preflight.outputs.tag != ''
-      && needs.check-signing-secrets.outputs.has_signing_secrets == 'false'
+  validate-ai-report-default:
+    name: Validate AI Report Default
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
-      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_TAG: ${{ inputs.tag }}
     steps:
-      - name: Download cask from release
-        run: |
-          set -euo pipefail
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "gaze.rb" --dir ./cask-staging
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - name: Push unsigned cask to tap
-        run: |
-          set -euo pipefail
-          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/unbound-force/homebrew-tap.git" tap
-          cp ./cask-staging/gaze.rb tap/Casks/gaze.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/gaze.rb
-          git diff --cached --quiet && { echo "No cask changes needed"; exit 0; }
-          git commit -m "Update gaze cask to ${RELEASE_TAG} (unsigned)"
-          git push
-        env:
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      - name: Validate reusable AI-report gaze-version default against release tag
+        run: .github/scripts/validate-ai-report-default.sh -- "$RELEASE_TAG"
 
-  sign-macos:
-    name: Sign macOS
-    runs-on: macos-latest
-    needs: [preflight, release, check-signing-secrets]
-    if: >-
-      needs.preflight.outputs.tag != ''
-      && needs.check-signing-secrets.outputs.has_signing_secrets == 'true'
+  release:
+    name: Release
+    needs: [validate-module-major, validate-workflow-floor, validate-ai-report-default]
+    uses: jflowers/ship/.github/workflows/go-release.yml@86af2e7b2d324a73f688431910f957ef7accebd4 # v0.2.1
+    with:
+      tag: ${{ inputs.tag }}
+      ci_checks: '["Unit + Integration Tests (Go 1.24)", "Unit + Integration Tests (Go 1.25)", "MegaLinter"]'
+      # Ship's default too; explicit so rc tags (vX.Y.Z-rc.N) keep working
+      # if that default ever changes.
+      allow_prerelease: true
+      skip_semver_check: ${{ inputs.skip_semver_check }}
+      skip_ci_checks: ${{ inputs.skip_ci_checks }}
+      skip_unreleased_check: ${{ inputs.skip_unreleased_check }}
+      tap: unbound-force/homebrew-tap
     permissions:
       contents: write
-    timeout-minutes: 30
-    env:
-      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
-    steps:
-      - name: Import certificate into Keychain
-        run: |
-          set -euo pipefail
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-
-          echo -n "$MACOS_SIGN_P12" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_SIGN_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-        env:
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-
-      - name: Prepare notary key
-        run: |
-          set -euo pipefail
-          echo -n "$MACOS_NOTARY_KEY" | base64 --decode -o "$RUNNER_TEMP/notary_key.p8"
-        env:
-          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-
-      - name: Download darwin archives
-        run: |
-          set -euo pipefail
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "gaze_*_darwin_*.tar.gz" --dir ./artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Sign and notarize
-        run: |
-          set -euo pipefail
-          mkdir -p ./signed
-          for archive in ./artifacts/gaze_*_darwin_*.tar.gz; do
-            echo "==> Processing $(basename "$archive")"
-            workdir=$(mktemp -d)
-
-            # Extract binary
-            tar -xzf "$archive" -C "$workdir"
-
-            # Sign with codesign
-            codesign --force --timestamp --options runtime \
-              --sign "$MACOS_SIGN_IDENTITY" \
-              "$workdir/gaze"
-
-            # Verify signature
-            codesign --verify --verbose=2 "$workdir/gaze"
-
-            # Zip for notarytool (requires .zip, not .tar.gz)
-            ditto -c -k "$workdir/gaze" "$workdir/gaze.zip"
-
-            # Submit for notarization and wait
-            xcrun notarytool submit "$workdir/gaze.zip" \
-              --key "$RUNNER_TEMP/notary_key.p8" \
-              --key-id "$MACOS_NOTARY_KEY_ID" \
-              --issuer "$MACOS_NOTARY_ISSUER_ID" \
-              --wait --timeout 20m
-
-            # Re-archive signed binary with original archive name
-            tar -czf "./signed/$(basename "$archive")" -C "$workdir" gaze
-
-            rm -rf "$workdir"
-            echo "==> Done: $(basename "$archive")"
-          done
-        env:
-          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-
-      - name: Replace release assets and update checksums
-        run: |
-          set -euo pipefail
-          # Upload signed darwin archives (replaces unsigned)
-          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" ./signed/*.tar.gz --clobber
-
-          # Download existing checksums
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "checksums.txt" --dir ./
-
-          # Remove darwin lines from checksums (keep linux and other lines)
-          grep -v darwin checksums.txt > checksums_updated.txt || true
-
-          # Compute SHA256 for each signed darwin archive
-          for archive in ./signed/*.tar.gz; do
-            shasum -a 256 "$archive" | sed 's|./signed/||' >> checksums_updated.txt
-          done
-
-          # Replace checksums file
-          mv checksums_updated.txt checksums.txt
-          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" checksums.txt --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Homebrew cask checksums
-        run: |
-          set -euo pipefail
-          VERSION="${RELEASE_TAG#v}"
-
-          # Compute signed checksums
-          ARM64_SHA=$(shasum -a 256 "./signed/gaze_${VERSION}_darwin_arm64.tar.gz" | awk '{print $1}')
-          AMD64_SHA=$(shasum -a 256 "./signed/gaze_${VERSION}_darwin_amd64.tar.gz" | awk '{print $1}')
-
-          echo "darwin_arm64 SHA256: $ARM64_SHA"
-          echo "darwin_amd64 SHA256: $AMD64_SHA"
-
-          # Download the GoReleaser-generated cask from release assets
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "gaze.rb" --dir ./cask-staging
-          CASK_FILE="./cask-staging/gaze.rb"
-
-          if [ ! -f "$CASK_FILE" ]; then
-            echo "::error::Cask file not found in release assets: gaze.rb"
-            exit 1
-          fi
-
-          # Extract original unsigned darwin checksums from the cask using
-          # section-context parsing. This is order-agnostic — it works
-          # regardless of whether sha256 appears before or after url.
-          ORIG_AMD64_SHA=$(awk '
-            /on_macos/ { in_macos=1 }
-            in_macos && /on_intel/ { in_intel=1 }
-            in_intel && /sha256/ {
-              gsub(/.*sha256 "/, "")
-              gsub(/".*/, "")
-              print
-              exit
-            }
-            in_intel && /end/ { in_intel=0 }
-          ' "$CASK_FILE")
-
-          ORIG_ARM64_SHA=$(awk '
-            /on_macos/ { in_macos=1 }
-            in_macos && /on_arm/ { in_arm=1 }
-            in_arm && /sha256/ {
-              gsub(/.*sha256 "/, "")
-              gsub(/".*/, "")
-              print
-              exit
-            }
-            in_arm && /end/ { in_arm=0 }
-          ' "$CASK_FILE")
-
-          # Validate extraction — both checksums must be found
-          if [ -z "$ORIG_AMD64_SHA" ] || [ -z "$ORIG_ARM64_SHA" ]; then
-            echo "::error::Failed to extract darwin checksums from cask."
-            echo "  darwin_amd64 (on_intel): '${ORIG_AMD64_SHA:-not found}'"
-            echo "  darwin_arm64 (on_arm):   '${ORIG_ARM64_SHA:-not found}'"
-            echo "  The GoReleaser cask template may have changed."
-            exit 1
-          fi
-
-          echo "Original unsigned darwin_amd64: $ORIG_AMD64_SHA"
-          echo "Original unsigned darwin_arm64: $ORIG_ARM64_SHA"
-
-          # Replace unsigned checksums with signed checksums using sed.
-          # Each SHA-256 hash is unique within the file, so direct string
-          # replacement is unambiguous and order-agnostic.
-          sed -i '' "s/$ORIG_AMD64_SHA/$AMD64_SHA/g" "$CASK_FILE"
-          sed -i '' "s/$ORIG_ARM64_SHA/$ARM64_SHA/g" "$CASK_FILE"
-
-          # Post-patch verification: confirm signed checksums are present
-          AMD64_COUNT=$(grep -c "$AMD64_SHA" "$CASK_FILE" || true)
-          ARM64_COUNT=$(grep -c "$ARM64_SHA" "$CASK_FILE" || true)
-
-          if [ "$AMD64_COUNT" -ne 1 ]; then
-            echo "::error::Verification failed: darwin_amd64 signed checksum appears $AMD64_COUNT times (expected 1)"
-            exit 1
-          fi
-          if [ "$ARM64_COUNT" -ne 1 ]; then
-            echo "::error::Verification failed: darwin_arm64 signed checksum appears $ARM64_COUNT times (expected 1)"
-            exit 1
-          fi
-
-          echo "Verification passed: both signed checksums present exactly once"
-
-          # Clone the tap, copy the patched cask, commit, and push
-          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/unbound-force/homebrew-tap.git" tap
-          cp "$CASK_FILE" tap/Casks/gaze.rb
-
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/gaze.rb
-          git diff --cached --quiet && { echo "No checksum changes needed"; exit 0; }
-          git commit -m "Update macOS checksums for gaze v${VERSION} (post-signing)"
-          git push
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-
-      - name: Cleanup signing materials
-        if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary_key.p8"
-          if [ -f "$RUNNER_TEMP/app-signing.keychain-db" ]; then
-            security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" 2>/dev/null || true
-          fi
+      checks: read
+      id-token: write
+    # Mapped by name: inherited secrets don't reach a workflow in
+    # another owner's repo. This repo's tap token is named
+    # HOMEBREW_TAP_GITHUB_TOKEN; ship calls it HOMEBREW_TAP_TOKEN.
+    secrets:
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
