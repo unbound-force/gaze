@@ -1,0 +1,194 @@
+# Post-Release Install Check
+# ============================
+# Verifies that the exact tag a successful Release run just published
+# installs from proxy.golang.org. Installs via:
+#   go install github.com/unbound-force/gaze/v2/cmd/gaze@<tag>
+#   go version -m  (asserts module path + exact version)
+#   gaze --version (proves the binary executes)
+# Triggered automatically when the Release workflow completes
+# successfully (workflow_run gated on conclusion == 'success'), and
+# on demand via workflow_dispatch with a required tag input.
+#
+# Uses GITHUB_TOKEN-triggered Release runs' completion event rather
+# than `release: published` because events created with GITHUB_TOKEN
+# do not start workflows. Resolves the tag as the dispatch input on
+# the manual path, or the most recent non-draft GitHub release on
+# the automatic path (right after a successful Release run, that is
+# the release the run published). Includes prereleases; excludes
+# drafts. The canary's `gh release view` resolver is not reused
+# because it returns the Latest release (non-prerelease only).
+#
+# Install uses temporary GOBIN/GOMODCACHE under RUNNER_TEMP so no
+# shared or pre-populated cache can satisfy module resolution, and
+# verification addresses the binary by absolute path. Network steps
+# carry bounded inline retries (3 attempts) absorbing normal proxy
+# propagation lag; the final attempt stays fatal with distinct
+# ::error:: diagnostics. No checkout: consumers install from the
+# proxy, not from this tree.
+name: Post-Release Install Check
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify (e.g., v0.15.0)"
+        required: true
+        type: string
+
+# CI-012: every run is a distinct verification signal worth keeping
+# (automatic post-release vs. maintainer dispatch for an older tag).
+# Runs queue rather than cancel.
+concurrency:
+  group: post-release-install-check
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  verify-install:
+    name: verify install from proxy
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Mirror the reusable workflow's toolchain default (go-version
+      # input, "1.25"). No checkout: consumers install from the module
+      # proxy, not from this tree (canary D4).
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Resolve tag to verify
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          # Prefer the dispatch input when present (manual path).
+          if [ -n "$DISPATCH_TAG" ]; then
+            TAG="$DISPATCH_TAG"
+            # Cheap guard: tag must be non-empty and v-prefixed; go
+            # install is the authoritative validator for the rest.
+            if [ -z "$TAG" ] || [ "${TAG#v}" = "$TAG" ]; then
+              echo "::error::tag input must be a non-empty v-prefixed tag (e.g., v0.15.0), got '${TAG:-<empty>}'"
+              exit 1
+            fi
+            echo "Dispatch tag: $TAG"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Automatic path: most recent non-draft release. Includes
+          # prereleases; excludes drafts. Right after a successful
+          # Release run, this is the release that run published (the
+          # preflight's tag-uniqueness check precludes a conflicting
+          # publication).
+          TAG=""
+          for attempt in 1 2 3; do
+            if TAG="$(gh api "repos/$REPO/releases" --jq '[.[] | select(.draft == false)][0].tag_name')"; then
+              # gh api succeeded; break even if TAG is empty so the
+              # empty guard below produces the diagnostic.
+              break
+            fi
+            echo "gh api repos/$REPO/releases failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then
+              echo "retrying in 10s"
+              sleep 10
+            fi
+          done
+          if [ -z "$TAG" ]; then
+            echo "::error::could not resolve the most recent non-draft release tag of $REPO"
+            exit 1
+          fi
+          echo "Resolved tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Same install command as the reusable workflow's
+      # `Install gaze (release)` and the canary.
+      - name: Install gaze (release)
+        env:
+          GAZE_RELEASE: ${{ steps.release.outputs.tag }}
+        run: |
+          # Temporary GOBIN/GOMODCACHE under RUNNER_TEMP so no shared
+          # or pre-populated cache can satisfy module resolution and
+          # the verified binary is exactly the one this run installed
+          # (D4).
+          GOBIN="$RUNNER_TEMP/gobin"
+          GOMODCACHE="$RUNNER_TEMP/gomodcache"
+          mkdir -p "$GOBIN" "$GOMODCACHE"
+          echo "GOBIN=$GOBIN"
+          echo "GOMODCACHE=$GOMODCACHE"
+
+          # Bounded retry: go install compiles the full module graph
+          # from a cold cache (cache: false) — proxy resolution,
+          # checksum-database lookup, ~40 module downloads — any of
+          # which can fail transiently. For a just-published tag,
+          # propagation lag is the expected case, not the edge case.
+          # The final attempt stays fatal.
+          INSTALLED=false
+          for attempt in 1 2 3; do
+            if GOBIN="$GOBIN" GOMODCACHE="$GOMODCACHE" go install "github.com/unbound-force/gaze/v2/cmd/gaze@$GAZE_RELEASE"; then
+              INSTALLED=true
+              break
+            fi
+            echo "go install failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then
+              echo "retrying in 30s (module proxy propagation can lag right after a release)"
+              sleep 30
+            fi
+          done
+          if [ "$INSTALLED" = false ]; then
+            echo "::error::go install of github.com/unbound-force/gaze/v2/cmd/gaze@$GAZE_RELEASE failed after 3 attempts"
+            exit 1
+          fi
+
+          # Verify the binary is where we installed it and runs.
+          if [ ! -x "$GOBIN/gaze" ]; then
+            echo "::error::gaze binary not found at $GOBIN/gaze after go install"
+            exit 1
+          fi
+          "$GOBIN/gaze" --version
+
+      - name: Verify installed module version
+        env:
+          GAZE_RELEASE: ${{ steps.release.outputs.tag }}
+        run: |
+          GOBIN="$RUNNER_TEMP/gobin"
+          GAZE_BIN="$GOBIN/gaze"
+
+          # Absolute-path verification removes the canary's PATH guard
+          # class (no dependence on GOPATH/bin being on PATH).
+          if [ ! -x "$GAZE_BIN" ]; then
+            echo "::error::gaze binary not found at $GAZE_BIN"
+            exit 1
+          fi
+
+          BUILD_INFO="$(go version -m "$GAZE_BIN")"
+          # First mod line is the main module.
+          MOD="$(echo "$BUILD_INFO" | awk '$1 == "mod" { print $2; exit }')"
+          VER="$(echo "$BUILD_INFO" | awk '$1 == "mod" { print $3; exit }')"
+
+          # go install does not set GoReleaser ldflags, so
+          # gaze --version prints "dev"; build info is authoritative.
+          EXPECTED_MOD="github.com/unbound-force/gaze/v2"
+          if [ "$MOD" != "$EXPECTED_MOD" ]; then
+            echo "::error::installed gaze module path '${MOD:-none}' does not match expected $EXPECTED_MOD (release $GAZE_RELEASE)"
+            exit 1
+          fi
+          if [ "$VER" != "$GAZE_RELEASE" ]; then
+            echo "::error::installed gaze module version '${VER:-none}' does not match release $GAZE_RELEASE"
+            exit 1
+          fi
+          echo "Installed $MOD $VER"

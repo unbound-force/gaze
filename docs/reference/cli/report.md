@@ -44,6 +44,16 @@ The `gaze report` command does not directly read `.gaze.yaml`. The underlying an
 
 The `--coverprofile` flag is the key CI optimization — pass a coverage profile generated during your test step to avoid running tests twice.
 
+### Nested coverage guard
+
+When Gaze spawns `go test -coverprofile` itself, it sets the `GAZE_COVERAGE_RUN` environment variable. If `gaze report` inherits a non-empty `GAZE_COVERAGE_RUN` (the command runs inside a Gaze coverage collection, such as Gaze's own self-analyzing tests) and no `--coverprofile` is passed, coverage generation is refused with:
+
+```
+nested coverage generation refused: GAZE_COVERAGE_RUN is set, so this process already runs inside a gaze coverage collection; pass a pre-generated --coverprofile instead
+```
+
+Pass a pre-generated profile via `--coverprofile` to run inside such an environment. Normal (non-nested) runs are unaffected.
+
 ## AI Adapter Details
 
 | Adapter | Binary | System Prompt Delivery | Payload Delivery |
