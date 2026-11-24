@@ -1,0 +1,140 @@
+# Install Canary
+# ==============
+# Exercises the consumer install path of the reusable AI-report
+# workflow (`Install gaze (release)` in reusable_gaze_ai_report.yml):
+#   go install github.com/unbound-force/gaze/v2/cmd/gaze@<tag>
+#   gaze --version
+# against the latest published GitHub release. The repository's own
+# dogfood job builds gaze from source (build-from-source: true), so
+# without this canary only consumer runs exercise that path.
+#
+# Runs daily on a schedule rather than on `release: published`:
+# GoReleaser publishes releases with GITHUB_TOKEN, and events created
+# with GITHUB_TOKEN do not trigger workflows, so a release trigger
+# would never fire. A schedule also catches breakage that happens
+# between releases (module proxy or checksum DB resolution, Go
+# toolchain drift against the release's go.mod). workflow_dispatch
+# allows an on-demand run, e.g. right after a release.
+#
+# Network-dependent commands (gh release view, go install) carry a
+# bounded inline retry (3 attempts, 10-30s backoff): the canary runs on a
+# schedule from a cold cache, and a single transient failure would
+# train the notification recipient to ignore the only signal that the
+# consumer install path works. The local verify step is deterministic
+# and is not retried. The job timeout (15 minutes) covers the
+# worst-case retry path.
+name: Install Canary
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+# CI-012: a workflow_dispatch run never overlaps an in-flight scheduled
+# run. Static group name: the canary installs the latest release
+# regardless of the triggering ref. cancel-in-progress is evaluated for
+# the incoming run: a dispatch run cancels an in-flight nightly run,
+# while a scheduled run queues behind an in-flight dispatch run instead
+# of cancelling the maintainer's on-demand verification.
+concurrency:
+  group: install-canary
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
+permissions: {}
+
+jobs:
+  install-latest-release:
+    name: go install latest release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Mirror the reusable workflow's toolchain default (go-version
+      # input, "1.25"). No checkout: consumers install from the module
+      # proxy, not from this tree.
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Resolve latest release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Bounded retry: gh release view hits the REST API and can fail
+          # transiently. The final attempt stays fatal via the empty-tag
+          # guard below.
+          TAG=""
+          for attempt in 1 2 3; do
+            if TAG="$(gh release view --repo "$REPO" --json tagName --jq .tagName)"; then
+              break
+            fi
+            echo "gh release view failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then
+              echo "retrying in 10s"
+              sleep 10
+            fi
+          done
+          if [ -z "$TAG" ]; then
+            echo "::error::could not resolve the latest release tag of $REPO"
+            exit 1
+          fi
+          echo "Latest release: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Same commands as the reusable workflow's `Install gaze (release)`.
+      - name: Install gaze (release)
+        env:
+          GAZE_RELEASE: ${{ steps.release.outputs.tag }}
+        run: |
+          # Bounded retry: go install compiles the full module graph from
+          # a cold cache (cache: false) — proxy resolution, checksum-
+          # database lookup, ~40 module downloads — any of which can fail
+          # transiently. The final attempt stays fatal.
+          INSTALLED=false
+          for attempt in 1 2 3; do
+            if go install github.com/unbound-force/gaze/v2/cmd/gaze@"$GAZE_RELEASE"; then
+              INSTALLED=true
+              break
+            fi
+            echo "go install failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then
+              echo "retrying in 30s (module proxy propagation can lag right after a release)"
+              sleep 30
+            fi
+          done
+          if [ "$INSTALLED" = false ]; then
+            echo "::error::go install of github.com/unbound-force/gaze/v2/cmd/gaze@$GAZE_RELEASE failed after 3 attempts"
+            exit 1
+          fi
+          # Guard at the first invocation of the binary: if go install
+          # succeeded but GOPATH/bin is not on PATH, this is where the
+          # job would otherwise stop with a bare exit 127 and no
+          # annotation. Later steps inherit the same PATH.
+          if ! command -v gaze >/dev/null; then
+            echo "::error::gaze not found on PATH after go install (is GOPATH/bin on PATH?)"
+            exit 1
+          fi
+          gaze --version
+
+      # `go install` does not stamp main.version, so `gaze --version`
+      # prints "dev"; the module build info records which version the
+      # proxy actually served.
+      - name: Verify installed module version
+        env:
+          GAZE_RELEASE: ${{ steps.release.outputs.tag }}
+        run: |
+          # The Install step already proved gaze is on PATH (it ran
+          # `gaze --version` behind an explicit guard), so this lookup
+          # cannot fail; resolve the binary location for the check.
+          GAZE_BIN="$(command -v gaze)"
+          BUILT="$(go version -m "$GAZE_BIN" | awk '$1 == "mod" && $2 == "github.com/unbound-force/gaze/v2" { print $3 }')"
+          if [ "$BUILT" != "$GAZE_RELEASE" ]; then
+            echo "::error::installed gaze module version '${BUILT:-none}' does not match release $GAZE_RELEASE"
+            exit 1
+          fi
+          echo "Installed github.com/unbound-force/gaze/v2 $BUILT"

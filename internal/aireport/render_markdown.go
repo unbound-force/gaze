@@ -70,11 +70,17 @@ var fixStrategyOrder = []crap.FixStrategy{
 	crap.FixDecomposeAndTest,
 }
 
-// headerEscaper neutralizes Markdown and HTML markup in header values.
+// headerEscaper neutralizes Markdown and HTML markup in header values,
+// escaping the ampersand along with the markup bytes.
 //
 // Module paths and branch names are environment-derived, so a crafted
 // reference name must not be able to inject a link, an HTML comment, or
-// a new line into the report or the GitHub Step Summary.
+// a new line into the report or the GitHub Step Summary. The ampersand
+// is among the escaped bytes because a backslash-escaped "&" cannot
+// open an HTML character reference, so cmark-gfm cannot decode
+// entity-encoded autolink triggers after neutralizeAutolinks' byte-level
+// defanging — an input like "&#119;ww.evil.example" carries no literal
+// trigger byte for that defanging to catch.
 var headerEscaper = strings.NewReplacer(
 	"\\", "\\\\",
 	"`", "\\`",
@@ -85,6 +91,7 @@ var headerEscaper = strings.NewReplacer(
 	"<", "\\<",
 	">", "\\>",
 	"|", "\\|",
+	"&", "\\&",
 	"\r\n", " ",
 	"\r", " ",
 	"\n", " ",
@@ -179,11 +186,18 @@ func writeMetadata(b *strings.Builder, m ReportMetadata) {
 	b.WriteString("\n\n")
 }
 
-// proseEscaper neutralizes markup in prose derived from analysis data.
+// proseEscaper neutralizes markup in prose derived from analysis data,
+// escaping the ampersand along with the markup bytes.
+//
 // File paths, package paths, and adapter errors are attacker-influenced in
 // pull-request CI, so brackets and angle brackets are escaped rather than
 // trusted: an escaped "[x](y)" cannot become a link and an escaped "<b>"
-// cannot become HTML. Line breaks flatten to spaces so the prose cannot
+// cannot become HTML. The ampersand is among the escaped bytes because a
+// backslash-escaped "&" cannot open an HTML character reference, so
+// cmark-gfm cannot decode entity-encoded autolink triggers after
+// neutralizeAutolinks' byte-level defanging — an input like
+// "user&#64;host.example" carries no literal trigger byte for that
+// defanging to catch. Line breaks flatten to spaces so the prose cannot
 // start a new markdown block.
 var proseEscaper = strings.NewReplacer(
 	"\r\n", " ",
@@ -192,14 +206,19 @@ var proseEscaper = strings.NewReplacer(
 	"[", `\[`,
 	"]", `\]`,
 	"<", `\<`,
+	"&", `\&`,
 )
 
-// sanitizeProse escapes an analysis-derived string for a non-table position.
+// sanitizeProse escapes markup in an analysis-derived string for a
+// non-table position — including the ampersand, so an HTML character
+// reference cannot decode into an autolink trigger.
 func sanitizeProse(s string) string {
 	return proseEscaper.Replace(neutralizeAutolinks(s))
 }
 
-// sanitizeHeaderValue escapes markup and flattens line breaks.
+// sanitizeHeaderValue escapes markup — including the ampersand, so an
+// HTML character reference cannot decode into an autolink trigger — and
+// flattens line breaks.
 func sanitizeHeaderValue(s string) string {
 	return headerEscaper.Replace(neutralizeAutolinks(s))
 }
@@ -623,19 +642,39 @@ func writeRecommendationsList(b *strings.Builder, assessment Assessment) {
 }
 
 // tableName renders a function or test name as a table-cell code span. The
-// code-span content is never autolinked, so names stay verbatim.
+// code-span content is never autolinked and never interprets character
+// references, so names — any "&" included — stay verbatim.
 func tableName(s string) string {
 	return escapeCellMarkup(codeSpan(s))
 }
 
-// escapeCell escapes a table cell: autolink triggers, pipes, line breaks,
-// and link or HTML markup.
+// escapeCell escapes a plain table cell: autolink triggers, the ampersand,
+// pipes, line breaks, and link or HTML markup. The ampersand is escaped
+// because a backslash-escaped "&" cannot open an HTML character reference,
+// so cmark-gfm cannot decode entity-encoded autolink triggers after
+// neutralizeAutolinks' byte-level defanging — an input like
+// "&#119;ww.evil.example" carries no literal trigger byte for that defanging
+// to catch. The escape is split from the code-span path: tableName keeps
+// "&" verbatim because code spans never interpret references, so escaping
+// there would display the backslash.
 func escapeCell(s string) string {
-	return escapeCellMarkup(neutralizeAutolinks(s))
+	return escapeCellMarkup(escapeAmp(neutralizeAutolinks(s)))
+}
+
+// escapeAmp backslash-escapes every ampersand. It is the plain-cell half of
+// the cell-escaping split: code-span content must not pass through it,
+// because code spans never interpret character references and the inserted
+// backslash would display.
+func escapeAmp(s string) string {
+	return strings.ReplaceAll(s, "&", "\\&")
 }
 
 // escapeCellMarkup escapes pipes, line breaks, and link or HTML markup in a
-// table cell.
+// table cell. It is shared by the plain-cell path (escapeCell) and the
+// code-span path (tableName), so it deliberately leaves the ampersand
+// alone: code spans never interpret character references, and escaping "&"
+// there would display the backslash. Plain cells layer escapeAmp on top to
+// close the entity-reconstruction bypass.
 func escapeCellMarkup(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
