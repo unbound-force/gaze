@@ -108,6 +108,8 @@ gaze crap --format=html ./... > crap-report.html    # Offline HTML report
 
 `gaze crap` also reports each function's **cognitive complexity** (SonarSource-style, AST-based) and a **GazeCRAP-CC** score (a GazeCRAP variant substituting cognitive complexity for cyclomatic complexity). Enforce an upper bound with `--max-cognitive-complexity=<N>`. `gaze analyze` accepts the same flag as a gate-only check.
 
+Nested coverage runs are refused: when `GAZE_COVERAGE_RUN` is set in the environment (a Gaze command running inside a Gaze coverage collection) and no `--coverprofile` is passed, `gaze crap` fails fast with `ErrNestedCoverageRun` instead of recursing. Pass `--coverprofile` to run inside such an environment.
+
 For the CRAP formula, GazeCRAP, quadrants, and fix strategies, see [Scoring](docs/concepts/scoring.md). For all flags, see [`gaze crap` reference](docs/reference/cli/crap.md).
 
 ### `gaze quality` -- Test Quality Assessment
@@ -180,6 +182,8 @@ git add .gaze/baseline.json && git commit -m "chore: add CRAP baseline"
 ### How It Works
 
 When `.gaze/baseline.json` exists, `gaze crap` auto-detects it and activates comparison mode. Each function is matched by `file:function` key, and CRAP/GazeCRAP deltas are computed. Functions are classified as `regression`, `improvement`, `unchanged`, `new`, `new_violation`, or `removed`.
+
+Historical baselines saved by gaze v1.9.x and earlier record absolute file paths; these are reconciled to module-relative form automatically (same checkout) or via `--baseline-root <old-module-root>` (relocated checkout), and otherwise fail with an actionable diagnostic rather than reporting every function as new and removed. See [Baseline path compatibility](docs/reference/cli/crap.md#baseline-path-compatibility).
 
 The comparison produces a pass/fail gate: exit code 1 when any regression or new-function violation (CRAP above threshold) is detected. This gate is independent of the `--max-crapload` / `--max-gaze-crapload` threshold gates.
 

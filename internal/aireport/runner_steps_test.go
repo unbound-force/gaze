@@ -27,6 +27,9 @@ import (
 // a real package and returns a non-nil JSON payload.
 // Guarded by testing.Short() — spawns the Go analysis pipeline.
 func TestRunCRAPStep_RealPackage(t *testing.T) {
+	if os.Getenv("GAZE_COVERAGE_RUN") != "" {
+		t.Skip("skipping: GAZE_COVERAGE_RUN set (recursion guard)")
+	}
 	if testing.Short() {
 		t.Skip("skipping: runs real CRAP analysis pipeline")
 	}
@@ -104,6 +107,9 @@ func TestRunCRAPStep_WithCoverProfile(t *testing.T) {
 // returns a non-nil payload and exercises all four steps without panicking.
 // Guarded by testing.Short() — runs the full four-step pipeline.
 func TestRunProductionPipeline_RealPackage(t *testing.T) {
+	if os.Getenv("GAZE_COVERAGE_RUN") != "" {
+		t.Skip("skipping: GAZE_COVERAGE_RUN set (recursion guard)")
+	}
 	if testing.Short() {
 		t.Skip("skipping: runs full four-step analysis pipeline")
 	}

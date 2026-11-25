@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1265,7 +1266,7 @@ func TestResolveBaselineAndCompare_NoBaseline(t *testing.T) {
 	dir := t.TempDir() // no .gaze/baseline.json here
 	var stderr bytes.Buffer
 
-	cr, err := resolveBaselineAndCompare("", dir, &stderr, rpt)
+	cr, err := resolveBaselineAndCompare("", "", dir, &stderr, rpt)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1294,7 +1295,7 @@ func TestResolveBaselineAndCompare_BaselinePresent(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	cr, baselineErr := resolveBaselineAndCompare("", dir, &stderr, rpt)
+	cr, baselineErr := resolveBaselineAndCompare("", "", dir, &stderr, rpt)
 	if baselineErr != nil {
 		t.Fatalf("unexpected error: %v", baselineErr)
 	}
@@ -1313,12 +1314,415 @@ func TestResolveBaselineAndCompare_LoadError(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	cr, err := resolveBaselineAndCompare(corruptPath, dir, &stderr, rpt)
+	cr, err := resolveBaselineAndCompare(corruptPath, "", dir, &stderr, rpt)
 	if err == nil {
 		t.Fatal("expected error for corrupt baseline")
 	}
 	if cr != nil {
 		t.Errorf("expected nil ComparisonResult on error, got %+v", cr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Baseline path compatibility tests (issue #330, task 3.3)
+// ---------------------------------------------------------------------------
+
+// writeBaselineFile marshals rpt as baseline JSON at path, failing the
+// test on any error.
+func writeBaselineFile(t *testing.T, path string, rpt *crap.Report) {
+	t.Helper()
+	data, err := json.Marshal(rpt)
+	if err != nil {
+		t.Fatalf("marshaling baseline: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("writing baseline %s: %v", path, err)
+	}
+}
+
+// absoluteBaselineReport returns a stub-report clone whose single
+// score's File is absolute under root, simulating a historical
+// baseline saved before path relativization (issue #330).
+func absoluteBaselineReport(root string) *crap.Report {
+	rpt := stubReport()
+	rpt.Scores[0].File = filepath.Join(root, "foo.go")
+	return rpt
+}
+
+// writeDefaultBaseline places rpt at dir/.gaze/baseline.json so the
+// auto-detection path in resolveBaselinePath picks it up.
+func writeDefaultBaseline(t *testing.T, dir string, rpt *crap.Report) string {
+	t.Helper()
+	gazeDir := filepath.Join(dir, ".gaze")
+	if err := os.MkdirAll(gazeDir, 0o755); err != nil {
+		t.Fatalf("creating .gaze dir: %v", err)
+	}
+	path := filepath.Join(gazeDir, "baseline.json")
+	writeBaselineFile(t, path, rpt)
+	return path
+}
+
+func TestRunCrap_BaselineRootThreading(t *testing.T) {
+	// A baseline saved under a different checkout root is reconciled
+	// when --baseline-root names that root (design D4): the run
+	// succeeds and the normalization notice is emitted.
+	dir := t.TempDir()     // current module directory
+	oldRoot := t.TempDir() // historical module root
+	writeDefaultBaseline(t, dir, absoluteBaselineReport(oldRoot))
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    dir,
+		baselineRoot: oldRoot,
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+	})
+	if err != nil {
+		t.Fatalf("expected reconciliation via baselineRoot to succeed, got: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "normalized 1 absolute path") {
+		t.Errorf("expected normalization notice in stderr, got: %s", stderr.String())
+	}
+	// Match signal: the reconciled baseline must actually match the
+	// current report — the notice alone cannot distinguish a correct
+	// rewrite from a plausible-but-wrong one (a wrong rewrite would
+	// leave every stub score unmatched, print the zero-match warning,
+	// and still exit 0 below the new-function threshold).
+	if !strings.Contains(stdout.String(), "Foo") {
+		t.Error("expected report output containing the matched function 'Foo'")
+	}
+	if strings.Contains(stderr.String(), "matched zero functions") {
+		t.Errorf("reconciled baseline matched zero functions; rewrite produced wrong paths. stderr: %s", stderr.String())
+	}
+}
+
+func TestRunCrap_AutoDetectedIncompatibleBaseline(t *testing.T) {
+	// An auto-detected baseline that parses but cannot be reconciled
+	// is a hard error carrying the actionable diagnostic (design D3):
+	// the baseline file path, the unreconcilable count, one example
+	// path, and both remediations. The error must wrap
+	// *crap.BaselinePathError so callers can inspect it.
+	dir := t.TempDir()
+	other := t.TempDir() // unrelated root: paths under neither moduleDir nor any baselineRoot
+	baselinePath := writeDefaultBaseline(t, dir, absoluteBaselineReport(other))
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		opts:        crap.DefaultOptions(),
+		moduleDir:   dir,
+		stdout:      &stdout,
+		stderr:      &stderr,
+		analyzeFunc: stubAnalyze,
+	})
+	if err == nil {
+		t.Fatal("expected error for incompatible auto-detected baseline")
+	}
+	msg := err.Error()
+	for _, substr := range []string{
+		baselinePath,
+		"1 baseline entries",
+		"--baseline-root",
+		"Regenerate the baseline",
+	} {
+		if !strings.Contains(msg, substr) {
+			t.Errorf("expected diagnostic to contain %q, got: %s", substr, msg)
+		}
+	}
+	var pathErr *crap.BaselinePathError
+	if !errors.As(err, &pathErr) {
+		t.Errorf("expected error to wrap *crap.BaselinePathError, got %T", err)
+	}
+}
+
+func TestRunCrap_ExplicitIncompatibleBaseline(t *testing.T) {
+	// Spec scenario "Relocated checkout without --baseline-root"
+	// (explicit mode): an explicitly passed baseline that parses but
+	// cannot be reconciled is fatal with the actionable diagnostic —
+	// the same contract as auto-detected mode (requirement
+	// "Incompatibility Error Scope"). The normalization notice is
+	// suppressed on the error path (design D6): a partially
+	// normalized baseline is discarded, so reporting its count would
+	// be misleading.
+	dir := t.TempDir()
+	other := t.TempDir() // unrelated root: paths under neither moduleDir nor any baselineRoot
+	baselinePath := writeDefaultBaseline(t, dir, absoluteBaselineReport(other))
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    dir,
+		baselinePath: baselinePath,
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+	})
+	if err == nil {
+		t.Fatal("expected error for incompatible explicit baseline")
+	}
+	var pathErr *crap.BaselinePathError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("expected error to wrap *crap.BaselinePathError, got %T", err)
+	}
+	if !strings.Contains(err.Error(), baselinePath) {
+		t.Errorf("expected diagnostic to name the baseline path %q, got: %s", baselinePath, err)
+	}
+	if out := stderr.String(); strings.Contains(out, "normalized") {
+		t.Errorf("normalization notice must be suppressed on the error path, got stderr: %s", out)
+	}
+}
+
+func TestRunCrap_ModuleRelativeBaselineNoNotice(t *testing.T) {
+	// A module-relative baseline (the normal case) is untouched: no
+	// normalization notice, no zero-match warning, and the comparison
+	// matches the current report without error.
+	dir := t.TempDir()
+	writeDefaultBaseline(t, dir, stubReport())
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		opts:        crap.DefaultOptions(),
+		moduleDir:   dir,
+		stdout:      &stdout,
+		stderr:      &stderr,
+		analyzeFunc: stubAnalyze,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out := stderr.String(); strings.Contains(out, "normalized") || strings.Contains(out, "matched zero functions") {
+		t.Errorf("expected no reconciliation notices for module-relative baseline, got stderr: %s", out)
+	}
+	if !strings.Contains(stdout.String(), "Foo") {
+		t.Error("expected unchanged report output containing 'Foo'")
+	}
+}
+
+func TestRunCrap_BaselineRootInertWithModuleRelativeBaseline(t *testing.T) {
+	// Spec scenario "Flag inert without absolute-path baseline": the
+	// WHEN clause runs gaze crap with --baseline-root set while the
+	// baseline contains no absolute paths. The flag MUST be inert —
+	// no error, no notice, comparison output unchanged. This executes
+	// the inert path with the flag actually set (the
+	// ModuleRelativeBaselineNoNotice test above leaves it empty).
+	dir := t.TempDir()
+	writeDefaultBaseline(t, dir, stubReport())
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    dir,
+		baselineRoot: t.TempDir(), // set but unused: baseline is module-relative
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+	})
+	if err != nil {
+		t.Fatalf("expected --baseline-root to be inert for module-relative baseline, got: %v", err)
+	}
+	if out := stderr.String(); strings.Contains(out, "normalized") || strings.Contains(out, "matched zero functions") {
+		t.Errorf("expected no reconciliation notices when flag is set but unused, got stderr: %s", out)
+	}
+	if !strings.Contains(stdout.String(), "Foo") {
+		t.Error("expected unchanged report output containing 'Foo'")
+	}
+}
+
+func TestRunCrap_UnparseableAutoDetectedBaselineSkipped(t *testing.T) {
+	// Parse errors on auto-detected baselines keep their silent-skip
+	// semantics (the shell-redirect race on empty files): no error
+	// and normal report output.
+	dir := t.TempDir()
+	gazeDir := filepath.Join(dir, ".gaze")
+	if err := os.MkdirAll(gazeDir, 0o755); err != nil {
+		t.Fatalf("creating .gaze dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gazeDir, "baseline.json"), []byte("{not valid json"), 0o600); err != nil {
+		t.Fatalf("writing corrupt baseline: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:    []string{"./..."},
+		format:      "text",
+		opts:        crap.DefaultOptions(),
+		moduleDir:   dir,
+		stdout:      &stdout,
+		stderr:      &stderr,
+		analyzeFunc: stubAnalyze,
+	})
+	if err != nil {
+		t.Fatalf("expected auto-detected unparseable baseline to be silently skipped, got: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Foo") {
+		t.Error("expected normal report output after silent skip")
+	}
+}
+
+func TestRunCrap_UnparseableExplicitBaselineFatal(t *testing.T) {
+	// Parse errors on explicit baselines stay fatal (unchanged
+	// semantics).
+	dir := t.TempDir()
+	corruptPath := filepath.Join(dir, "corrupt.json")
+	if err := os.WriteFile(corruptPath, []byte("{not valid json"), 0o600); err != nil {
+		t.Fatalf("writing corrupt baseline: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:     []string{"./..."},
+		format:       "text",
+		opts:         crap.DefaultOptions(),
+		moduleDir:    dir,
+		baselinePath: corruptPath,
+		stdout:       &stdout,
+		stderr:       &stderr,
+		analyzeFunc:  stubAnalyze,
+	})
+	if err == nil {
+		t.Fatal("expected explicit unparseable baseline to be fatal")
+	}
+	if !strings.Contains(err.Error(), "loading baseline") {
+		t.Errorf("expected load error, got: %s", err)
+	}
+}
+
+func TestRunCrap_BaselineNoticesStderrOnlyJSON(t *testing.T) {
+	// Reconciliation notices never pollute --format=json stdout
+	// (design D6): the normalization notice lands on stderr while
+	// stdout remains parseable JSON without it.
+	dir := t.TempDir()
+	writeDefaultBaseline(t, dir, absoluteBaselineReport(dir))
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:    []string{"./..."},
+		format:      "json",
+		opts:        crap.DefaultOptions(),
+		moduleDir:   dir,
+		stdout:      &stdout,
+		stderr:      &stderr,
+		analyzeFunc: stubAnalyze,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "normalized 1 absolute path") {
+		t.Errorf("expected normalization notice in stderr, got: %s", stderr.String())
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "normalized") {
+		t.Errorf("normalization notice leaked into JSON stdout: %s", stdout.String())
+	}
+}
+
+func TestRunCrap_ZeroMatchWarning(t *testing.T) {
+	// Zero matched functions with non-empty sides warns on stderr
+	// naming the likely causes (design D6) without changing the exit
+	// code: the comparison itself passes because every CRAP score is
+	// below the default new-function threshold of 30.
+	dir := t.TempDir()
+	disjoint := stubReport()
+	disjoint.Scores[0].Function = "Bar"
+	disjoint.Scores[0].File = "bar.go"
+	writeDefaultBaseline(t, dir, disjoint)
+
+	var stdout, stderr bytes.Buffer
+	err := runCrap(crapParams{
+		patterns:    []string{"./..."},
+		format:      "json",
+		opts:        crap.DefaultOptions(),
+		moduleDir:   dir,
+		stdout:      &stdout,
+		stderr:      &stderr,
+		analyzeFunc: stubAnalyze,
+	})
+	if err != nil {
+		t.Fatalf("zero-match warning must not change the exit code, got: %v", err)
+	}
+	warned := stderr.String()
+	for _, substr := range []string{
+		"matched zero functions",
+		"--baseline-root",
+		"another OS",
+		"rewritten codebase",
+	} {
+		if !strings.Contains(warned, substr) {
+			t.Errorf("expected zero-match warning to contain %q, got stderr: %s", substr, warned)
+		}
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "matched zero functions") {
+		t.Errorf("zero-match warning leaked into JSON stdout: %s", stdout.String())
+	}
+}
+
+func TestRunCrap_ZeroMatchWarningSuppressedOnEmptySide(t *testing.T) {
+	// The warning fires only when BOTH sides are non-empty (design
+	// D6 guard clauses): an empty current report or an empty
+	// baseline is not a reconciliation failure, so the warning must
+	// stay silent — dropping either guard clause would produce a
+	// spurious stderr warning in these edge cases.
+	tests := []struct {
+		name        string
+		empty       string // "current" or "baseline"
+		analyzeFunc func([]string, string, crap.Options) (*crap.Report, error)
+		baseline    *crap.Report
+	}{
+		{
+			name:  "empty current report",
+			empty: "current",
+			analyzeFunc: func(_ []string, _ string, _ crap.Options) (*crap.Report, error) {
+				return &crap.Report{}, nil
+			},
+			baseline: stubReport(),
+		},
+		{
+			name:        "empty baseline",
+			empty:       "baseline",
+			analyzeFunc: stubAnalyze,
+			baseline:    &crap.Report{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeDefaultBaseline(t, dir, tt.baseline)
+
+			var stdout, stderr bytes.Buffer
+			err := runCrap(crapParams{
+				patterns:    []string{"./..."},
+				format:      "text",
+				opts:        crap.DefaultOptions(),
+				moduleDir:   dir,
+				stdout:      &stdout,
+				stderr:      &stderr,
+				analyzeFunc: tt.analyzeFunc,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Contains(stderr.String(), "matched zero functions") {
+				t.Errorf("zero-match warning must stay silent when the %s side is empty, got stderr: %s", tt.empty, stderr.String())
+			}
+		})
 	}
 }
 
@@ -3427,6 +3831,9 @@ func TestSC004_PayloadContainsQuadrantCounts(t *testing.T) {
 // Uses the real four-step analysis pipeline with FakeAdapter (to exclude AI
 // network latency from the timing measurement).
 func TestSC005_AnalysisPerformance(t *testing.T) {
+	if os.Getenv("GAZE_COVERAGE_RUN") != "" {
+		t.Skip("skipping: GAZE_COVERAGE_RUN set (recursion guard)")
+	}
 	if testing.Short() {
 		t.Skip("TestSC005_AnalysisPerformance skipped in -short mode")
 	}
@@ -3763,6 +4170,28 @@ func TestCrapCmd_TestShortFlag(t *testing.T) {
 	}
 	if f.Usage == "" {
 		t.Error("expected non-empty usage string for --test-short")
+	}
+}
+
+func TestCrapCmd_BaselineRootFlag(t *testing.T) {
+	// The user-facing migration affordance must be registered on the
+	// cobra command (spec: "The gaze crap command MUST accept a
+	// --baseline-root <dir> flag") — the runCrap params-struct tests
+	// bypass flag registration entirely, so removing the registration
+	// or the usage text would otherwise keep the suite green.
+	cmd := newCrapCmd()
+	f := cmd.Flags().Lookup("baseline-root")
+	if f == nil {
+		t.Fatal("expected --baseline-root flag on crap command")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default value '', got %q", f.DefValue)
+	}
+	if f.Usage == "" {
+		t.Error("expected non-empty usage string for --baseline-root")
+	}
+	if !strings.Contains(f.Usage, "relocat") {
+		t.Errorf("expected usage to describe relocated-checkout reconciliation, got %q", f.Usage)
 	}
 }
 
