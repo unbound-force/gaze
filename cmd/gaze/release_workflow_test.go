@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -10,11 +11,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// shipWorkflow is the pinned reusable workflow release.yml calls. Bumping
-// ship means updating this pin and the version comment in release.yml.
-const (
-	shipWorkflow = "jflowers/ship/.github/workflows/go-release.yml@7c6c0e199099d732e0db93c8c9d86b0064c2759c"
-	shipVersion  = "v0.9.0"
+// The ship pin is format-pinned, not value-pinned: Dependabot's ship
+// group in .github/dependabot.yml bumps the SHA on each ship release,
+// and a literal-SHA assertion would fail CI on those bumps and block
+// the auto-merge behind them. The guards below still pin the shape —
+// the exact go-release.yml path, a full 40-hex commit SHA (CI-001, no
+// mutable tags), and a semver version comment (CI-003). Which commit
+// the SHA names is resolved by Dependabot itself or verified at
+// authoring time per CI-002.
+var (
+	shipWorkflowRe = regexp.MustCompile(`^jflowers/ship/\.github/workflows/go-release\.yml@[0-9a-f]{40}$`)
+
+	// shipPinCommentRe matches the release job's uses line including its
+	// trailing version comment, e.g.
+	//
+	//	uses: jflowers/ship/.github/workflows/go-release.yml@86af… # v0.2.1
+	shipPinCommentRe = regexp.MustCompile(`(?m)^ *uses: jflowers/ship/\.github/workflows/go-release\.yml@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+$`)
 )
 
 type releaseWorkflow struct {
@@ -32,7 +44,9 @@ type releaseJob struct {
 // The release pipeline lives in jflowers/ship's go-release.yml; this repo's
 // release.yml only gates and calls it. These checks guard what the caller
 // still decides: which inputs and secrets reach ship and under which names,
-// which ship commit runs, and that the local gates run first.
+// that the ship pin stays a full-SHA pin of the exact workflow (which
+// commit runs is Dependabot's ship group or authoring-time CI-002
+// verification, not a literal here), and that the local gates run first.
 func TestReleaseWorkflow_CallsShip(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
 	if err != nil {
@@ -64,11 +78,11 @@ func TestReleaseWorkflow_CallsShip(t *testing.T) {
 		t.Fatal("release workflow must contain the release job")
 	}
 
-	if release.Uses != shipWorkflow {
-		t.Errorf("release job uses %q, want %q", release.Uses, shipWorkflow)
+	if !shipWorkflowRe.MatchString(release.Uses) {
+		t.Errorf("release job uses %q, want jflowers/ship/.github/workflows/go-release.yml pinned to a full 40-hex commit SHA — a mutable tag would silently change what the release runs (CI-001)", release.Uses)
 	}
-	if !strings.Contains(string(raw), "uses: "+shipWorkflow+" # "+shipVersion+"\n") {
-		t.Errorf("the ship pin must carry the comment %q", "# "+shipVersion)
+	if !shipPinCommentRe.MatchString(string(raw)) {
+		t.Error("the ship pin must carry a semver version comment, e.g. `uses: jflowers/ship/.github/workflows/go-release.yml@<40-hex SHA> # v0.2.1` (CI-003)")
 	}
 
 	wantNeeds := "validate-module-major,validate-workflow-floor,validate-ai-report-default"
