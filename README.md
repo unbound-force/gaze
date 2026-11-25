@@ -257,7 +257,7 @@ analyzers:
     args: ["--stdio", "--edition=2021"]
 ```
 
-When no `--analyzer` flag is set and no analyzer is configured, Gaze uses its built-in Go analysis -- no configuration needed for Go-only usage.
+When no `--analyzer` or `--language` flag is set, Gaze uses its built-in Go analysis -- no configuration needed for Go-only usage.
 
 For the full protocol specification (message format, methods, capability negotiation), see [Protocol Reference](docs/protocol.md).
 
