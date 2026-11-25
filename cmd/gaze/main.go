@@ -2388,14 +2388,17 @@ func printIgnoredPromptNotice(moduleDir string, stderr io.Writer) {
 
 // resolveReportModuleDir resolves the directory the analysis runs from: the
 // working directory for external analyzers (the project may not be a Go
-// module) and the Go module root otherwise.
+// module) and the Go module root otherwise. Either --analyzer or --language
+// alone selects the external path; --language alone triggers tier-3
+// PATH-convention discovery (gaze-analyzer-<language>), matching
+// runCrap/runQuality/runDocscan.
 func resolveReportModuleDir(p reportParams) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
 	}
 
-	if p.analyzerFlag != "" {
+	if p.analyzerFlag != "" || p.languageFlag != "" {
 		return cwd, nil
 	}
 
@@ -2448,10 +2451,13 @@ func reportSections(p reportParams) (aireport.SectionSet, error) {
 }
 
 // applyReportAnalyzeFunc wires the run's analysis function: the injected test
-// seam, the external-analyzer pipeline, or the production default. The
-// returned cleanup closes the analyzer session; it is a no-op otherwise.
+// seam, the external-analyzer pipeline, or the production default. Either
+// --analyzer or --language alone selects the external pipeline, matching
+// runCrap/runQuality/runDocscan; the external gate stays ahead of the
+// injected test seam. The returned cleanup closes the analyzer session; it
+// is a no-op otherwise.
 func applyReportAnalyzeFunc(opts *aireport.RunnerOptions, p reportParams, moduleDir string, sections aireport.SectionSet) (func(), error) {
-	if p.analyzerFlag != "" {
+	if p.analyzerFlag != "" || p.languageFlag != "" {
 		analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
 			p.ctx, p.analyzerFlag, p.languageFlag, moduleDir, p.patterns, p.stderr, sections.Steps(),
 		)
