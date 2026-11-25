@@ -66,7 +66,8 @@ Agents MUST NOT cross workflow phase boundaries:
   spec artifacts ONLY (`specs/NNN-*/` directory). No
   source code, test, agent, command, or config changes.
 - **Implement** phase: source code changes allowed,
-  guided by spec artifacts.
+  guided by spec artifacts (Speckit, OpenSpec) or
+  the change description (Quick).
 - **Review** phase: findings and minor fixes only. No new
   features.
 
@@ -108,7 +109,7 @@ Exempt from council review:
 
 ## Workflow Tiers
 
-Every change follows a workflow, but **which** workflow is decided per change — no single tier is mandatory. Pick the tier that fits the change's scope and risk. `/uf.unleash` does this automatically through the `tier-routing` skill when no spec exists yet; agents working by hand apply the same rubric. The constitution (`.specify/memory/constitution.md`) remains the highest-authority document in this project — all work must align with it, whatever the tier.
+Every change follows a workflow, but **which** workflow is decided per change — no single tier is mandatory. Pick the tier that fits the change's scope and risk. `/uf.unleash` does this automatically through the `tier-routing` skill when a change starts on `main` or an unrecognized branch (a tier-named branch missing its artifacts stops instead); agents working by hand apply the same rubric. The constitution (`.specify/memory/constitution.md`) remains the highest-authority document in this project — all work must align with it, whatever the tier.
 
 | Tier | Choose when | Artifacts | Branch |
 |------|-------------|-----------|--------|
@@ -120,7 +121,7 @@ Every change follows a workflow, but **which** workflow is decided per change �
 
 **Risk floors** (escalate only): a change that touches security-sensitive code (secrets, tokens, crypto, permissions), authentication or authorization flows, data-loss paths (migrations, deletions, destructive operations), or breaks a public API contract **must** use OpenSpec at minimum — never Quick — or Speckit when scope warrants.
 
-**Quality gates apply to every tier.** Quick skips spec artifacts, not review: CI must pass and the change still goes through code review (`/uf.review-council`) before merge. Constitution amendments follow the constitution's own Governance section.
+**Quality gates apply to every tier.** Quick skips spec artifacts, not review: CI must pass and the change still needs an approving code review before merge, with council review (`/uf.review-council`) per the exemptions above. Constitution amendments follow the constitution's own Governance section.
 
 ### Pipeline
 
