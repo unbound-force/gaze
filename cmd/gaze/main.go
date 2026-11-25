@@ -524,6 +524,7 @@ type crapParams struct {
 	aiMapper               string
 	aiMapperModel          string
 	baselinePath           string
+	baselineRoot           string
 	analyzerFlag           string
 	languageFlag           string
 	gateOnChange           string
@@ -658,9 +659,11 @@ func runCrap(p crapParams) error {
 			"note: GazeCRAP unavailable — run 'gaze quality' to compute contract coverage")
 	}
 
-	// Resolve baseline path and run comparison (D4).
+	// Resolve baseline path and run comparison (D4). baselineRoot
+	// carries the --baseline-root migration affordance for relocated
+	// checkouts (issue #330, design D4).
 	comparisonResult, baselineErr := resolveBaselineAndCompare(
-		p.baselinePath, p.moduleDir, p.stderr, rpt)
+		p.baselinePath, p.baselineRoot, p.moduleDir, p.stderr, rpt)
 	if baselineErr != nil {
 		return baselineErr
 	}
@@ -920,10 +923,18 @@ func isNonEmptyFile(path string) bool {
 
 // loadAndCompare loads a baseline file and runs comparison against
 // the current report. If baselineExplicit is true (--baseline flag),
-// errors are fatal. Otherwise, errors are silently skipped.
+// parse and IO errors are fatal. Otherwise, they are silently
+// skipped (the shell-redirect race on empty files).
+//
+// Historical absolute-path baselines are reconciled to module-relative
+// form before comparison (issue #330, design D1/D4): a parsed but
+// unreconcilable baseline is a hard error in both explicit and
+// auto-detected modes — silently skipping it would convert a false
+// failure into a silent false pass of a governance gate (design D3).
 func loadAndCompare(
 	baselinePath string,
 	baselineExplicit bool,
+	baselineRoot string,
 	current *crap.Report,
 	moduleDir string,
 	stderr io.Writer,
@@ -936,13 +947,70 @@ func loadAndCompare(
 		return nil, nil
 	}
 
+	// Reconcile historical absolute-path baselines to the
+	// module-relative representation used by current reports
+	// (design D1), then surface the normalization count on stderr
+	// (design D6). The notice fires only on success: a partially
+	// normalized baseline is discarded by the error path below, so
+	// reporting its count would be misleading.
+	stats, reconcileErr := crap.ReconcileBaselinePaths(baseline, moduleDir, baselineRoot)
+	if reconcileErr != nil {
+		var pathErr *crap.BaselinePathError
+		if errors.As(reconcileErr, &pathErr) {
+			return nil, baselineIncompatibilityError(baselinePath, pathErr)
+		}
+		return nil, fmt.Errorf("reconciling baseline %q: %w", baselinePath, reconcileErr)
+	}
+	if stats.Normalized > 0 {
+		_, _ = fmt.Fprintf(stderr,
+			"baseline: normalized %d absolute paths to module-relative (historical baseline format; consider regenerating)\n",
+			stats.Normalized)
+	}
+
 	cfg := config.LoadFromDir(moduleDir, stderr)
 	opts := crap.CompareOptions{
 		Epsilon:                      cfg.Baseline.Epsilon,
 		NewFunctionThreshold:         cfg.Baseline.NewFunctionThreshold,
 		NewFunctionGazeCRAPThreshold: cfg.Baseline.NewFunctionGazeCRAPThreshold,
 	}
-	return crap.Compare(baseline, current, opts), nil
+	result := crap.Compare(baseline, current, opts)
+	warnZeroMatch(result, baseline, current, stderr)
+	return result, nil
+}
+
+// baselineIncompatibilityError composes the actionable diagnostic for
+// a baseline whose absolute paths could be reconciled against neither
+// the module directory nor --baseline-root (design D3). The CLI layer
+// alone knows the baseline file path, so the remediation text lives
+// here rather than in the typed error. The %w wrap preserves
+// *crap.BaselinePathError for errors.As inspection by callers.
+func baselineIncompatibilityError(baselinePath string, pathErr *crap.BaselinePathError) error {
+	return fmt.Errorf(
+		"baseline %s: %w. "+
+			"Regenerate the baseline with the current gaze version:\n"+
+			"  gaze crap --format=json --coverprofile=coverage.out ./... > %s\n"+
+			"or re-run with --baseline-root <old-module-root> "+
+			"(the module root the baseline was generated under)",
+		baselinePath, pathErr, baselinePath)
+}
+
+// warnZeroMatch prints a stderr warning when a comparison matched zero
+// functions while both baseline and current carried scores (design
+// D6). Zero matches make `regressions: 0` meaningless: every current
+// function reads as new and every baseline function as removed. The
+// likely causes are an incorrect --baseline-root, a baseline generated
+// on another OS (whose paths are not absolute per filepath.IsAbs on
+// this host), or an entirely rewritten codebase. Observability only —
+// the warning never changes the exit code; promoting it to a gate
+// requires a new spec.
+func warnZeroMatch(result *crap.ComparisonResult, baseline, current *crap.Report, stderr io.Writer) {
+	if len(result.Deltas) == 0 && len(baseline.Scores) > 0 && len(current.Scores) > 0 {
+		_, _ = fmt.Fprintf(stderr,
+			"warning: baseline comparison matched zero functions (%d baseline entries, %d current functions); "+
+				"likely causes: incorrect --baseline-root, baseline generated on another OS, "+
+				"or an entirely rewritten codebase\n",
+			len(baseline.Scores), len(current.Scores))
+	}
 }
 
 // openAndLoadBaseline opens a baseline file and deserializes it.
@@ -1030,10 +1098,12 @@ func checkCIThresholds(rpt *crap.Report, maxCrapload, maxGazeCrapload, maxCognit
 
 // resolveBaselineAndCompare resolves the baseline file path using
 // resolveBaselinePath (D4 detection order: flag → config → default),
-// then loads the baseline and compares it against the current report.
-// Returns nil, nil if no baseline is configured.
+// then loads the baseline, reconciles historical absolute paths
+// against moduleDir and baselineRoot (design D4), and compares it
+// against the current report. Returns nil, nil if no baseline is
+// configured.
 func resolveBaselineAndCompare(
-	baselinePath, moduleDir string,
+	baselinePath, baselineRoot, moduleDir string,
 	stderr io.Writer,
 	rpt *crap.Report,
 ) (*crap.ComparisonResult, error) {
@@ -1041,7 +1111,7 @@ func resolveBaselineAndCompare(
 	if resolved == "" {
 		return nil, nil
 	}
-	return loadAndCompare(resolved, explicit, rpt, moduleDir, stderr)
+	return loadAndCompare(resolved, explicit, baselineRoot, rpt, moduleDir, stderr)
 }
 
 // writeCrapOutputAndSummary writes the CRAP report (comparison path or
@@ -1109,6 +1179,7 @@ func newCrapCmd() *cobra.Command {
 		aiMapper               string
 		aiMapperModel          string
 		baselinePath           string
+		baselineRoot           string
 		gateOnChange           string
 		analyzerFlag           string
 		languageFlag           string
@@ -1151,6 +1222,7 @@ automatically.`,
 				aiMapper:               aiMapper,
 				aiMapperModel:          aiMapperModel,
 				baselinePath:           baselinePath,
+				baselineRoot:           baselineRoot,
 				gateOnChange:           gateOnChange,
 				analyzerFlag:           analyzerFlag,
 				languageFlag:           languageFlag,
@@ -1181,6 +1253,8 @@ automatically.`,
 		"model name for AI mapper (required for ollama)")
 	cmd.Flags().StringVar(&baselinePath, "baseline", "",
 		"path to baseline file for comparison")
+	cmd.Flags().StringVar(&baselineRoot, "baseline-root", "",
+		"module root the baseline was generated under (reconciles historical absolute-path baselines from relocated checkouts)")
 	cmd.Flags().StringVar(&gateOnChange, "gate-on-change", "",
 		"fail if changed functions exceed CRAP or GazeCRAP threshold (git ref or 'staged')")
 	cmd.Flags().StringVar(&analyzerFlag, "analyzer", "",
@@ -2314,14 +2388,17 @@ func printIgnoredPromptNotice(moduleDir string, stderr io.Writer) {
 
 // resolveReportModuleDir resolves the directory the analysis runs from: the
 // working directory for external analyzers (the project may not be a Go
-// module) and the Go module root otherwise.
+// module) and the Go module root otherwise. Either --analyzer or --language
+// alone selects the external path; --language alone triggers tier-3
+// PATH-convention discovery (gaze-analyzer-<language>), matching
+// runCrap/runQuality/runDocscan.
 func resolveReportModuleDir(p reportParams) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
 	}
 
-	if p.analyzerFlag != "" {
+	if p.analyzerFlag != "" || p.languageFlag != "" {
 		return cwd, nil
 	}
 
@@ -2374,10 +2451,13 @@ func reportSections(p reportParams) (aireport.SectionSet, error) {
 }
 
 // applyReportAnalyzeFunc wires the run's analysis function: the injected test
-// seam, the external-analyzer pipeline, or the production default. The
-// returned cleanup closes the analyzer session; it is a no-op otherwise.
+// seam, the external-analyzer pipeline, or the production default. Either
+// --analyzer or --language alone selects the external pipeline, matching
+// runCrap/runQuality/runDocscan; the external gate stays ahead of the
+// injected test seam. The returned cleanup closes the analyzer session; it
+// is a no-op otherwise.
 func applyReportAnalyzeFunc(opts *aireport.RunnerOptions, p reportParams, moduleDir string, sections aireport.SectionSet) (func(), error) {
-	if p.analyzerFlag != "" {
+	if p.analyzerFlag != "" || p.languageFlag != "" {
 		analyzeFunc, cleanup, err := buildExternalReportAnalyzeFunc(
 			p.ctx, p.analyzerFlag, p.languageFlag, moduleDir, p.patterns, p.stderr, sections.Steps(),
 		)

@@ -33,6 +33,7 @@ At least one package pattern is required. Use `./...` to analyze the entire modu
 | `--ai-mapper` | `string` | `""` | AI backend for assertion mapping fallback: `claude`, `gemini`, `ollama`, or `opencode`. When set, unmapped assertions are sent to the AI for semantic matching. |
 | `--ai-mapper-model` | `string` | `""` | Model name for the AI mapper. Required when `--ai-mapper=ollama`. |
 | `--baseline` | `string` | `""` | Path to a baseline JSON file for comparison. Overrides auto-detection of `.gaze/baseline.json` and the `baseline.file` config value. Errors if the specified file does not exist. |
+| `--baseline-root` | `string` | `""` | Module root the baseline was generated under. Reconciles historical absolute-path baselines from relocated checkouts to module-relative paths before comparison. Inert when the baseline is module-relative or absent; no `.gaze.yaml` equivalent. See [Baseline path compatibility](#baseline-path-compatibility). |
 | `--gate-on-change` | `string` | `""` | Fail if any function modified in the current changeset exceeds the CRAP threshold. Accepts a git ref (e.g., `origin/main`, `HEAD~3`) or `staged` for index-only changes. Requires `git` on PATH. |
 
 
@@ -158,6 +159,35 @@ Baseline Comparison
   New Functions: 2 (0 violations)
   Removed Functions: 1
 ```
+
+### Baseline path compatibility
+
+Baselines saved by gaze v1.9.x and earlier record absolute file paths; current reports record module-relative paths. When such a baseline is loaded, `gaze crap` rewrites each absolute path to module-relative form before the `file:function` comparison. This happens automatically when the absolute paths sit under the current module directory — the same checkout path as when the baseline was generated.
+
+When the checkout has moved (different machine or directory), pass the historical module root explicitly:
+
+```bash
+gaze crap --baseline-root /home/alice/gaze --coverprofile=coverage.out ./...
+```
+
+The flag is inert when no baseline is loaded or the baseline already uses module-relative paths. There is deliberately no `.gaze.yaml` key for it: the root describes a historical machine state, not ongoing configuration.
+
+If baseline paths sit under neither the current module directory nor `--baseline-root`, the comparison fails before any output with an actionable diagnostic:
+
+```text
+baseline .gaze/baseline.json: 12 baseline entries use absolute paths outside the current module (e.g. /home/alice/gaze/internal/crap/analyze.go). Regenerate the baseline with the current gaze version:
+  gaze crap --format=json --coverprofile=coverage.out ./... > .gaze/baseline.json
+or re-run with --baseline-root <old-module-root> (the module root the baseline was generated under)
+```
+
+The error is fatal for both explicit (`--baseline`) and auto-detected baselines — a parsed but incompatible baseline must not be silently skipped, or the regression gate would pass vacuously. Parse and IO errors keep their existing semantics (fatal when explicit, silently skipped when auto-detected).
+
+Two stderr-only observability signals accompany reconciliation:
+
+- **Normalization notice**: when paths were normalized, a one-line notice reports the count and recommends regenerating the baseline (`baseline: normalized 191 absolute paths to module-relative (historical baseline format; consider regenerating)`). It never appears on stdout, so `--format=json` output stays machine-parseable.
+- **Zero-match warning**: when a comparison matches zero functions while both the baseline and the current report are non-empty, a warning names the likely causes — an incorrect `--baseline-root`, a baseline generated on another OS (Windows paths are not absolute per `filepath.IsAbs` on a Unix host and are left untouched), or an entirely rewritten codebase. The warning never changes the exit code.
+
+Matching is always on the full `file:function` key — never basename or suffix matching, which could conflate same-named files in different packages.
 
 ### Gate on changed functions
 

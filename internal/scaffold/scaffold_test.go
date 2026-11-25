@@ -72,9 +72,11 @@ func TestRun_CreatesFiles(t *testing.T) {
 	}
 }
 
-// TestRun_SkipsExisting verifies that gaze init skips user-owned
-// files and skips tool-owned reference files when their content is
-// identical to the embedded version (no --force needed).
+// TestRun_SkipsExisting verifies that gaze init skips tool-owned
+// files when their content is identical to the embedded version
+// (no --force needed). All nine .opencode/ assets are tool-owned
+// (gaze-command-tool-owned), so no user-owned .opencode/ file can
+// be skipped and the --force hint must not print.
 func TestRun_SkipsExisting(t *testing.T) {
 	dir := t.TempDir()
 
@@ -93,9 +95,9 @@ func TestRun_SkipsExisting(t *testing.T) {
 		t.Fatalf("first Run() returned error: %v", err)
 	}
 
-	// Second run without --force: tool-owned files have identical
-	// content, so all 9 files land in Skipped (2 user-owned +
-	// 7 tool-owned identical).
+	// Second run without --force: every .opencode/ asset is
+	// tool-owned with identical content, so all 9 files land in
+	// Skipped (0 user-owned + 9 tool-owned identical).
 	var buf2 bytes.Buffer
 	result, err := Run(Options{
 		TargetDir: dir,
@@ -123,8 +125,8 @@ func TestRun_SkipsExisting(t *testing.T) {
 	if !strings.Contains(output, "skipped:") {
 		t.Errorf("summary should mention 'skipped:', got:\n%s", output)
 	}
-	if !strings.Contains(output, "1 file skipped (use --force to overwrite)") {
-		t.Errorf("summary should mention 1 user-owned file skipped, got:\n%s", output)
+	if strings.Contains(output, "use --force to overwrite") {
+		t.Errorf("summary should not mention the --force hint (no user-owned .opencode/ file can be skipped), got:\n%s", output)
 	}
 }
 
@@ -632,6 +634,7 @@ func TestIsToolOwned(t *testing.T) {
 		// Tool-owned: explicit command files.
 		{"commands/speckit.testreview.md", true},
 		{"commands/gaze-fix.md", true},
+		{"commands/gaze.md", true},
 		// Tool-owned: DCP configuration.
 		{"dcp.jsonc", true},
 		// Tool-owned: gaze-managed agent files.
@@ -643,8 +646,10 @@ func TestIsToolOwned(t *testing.T) {
 		{"agents/custom.md", false},
 		// Legacy retired name must not match the tool-owned list.
 		{"agents/reviewer-testing.md", false},
-		// User-owned: other commands.
-		{"commands/gaze.md", false},
+		// User-owned: non-embedded command paths. commands/gaze-local.md
+		// is the /gaze customization escape hatch (gaze-command-tool-owned
+		// design D2): gaze never writes that path.
+		{"commands/gaze-local.md", false},
 		// Edge cases.
 		{"commands/speckit.analyze.md", false},
 		{"references", false},
@@ -707,6 +712,421 @@ func TestRun_OverwritesCustomizedGazeReporter(t *testing.T) {
 		t.Errorf("agent file was not restored to the embedded copy (got %d bytes, want %d bytes)",
 			len(got), len(want))
 	}
+}
+
+// TestRun_OverwritesCustomizedGazeCommand verifies the
+// gaze-command-tool-owned "Customized copy is overwritten" scenario:
+// commands/gaze.md is tool-owned, so a customized copy is replaced on
+// the next gaze init even without --force.
+func TestRun_OverwritesCustomizedGazeCommand(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	var buf1 bytes.Buffer
+	if _, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf1}); err != nil {
+		t.Fatalf("first Run() returned error: %v", err)
+	}
+
+	// Simulate a local customization of the /gaze command.
+	cmdPath := filepath.Join(dir, ".opencode", "commands", "gaze.md")
+	if err := os.WriteFile(cmdPath, []byte("# custom\n"), 0o644); err != nil {
+		t.Fatalf("customizing command file: %v", err)
+	}
+
+	var buf2 bytes.Buffer
+	result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf2})
+	if err != nil {
+		t.Fatalf("second Run() returned error: %v", err)
+	}
+
+	var updated bool
+	for _, f := range result.Updated {
+		if f == filepath.Join(".opencode", "commands", "gaze.md") {
+			updated = true
+		}
+	}
+	if !updated {
+		t.Errorf("expected commands/gaze.md in Updated, got %v", result.Updated)
+	}
+
+	got, err := os.ReadFile(cmdPath)
+	if err != nil {
+		t.Fatalf("reading command file: %v", err)
+	}
+	embedded, err := assetContent("commands/gaze.md")
+	if err != nil {
+		t.Fatalf("reading embedded asset: %v", err)
+	}
+	want := insertMarkerAfterFrontmatter(embedded, versionMarker("1.0.0"))
+	if !bytes.Equal(got, want) {
+		t.Errorf("command file was not restored to the embedded copy (got %d bytes, want %d bytes)",
+			len(got), len(want))
+	}
+}
+
+// TestRun_HealsDuplicateGazeCommandMarkers verifies the
+// gaze-command-tool-owned "Duplicate version markers are healed"
+// scenario (design D4): a commands/gaze.md carrying the survey's
+// observed dev + v1.8.0 duplicate markers (issue #353) and stale
+// body content is rewritten by the tool-owned update path —
+// handleToolOwnedFile's wholesale rewrite of the embedded asset
+// plus a single current marker — without --force.
+func TestRun_HealsDuplicateGazeCommandMarkers(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	// Pre-write a stale copy shaped like the survey's findings: old
+	// frontmatter, both observed marker lines, and a body that
+	// predates the current embedded asset.
+	cmdPath := filepath.Join(dir, ".opencode", "commands", "gaze.md")
+	if err := os.MkdirAll(filepath.Dir(cmdPath), 0o755); err != nil {
+		t.Fatalf("creating commands directory: %v", err)
+	}
+	stale := `---
+description: >
+  Old description from a previous release.
+agent: gaze-reporter
+---
+
+<!-- scaffolded by gaze dev -->
+<!-- scaffolded by gaze v1.8.0 -->
+
+# Stale /gaze command body
+
+This body predates the current embedded asset.
+`
+	if err := os.WriteFile(cmdPath, []byte(stale), 0o644); err != nil {
+		t.Fatalf("pre-writing stale command file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	result, err := Run(Options{TargetDir: dir, Version: "v2.4.0", Stdout: &buf})
+	if err != nil {
+		t.Fatalf("Run() returned error: %v", err)
+	}
+
+	var updated bool
+	for _, f := range result.Updated {
+		if f == filepath.Join(".opencode", "commands", "gaze.md") {
+			updated = true
+		}
+	}
+	if !updated {
+		t.Errorf("expected commands/gaze.md in Updated, got %v", result.Updated)
+	}
+
+	got, err := os.ReadFile(cmdPath)
+	if err != nil {
+		t.Fatalf("reading healed command file: %v", err)
+	}
+
+	// Exactly one marker, carrying the current run's version.
+	s := string(got)
+	if count := strings.Count(s, "<!-- scaffolded by gaze"); count != 1 {
+		t.Errorf("expected exactly 1 marker, got %d", count)
+	}
+	if !strings.Contains(s, "<!-- scaffolded by gaze v2.4.0 -->") {
+		t.Errorf("expected current v2.4.0 marker, not found")
+	}
+	if strings.Contains(s, "gaze dev -->") {
+		t.Errorf("old dev marker should have been healed away")
+	}
+	if strings.Contains(s, "gaze v1.8.0 -->") {
+		t.Errorf("old v1.8.0 marker should have been healed away")
+	}
+
+	// The healed file is exactly the embedded asset rendered with the
+	// current marker — no stale body content remains.
+	embedded, err := assetContent("commands/gaze.md")
+	if err != nil {
+		t.Fatalf("reading embedded asset: %v", err)
+	}
+	want := insertMarkerAfterFrontmatter(embedded, versionMarker("v2.4.0"))
+	if !bytes.Equal(got, want) {
+		t.Errorf("healed command file does not match the embedded copy (got %d bytes, want %d bytes)",
+			len(got), len(want))
+	}
+	if strings.Contains(s, "Stale /gaze command body") {
+		t.Errorf("stale body content should not survive the update")
+	}
+}
+
+// TestRun_GazeLocalEscapeHatch verifies the gaze-command-tool-owned
+// "Custom command escape hatch" scenarios (design D2): the scaffold's
+// asset walk only iterates embedded asset paths, so a customized
+// .opencode/commands/gaze-local.md is user-owned by construction —
+// byte-identical after every gaze init, with or without --force, and
+// never reported in any Result list.
+func TestRun_GazeLocalEscapeHatch(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatalf("creating go.mod: %v", err)
+	}
+
+	// Pre-create a customized escape-hatch command shaped like the
+	// documented migration: a renamed, locally edited copy of the
+	// scaffolded commands/gaze.md, old marker included — so the test
+	// also pins that no marker-based sweep may touch the path.
+	escapePath := filepath.Join(dir, ".opencode", "commands", "gaze-local.md")
+	if err := os.MkdirAll(filepath.Dir(escapePath), 0o755); err != nil {
+		t.Fatalf("creating commands directory: %v", err)
+	}
+	custom := `---
+description: >
+  Customized local /gaze command.
+agent: gaze-reporter
+---
+
+<!-- scaffolded by gaze v1.8.0 -->
+
+# Custom /gaze-local command
+
+Renamed from the scaffolded commands/gaze.md and edited locally;
+this copy must survive every gaze init, --force included.
+`
+	if err := os.WriteFile(escapePath, []byte(custom), 0o644); err != nil {
+		t.Fatalf("pre-writing custom command file: %v", err)
+	}
+
+	// escapeSuffix matches the Result lists' display-path format
+	// (filepath.Join(".opencode", relPath)) should the escape-hatch
+	// path ever incorrectly appear in one.
+	escapeSuffix := filepath.Join("commands", "gaze-local.md")
+
+	// assertUntouched enforces both halves of the escape-hatch
+	// contract for one Run: byte-identical file content, and no
+	// Result list mentions the path.
+	assertUntouched := func(label string, result *Result, before []byte) {
+		after, err := os.ReadFile(escapePath)
+		if err != nil {
+			t.Fatalf("%s: reading escape-hatch file: %v", label, err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Errorf("%s: escape-hatch file content changed (got %d bytes, want %d bytes)",
+				label, len(after), len(before))
+		}
+		for _, list := range []struct {
+			name  string
+			paths []string
+		}{
+			{"Created", result.Created},
+			{"Skipped", result.Skipped},
+			{"Overwritten", result.Overwritten},
+			{"Updated", result.Updated},
+			{"Removed", result.Removed},
+		} {
+			for _, f := range list.paths {
+				if strings.HasSuffix(f, escapeSuffix) {
+					t.Errorf("%s: escape-hatch file must not appear in Result.%s, got %v",
+						label, list.name, list.paths)
+				}
+			}
+		}
+	}
+
+	// First run without --force: the nine embedded assets are created
+	// around the pre-existing escape-hatch file.
+	before, err := os.ReadFile(escapePath)
+	if err != nil {
+		t.Fatalf("reading escape-hatch file before non-force run: %v", err)
+	}
+	var buf1 bytes.Buffer
+	result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf1})
+	if err != nil {
+		t.Fatalf("non-force Run() returned error: %v", err)
+	}
+	if len(result.Created) != 9 {
+		t.Errorf("expected 9 created files, got %d: %v", len(result.Created), result.Created)
+	}
+	assertUntouched("non-force run", result, before)
+
+	// Second run with --force: all nine embedded assets are
+	// overwritten; the escape hatch must survive force too.
+	before, err = os.ReadFile(escapePath)
+	if err != nil {
+		t.Fatalf("reading escape-hatch file before force run: %v", err)
+	}
+	var buf2 bytes.Buffer
+	result, err = Run(Options{TargetDir: dir, Version: "1.0.0", Force: true, Stdout: &buf2})
+	if err != nil {
+		t.Fatalf("force Run() returned error: %v", err)
+	}
+	if len(result.Overwritten) != 9 {
+		t.Errorf("expected 9 overwritten files, got %d: %v", len(result.Overwritten), result.Overwritten)
+	}
+	assertUntouched("force run", result, before)
+}
+
+// TestRun_GazeCommandUpdateTip verifies the gaze-command-tool-owned
+// "Escape-hatch guidance on update" requirement (design D3): when
+// gaze init updates commands/gaze.md, the summary prints a one-line
+// tip naming commands/gaze-local.md as the path that preserves a
+// customized command. The tip must not print when the file is
+// skipped as identical, created on a first run, or overwritten via
+// --force — the update is the only outcome where the opt-out lesson
+// is actionable. gaze-local.md is the stable assertion substring: no
+// embedded asset path, summary line, or notice carries it, so its
+// presence in stdout is attributable to the tip alone.
+func TestRun_GazeCommandUpdateTip(t *testing.T) {
+	const tipSubstring = "gaze-local.md"
+
+	// gazeCmdDisplayPath is commands/gaze.md in the Result lists'
+	// display-path form (filepath.Join(".opencode", relPath)).
+	gazeCmdDisplayPath := filepath.Join(".opencode", "commands", "gaze.md")
+
+	// inList reports whether the /gaze command's display path
+	// appears in the given Result list.
+	inList := func(list []string) bool {
+		for _, f := range list {
+			if f == gazeCmdDisplayPath {
+				return true
+			}
+		}
+		return false
+	}
+
+	// customizeGazeCommand overwrites the scaffolded /gaze command
+	// with a local customization, so the next run sees a content diff
+	// for that file (and only that file).
+	customizeGazeCommand := func(t *testing.T, dir string) {
+		t.Helper()
+		cmdPath := filepath.Join(dir, ".opencode", "commands", "gaze.md")
+		if err := os.WriteFile(cmdPath, []byte("# custom\n"), 0o644); err != nil {
+			t.Fatalf("customizing commands/gaze.md: %v", err)
+		}
+	}
+
+	t.Run("prints on update", func(t *testing.T) {
+		dir := t.TempDir()
+		writeGoMod(t, dir, "")
+
+		var buf1 bytes.Buffer
+		if _, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf1}); err != nil {
+			t.Fatalf("first Run() returned error: %v", err)
+		}
+
+		customizeGazeCommand(t, dir)
+
+		var buf2 bytes.Buffer
+		result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf2})
+		if err != nil {
+			t.Fatalf("second Run() returned error: %v", err)
+		}
+
+		// Precondition: the customized command was updated, and it is
+		// the only diff — the other eight assets are identical.
+		if !inList(result.Updated) {
+			t.Errorf("expected commands/gaze.md in Updated, got Created=%v Skipped=%v Overwritten=%v Updated=%v",
+				result.Created, result.Skipped, result.Overwritten, result.Updated)
+		}
+		if len(result.Updated) != 1 {
+			t.Errorf("expected exactly 1 updated file, got %d: %v", len(result.Updated), result.Updated)
+		}
+
+		// The tip prints exactly once — one line naming the
+		// escape-hatch path.
+		output := buf2.String()
+		if n := strings.Count(output, tipSubstring); n != 1 {
+			t.Errorf("expected exactly 1 escape-hatch tip naming %q, got %d, output:\n%s",
+				tipSubstring, n, output)
+		}
+	})
+
+	t.Run("silent on identical skip", func(t *testing.T) {
+		dir := t.TempDir()
+		writeGoMod(t, dir, "")
+
+		var buf1 bytes.Buffer
+		if _, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf1}); err != nil {
+			t.Fatalf("first Run() returned error: %v", err)
+		}
+
+		var buf2 bytes.Buffer
+		result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf2})
+		if err != nil {
+			t.Fatalf("second Run() returned error: %v", err)
+		}
+
+		// Precondition: nothing changed — gaze.md is skipped as
+		// byte-identical alongside the other eight assets.
+		if !inList(result.Skipped) {
+			t.Errorf("expected commands/gaze.md in Skipped, got Created=%v Skipped=%v Overwritten=%v Updated=%v",
+				result.Created, result.Skipped, result.Overwritten, result.Updated)
+		}
+		if len(result.Skipped) != 9 {
+			t.Errorf("expected 9 skipped files, got %d: %v", len(result.Skipped), result.Skipped)
+		}
+
+		output := buf2.String()
+		if strings.Contains(output, tipSubstring) {
+			t.Errorf("escape-hatch tip must not print when commands/gaze.md is skipped as identical, got:\n%s", output)
+		}
+	})
+
+	t.Run("silent on first-run creation", func(t *testing.T) {
+		dir := t.TempDir()
+		writeGoMod(t, dir, "")
+
+		var buf bytes.Buffer
+		result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf})
+		if err != nil {
+			t.Fatalf("Run() returned error: %v", err)
+		}
+
+		// Precondition: gaze.md lands in Created, not Updated.
+		if !inList(result.Created) {
+			t.Errorf("expected commands/gaze.md in Created, got Created=%v Skipped=%v Overwritten=%v Updated=%v",
+				result.Created, result.Skipped, result.Overwritten, result.Updated)
+		}
+		if len(result.Created) != 9 {
+			t.Errorf("expected 9 created files, got %d: %v", len(result.Created), result.Created)
+		}
+
+		output := buf.String()
+		if strings.Contains(output, tipSubstring) {
+			t.Errorf("escape-hatch tip must not print on first-run creation, got:\n%s", output)
+		}
+	})
+
+	t.Run("silent on force overwrite", func(t *testing.T) {
+		dir := t.TempDir()
+		writeGoMod(t, dir, "")
+
+		var buf1 bytes.Buffer
+		if _, err := Run(Options{TargetDir: dir, Version: "1.0.0", Stdout: &buf1}); err != nil {
+			t.Fatalf("first Run() returned error: %v", err)
+		}
+
+		customizeGazeCommand(t, dir)
+
+		var buf2 bytes.Buffer
+		result, err := Run(Options{TargetDir: dir, Version: "1.0.0", Force: true, Stdout: &buf2})
+		if err != nil {
+			t.Fatalf("second Run() with force returned error: %v", err)
+		}
+
+		// Precondition: the customized command was overwritten via
+		// --force — explicitly requested — not updated.
+		if !inList(result.Overwritten) {
+			t.Errorf("expected commands/gaze.md in Overwritten, got Created=%v Skipped=%v Overwritten=%v Updated=%v",
+				result.Created, result.Skipped, result.Overwritten, result.Updated)
+		}
+		if len(result.Overwritten) != 9 {
+			t.Errorf("expected 9 overwritten files, got %d: %v", len(result.Overwritten), result.Overwritten)
+		}
+
+		output := buf2.String()
+		if strings.Contains(output, tipSubstring) {
+			t.Errorf("escape-hatch tip must not print when commands/gaze.md is overwritten via --force, got:\n%s", output)
+		}
+	})
 }
 
 // TestGazeReporterAgent_NoRenderingRules verifies FR-031: the
@@ -1023,10 +1443,14 @@ func TestRun_ReScaffoldSingleMarker(t *testing.T) {
 }
 
 // TestRun_ReScaffoldNonForceSingleMarker verifies the non-force
-// re-init path from issue #279: a second gaze init without --force
-// updates tool-owned files on diff (replacing the old marker) and
-// leaves user-owned files untouched, with no duplicate markers in
-// either case.
+// re-init path from issue #279 after the gaze-command-tool-owned
+// flip: every embedded .opencode/ asset is tool-owned, so a second
+// gaze init with a new version and no --force updates every
+// marker-bearing file on diff, each left with exactly one marker
+// carrying the new version, while the marker-less dcp.jsonc is
+// skipped as byte-identical. No embedded asset takes the user-owned
+// skip path anymore; the untouched-user-file scenario now belongs to
+// the escape-hatch test (TestRun_GazeLocalEscapeHatch).
 func TestRun_ReScaffoldNonForceSingleMarker(t *testing.T) {
 	dir := t.TempDir()
 
@@ -1045,10 +1469,12 @@ func TestRun_ReScaffoldNonForceSingleMarker(t *testing.T) {
 		t.Fatalf("first Run() returned error: %v", err)
 	}
 
-	// Second run with version "v1.8.0" and no --force: tool-owned
-	// files are updated on diff, user-owned files are skipped.
+	// Second run with version "v1.8.0" and no --force: every
+	// embedded asset takes the tool-owned path. The eight Markdown
+	// files are updated on diff (replacing the old marker); the
+	// marker-less dcp.jsonc is skipped as byte-identical.
 	var buf2 bytes.Buffer
-	_, err = Run(Options{
+	result, err := Run(Options{
 		TargetDir: dir,
 		Version:   "v1.8.0",
 		Stdout:    &buf2,
@@ -1061,10 +1487,18 @@ func TestRun_ReScaffoldNonForceSingleMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assetPaths() returned error: %v", err)
 	}
+
+	// Every Markdown file must have exactly one marker with the
+	// new version, and zero markers with the old version.
+	mdChecked := 0
 	for _, relPath := range paths {
+		// Non-Markdown files skip the HTML marker (it would be
+		// invalid syntax in formats like JSONC); dcp.jsonc is
+		// covered by the Result assertions below.
 		if !strings.HasSuffix(relPath, ".md") {
 			continue
 		}
+		mdChecked++
 		content, err := os.ReadFile(filepath.Join(dir, ".opencode", relPath))
 		if err != nil {
 			t.Fatalf("reading %s: %v", relPath, err)
@@ -1075,23 +1509,40 @@ func TestRun_ReScaffoldNonForceSingleMarker(t *testing.T) {
 		if count != 1 {
 			t.Errorf("file %s: expected exactly 1 marker, got %d", relPath, count)
 		}
-		if isToolOwned(relPath) {
-			// Updated on diff: new marker present, old marker replaced.
-			if !strings.Contains(s, "<!-- scaffolded by gaze v1.8.0 -->") {
-				t.Errorf("file %s: expected v1.8.0 marker, not found", relPath)
-			}
-			if strings.Contains(s, "gaze dev -->") {
-				t.Errorf("file %s: old dev marker should have been replaced", relPath)
-			}
-		} else {
-			// Skipped: first-run content preserved untouched.
-			if !strings.Contains(s, "<!-- scaffolded by gaze dev -->") {
-				t.Errorf("file %s: expected dev marker (file should be skipped)", relPath)
-			}
-			if strings.Contains(s, "<!-- scaffolded by gaze v1.8.0 -->") {
-				t.Errorf("file %s: user-owned file must not be updated without --force", relPath)
-			}
+		if !strings.Contains(s, "<!-- scaffolded by gaze v1.8.0 -->") {
+			t.Errorf("file %s: expected v1.8.0 marker, not found", relPath)
 		}
+		if strings.Contains(s, "gaze dev -->") {
+			t.Errorf("file %s: old dev marker should have been replaced", relPath)
+		}
+	}
+	if mdChecked != 8 {
+		t.Errorf("expected to verify all 8 marker-bearing Markdown assets, checked %d", mdChecked)
+	}
+
+	// All nine embedded assets took the tool-owned path on the
+	// non-force re-run: the eight Markdown files were updated on
+	// diff, commands/gaze.md included (the pre-flip user-owned
+	// exception), and the byte-identical dcp.jsonc was skipped.
+	if len(result.Updated) != 8 {
+		t.Errorf("expected 8 updated files, got %d: %v", len(result.Updated), result.Updated)
+	}
+	if len(result.Skipped) != 1 {
+		t.Errorf("expected 1 skipped file, got %d: %v", len(result.Skipped), result.Skipped)
+	}
+	updatedMap := make(map[string]bool)
+	for _, f := range result.Updated {
+		updatedMap[f] = true
+	}
+	if !updatedMap[filepath.Join(".opencode", "commands", "gaze.md")] {
+		t.Errorf("expected commands/gaze.md in updated list, got %v", result.Updated)
+	}
+	skippedMap := make(map[string]bool)
+	for _, f := range result.Skipped {
+		skippedMap[f] = true
+	}
+	if !skippedMap[filepath.Join(".opencode", "dcp.jsonc")] {
+		t.Errorf("expected dcp.jsonc in skipped list, got %v", result.Skipped)
 	}
 }
 

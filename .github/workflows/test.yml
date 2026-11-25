@@ -20,8 +20,53 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Classify change
+        id: classify
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          files="$(git diff --name-only --no-renames "${base}...${head}")"
+          raw="$(git diff --raw --no-renames "${base}...${head}")"
+          outside="$(printf '%s\n' "$files" \
+            | grep -v -E '^\.uf/dewey/learnings/.+\.md$' || true)"
+          dotdot="$(printf '%s\n' "$files" \
+            | grep -E '(^|/)\.\.(/|$)' || true)"
+          links="$(printf '%s\n' "$raw" \
+            | awk '$1 ~ /120000|160000/ || $2 ~ /120000|160000/ { print $NF }')"
+          if [ -z "$files" ] || [ -n "$outside" ] || [ -n "$dotdot" ] || [ -n "$links" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "files other than .md under .uf/dewey/learnings/:"
+            echo "$outside"
+            echo "path traversal segments:"
+            echo "$dotdot"
+            echo "symlinks and submodules:"
+            echo "$links"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "learnings-only pull request"
+          fi
+
   unit-and-integration:
     name: Unit + Integration Tests (Go ${{ matrix.go-version }})
+    needs: changes
+    if: needs.changes.outputs.code != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -77,6 +122,8 @@ jobs:
 
   e2e:
     name: E2E Tests (Go ${{ matrix.go-version }})
+    needs: changes
+    if: needs.changes.outputs.code != 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,6 +142,10 @@ jobs:
       - name: Self-Check Tests
         run: go test -race -count=1 -run 'TestRunSelfCheck' -timeout 30m ./cmd/gaze/...
 
+  # Skips transitively on learnings-only PRs: this job needs
+  # unit-and-integration, which the changes job gates. Advisory and
+  # deliberately outside ci-ok's needs: a provider outage or rejected
+  # narrative cannot block a merge.
   gaze-ai-report:
     name: Gaze AI Report
     needs: unit-and-integration
@@ -110,3 +161,60 @@ jobs:
       min-contract-coverage: 8
     secrets:
       opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
+
+  # Learnings-only PRs skip MegaLinter, and with it gitleaks: scan their
+  # commits for secrets here instead. Code PRs keep MegaLinter's scan.
+  gitleaks:
+    name: Gitleaks (learnings-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tarball}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" gitleaks
+
+      # .gitleaksignore at the repo root is applied automatically.
+      - name: Scan the pull request's commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . \
+            --log-opts="${BASE_SHA}..${HEAD_SHA}" \
+            --redact --verbose --no-banner
+
+  ci-ok:
+    name: CI OK
+    needs: [changes, unit-and-integration, e2e, gitleaks]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate CI result
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NEEDS" \
+            | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          printf '%s\n' "$NEEDS" | jq -e \
+            'to_entries | all(.value.result == "success"
+                               or .value.result == "skipped")' \
+            > /dev/null
