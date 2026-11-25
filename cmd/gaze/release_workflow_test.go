@@ -57,9 +57,9 @@ func TestReleaseWorkflow_CallsShip(t *testing.T) {
 		t.Fatalf("parse release workflow: %v", err)
 	}
 
-	// post-release-install-check.yml runs on completion of "Release".
+	// The workflow is "Release" in the Actions list and the docs.
 	if wf.Name != "Release" {
-		t.Errorf(`workflow name = %q, want "Release" (post-release-install-check.yml listens for it)`, wf.Name)
+		t.Errorf(`workflow name = %q, want "Release"`, wf.Name)
 	}
 
 	// The pipeline moved to ship; none of the old jobs may come back.
@@ -98,6 +98,8 @@ func TestReleaseWorkflow_CallsShip(t *testing.T) {
 		"skip_ci_checks":        "${{ inputs.skip_ci_checks }}",
 		"skip_unreleased_check": "${{ inputs.skip_unreleased_check }}",
 		"tap":                   "unbound-force/homebrew-tap",
+		"go_install":            "github.com/unbound-force/gaze/v2/cmd/gaze",
+		"go_install_check":      `"$BIN" --version`,
 	}
 	assertExactMap(t, "with", release.With, wantWith)
 
