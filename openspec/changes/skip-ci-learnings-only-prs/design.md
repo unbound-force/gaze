@@ -89,14 +89,14 @@ D5) declares `timeout-minutes: 5`, checks out with
     files="$(git diff --name-only --no-renames "${base}...${head}")"
     raw="$(git diff --raw --no-renames "${base}...${head}")"
     outside="$(printf '%s\n' "$files" \
-      | grep -v '^\.uf/dewey/learnings/' || true)"
+      | grep -v -E '^\.uf/dewey/learnings/.+\.md$' || true)"
     links="$(printf '%s\n' "$raw" \
-      | awk '$1 ~ /120000/ || $2 ~ /120000/ { print $NF }')"
+      | awk '$1 ~ /120000|160000/ || $2 ~ /120000|160000/ { print $NF }')"
     if [ -z "$files" ] || [ -n "$outside" ] || [ -n "$links" ]; then
       echo "code=true" >> "$GITHUB_OUTPUT"
-      echo "files outside .uf/dewey/learnings/:"
+      echo "files other than .md under .uf/dewey/learnings/:"
       echo "$outside"
-      echo "symlinks:"
+      echo "symlinks and submodules:"
       echo "$links"
     else
       echo "code=false" >> "$GITHUB_OUTPUT"
@@ -109,10 +109,14 @@ D5) declares `timeout-minutes: 5`, checks out with
   diff (C4).
 - `--no-renames` lists both sides of a rename, so a code file
   renamed into `.uf/dewey/learnings/` classifies as code.
+- Only `.md` files under `.uf/dewey/learnings/` count as
+  learnings; any other file there classifies as code. This
+  matches the rule in the sibling repos (dewey, replicator,
+  unbound-force).
 - Any changed path whose old or new mode is `120000` (a symlink)
-  classifies as code, even under `.uf/dewey/learnings/`: a
-  symlink there can point at arbitrary repository content, so
-  the path prefix alone is not trusted for it.
+  or `160000` (a submodule) classifies as code, even under
+  `.uf/dewey/learnings/`: either can point at arbitrary content,
+  so the path prefix alone is not trusted for it.
 - An empty diff yields `code=true`; `set -euo pipefail` turns a
   failing diff into a failed job (fail-closed). Both diffs are
   captured into variables before filtering, so a failing `git`
@@ -152,7 +156,7 @@ checks stay coupled to the matrix leg names.
 ```yaml
 ci-ok:
   name: CI OK
-  needs: [changes, unit-and-integration, e2e]
+  needs: [changes, unit-and-integration, e2e, gitleaks]
   if: ${{ !cancelled() }}
   runs-on: ubuntu-latest
   timeout-minutes: 5
@@ -381,9 +385,11 @@ first, then run the rollback, and read back as in Stage 2.
   change how that content is consumed, but the path prefix is only
   a classification signal, not a trust boundary. Symlinks under
   the prefix classify as code (D1). Skipping MegaLinter on
-  learnings-only PRs also skips its gitleaks secret scan there;
-  the push-to-main MegaLinter run still scans every merged
-  learning, and uf-divisor still reviews each learnings PR.
+  learnings-only PRs also skips its gitleaks secret scan there,
+  and the push-to-main scan would only find a secret after it is
+  in `main`'s history. A `gitleaks` job (gitleaks 8.30.1,
+  SHA-256 pinned, `.gitleaksignore` applied) therefore scans the
+  commits of every learnings-only PR, and `ci-ok` needs it.
 - **Cancelled-run accounting** (#334) still affects code PRs —
   out of scope.
 - **`fetch-depth: 0`** on the changes job fetches full history —

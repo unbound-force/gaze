@@ -26,25 +26,26 @@ classification:
   request's net changed-file set as the three-dot diff from the
   pull request's base SHA to its head SHA with rename collapsing
   disabled, and MUST output `code=true` when any changed file
-  lies outside `.uf/dewey/learnings/`.
+  is not a `.md` file under `.uf/dewey/learnings/`.
 - The job MUST output `code=true` when any changed path has mode
-  `120000` (a symlink) on either side of the diff, including
-  paths under `.uf/dewey/learnings/`.
+  `120000` (a symlink) or `160000` (a submodule) on either side
+  of the diff, including paths under `.uf/dewey/learnings/`.
 - The job MUST output `code=false` only when the diff is non-empty,
-  every changed file lies under `.uf/dewey/learnings/`, and no
-  changed path is a symlink.
+  every changed file is a `.md` file under
+  `.uf/dewey/learnings/`, and no changed path is a symlink or
+  submodule.
 - The job MUST output `code=true` when the diff is empty
   (fail-closed default).
 - For `push` events, the job MUST output `code=true` without
   computing a diff.
 - A failing diff command MUST fail the job.
-- The job log MUST list the files and symlinks that produced a
-  `code=true` verdict.
+- The job log MUST list the files, symlinks and submodules that
+  produced a `code=true` verdict.
 
 #### Scenario: Learnings-only pull request
 
 - **GIVEN** a pull request whose net diff contains only regular
-  files under `.uf/dewey/learnings/`
+  `.md` files under `.uf/dewey/learnings/`
 - **WHEN** the `changes` job runs
 - **THEN** it outputs `code=false`
 
@@ -62,6 +63,20 @@ classification:
 - **WHEN** the `changes` job runs with rename collapsing disabled
 - **THEN** the changed-file list contains both the old and new
   paths, so the job outputs `code=true`
+
+#### Scenario: Non-Markdown file under the learnings path
+
+- **GIVEN** a pull request that adds `.uf/dewey/learnings/notes.txt`
+  and no other files
+- **WHEN** the `changes` job runs
+- **THEN** it outputs `code=true` and logs the path
+
+#### Scenario: Submodule under the learnings path
+
+- **GIVEN** a pull request that adds a submodule
+  `.uf/dewey/learnings/sub.md` and no other files
+- **WHEN** the `changes` job runs
+- **THEN** it outputs `code=true` and logs the path
 
 #### Scenario: Symlink under the learnings path
 
@@ -270,3 +285,25 @@ None.
 ## REMOVED Requirements
 
 None.
+
+### Requirement: Secret scan on learnings-only pull requests
+
+`.github/workflows/test.yml` MUST include a `gitleaks` job that
+runs only when `changes` outputs `code=false`, scans the pull
+request's commits (`base..head`) with a gitleaks binary whose
+download is verified against a pinned SHA-256, and is listed in
+`ci-ok`'s `needs`.
+
+#### Scenario: Secret in a learning
+
+- **GIVEN** a learnings-only pull request whose commits contain a
+  string matching a gitleaks rule
+- **WHEN** the `gitleaks` job runs
+- **THEN** it fails and `CI OK` fails
+
+#### Scenario: Code pull request
+
+- **GIVEN** a pull request with `code=true`
+- **WHEN** CI runs
+- **THEN** the `gitleaks` job is skipped and MegaLinter's gitleaks
+  scan covers the pull request as today

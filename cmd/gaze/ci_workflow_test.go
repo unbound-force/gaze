@@ -240,7 +240,7 @@ func TestCIWorkflow_CIOKAggregatesGatedJobs(t *testing.T) {
 	}
 	got := append([]string(nil), job.Needs...)
 	sort.Strings(got)
-	want := []string{"changes", "e2e", "unit-and-integration"}
+	want := []string{"changes", "e2e", "gitleaks", "unit-and-integration"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("ci-ok needs = %v, want exactly %v", got, want)
 	}
@@ -334,15 +334,15 @@ func TestCIWorkflow_SymlinkUnderLearningsCountsAsCode(t *testing.T) {
 		if !strings.Contains(run, `printf '%s\n' "$raw"`) {
 			t.Errorf("%s changes classify: the symlink scan must read the captured git diff --raw output (missing %q)", filename, `printf '%s\n' "$raw"`)
 		}
-		const modeCheck = `$1 ~ /120000/ || $2 ~ /120000/`
+		const modeCheck = `$1 ~ /120000|160000/ || $2 ~ /120000|160000/`
 		if !strings.Contains(run, modeCheck) {
-			t.Errorf("%s changes classify: the raw-diff scan must match symlink mode 120000 on either the old or the new side of a change (missing %q)", filename, modeCheck)
+			t.Errorf("%s changes classify: the raw-diff scan must match symlink mode 120000 and submodule mode 160000 on either the old or the new side of a change (missing %q)", filename, modeCheck)
 		}
 		const linksInVerdict = `[ -n "$links" ]`
 		if !strings.Contains(run, linksInVerdict) {
 			t.Errorf("%s changes classify: the fail-closed code=true verdict must include the symlink list (missing %q), or a learnings-path symlink would classify as learnings-only", filename, linksInVerdict)
 		}
-		const outsideLabel = `echo "files outside .uf/dewey/learnings/:"`
+		const outsideLabel = `echo "files other than .md under .uf/dewey/learnings/:"`
 		if !strings.Contains(run, outsideLabel) {
 			t.Errorf("%s changes classify: the code=true branch must label the outside-file list (missing %q), per CIW-FR-001's log-listing MUST", filename, outsideLabel)
 		}
@@ -350,7 +350,7 @@ func TestCIWorkflow_SymlinkUnderLearningsCountsAsCode(t *testing.T) {
 		if !strings.Contains(run, outsideValue) {
 			t.Errorf("%s changes classify: the code=true branch must log the outside-file list (missing %q), per CIW-FR-001's log-listing MUST", filename, outsideValue)
 		}
-		const linksLabel = `echo "symlinks:"`
+		const linksLabel = `echo "symlinks and submodules:"`
 		if !strings.Contains(run, linksLabel) {
 			t.Errorf("%s changes classify: the code=true branch must label the symlink list (missing %q), per CIW-FR-001's log-listing MUST", filename, linksLabel)
 		}
@@ -599,7 +599,7 @@ func TestCIWorkflow_ClassifyScriptBehavior(t *testing.T) {
 				return ciGitHead(t, dir)
 			},
 			want:    "true",
-			wantLog: []string{"files outside .uf/dewey/learnings/:", "main.go"},
+			wantLog: []string{"files other than .md under .uf/dewey/learnings/:", "main.go"},
 		},
 		{
 			name: "code file renamed into learnings",
@@ -621,7 +621,7 @@ func TestCIWorkflow_ClassifyScriptBehavior(t *testing.T) {
 				if err := os.MkdirAll(learnings, 0o755); err != nil {
 					t.Fatalf("mkdir %s: %v", learnings, err)
 				}
-				link := filepath.Join(learnings, "link")
+				link := filepath.Join(learnings, "link.md")
 				if err := os.Symlink("main.go", link); err != nil {
 					t.Fatalf("symlink %s: %v", link, err)
 				}
@@ -630,7 +630,31 @@ func TestCIWorkflow_ClassifyScriptBehavior(t *testing.T) {
 				return ciGitHead(t, dir)
 			},
 			want:    "true",
-			wantLog: []string{"symlinks:", ".uf/dewey/learnings/link"},
+			wantLog: []string{"symlinks and submodules:", ".uf/dewey/learnings/link.md"},
+		},
+		{
+			name: "non-markdown file under learnings",
+			head: func(t *testing.T, dir, base string) string {
+				writeClassifyFile(t, dir, ".uf/dewey/learnings/notes.txt", "note\n")
+				ciGit(t, dir, "add", "-A")
+				ciGit(t, dir, "commit", "-q", "-m", "non-markdown under learnings")
+				return ciGitHead(t, dir)
+			},
+			want:    "true",
+			wantLog: []string{"files other than .md under .uf/dewey/learnings/:", ".uf/dewey/learnings/notes.txt"},
+		},
+		{
+			name: "submodule under learnings",
+			head: func(t *testing.T, dir, base string) string {
+				// A gitlink entry is enough: the classifier only reads modes. The
+				// .md name makes the mode check, not the suffix rule, catch it.
+				ciGit(t, dir, "update-index", "--add", "--cacheinfo",
+					"160000,"+base+",.uf/dewey/learnings/sub.md")
+				ciGit(t, dir, "commit", "-q", "-m", "submodule under learnings")
+				return ciGitHead(t, dir)
+			},
+			want:    "true",
+			wantLog: []string{"symlinks and submodules:", ".uf/dewey/learnings/sub.md"},
 		},
 		{
 			name: "empty diff fails closed",
@@ -766,5 +790,46 @@ func TestCIWorkflow_CIOKJqTruthTable(t *testing.T) {
 				t.Errorf("%s: jq -e verdict must exit non-zero for needs %s, but it exited 0\noutput:\n%s", row.name, row.needs, combined.String())
 			}
 		})
+	}
+}
+
+// Learnings-only PRs skip MegaLinter and with it gitleaks, so the
+// gitleaks job scans their commits instead: it runs only when changes
+// classifies the PR as learnings-only, verifies the pinned download
+// checksum, scans base..head, and is aggregated by ci-ok so a found
+// secret fails CI OK.
+func TestCIWorkflow_GitleaksScansLearningsOnlyPRs(t *testing.T) {
+	wf := loadCIWorkflow(t, "test.yml")
+	job, ok := wf.Jobs["gitleaks"]
+	if !ok {
+		t.Fatal("test.yml must contain the gitleaks job")
+	}
+	if !ciNeedsJob(job, "changes") {
+		t.Errorf("test.yml gitleaks needs = %v, must include changes", job.Needs)
+	}
+	const wantIf = "needs.changes.outputs.code == 'false'"
+	if job.If != wantIf {
+		t.Errorf("test.yml gitleaks if = %q, want %q — it must run on exactly the PRs that skip MegaLinter", job.If, wantIf)
+	}
+	if got := job.Permissions["contents"]; got != "read" || len(job.Permissions) != 1 {
+		t.Errorf("test.yml gitleaks permissions = %v, want only contents: read", job.Permissions)
+	}
+	var install, scan string
+	for _, step := range job.Steps {
+		switch step.Name {
+		case "Install gitleaks":
+			install = step.Run
+		case "Scan the pull request's commits":
+			scan = step.Run
+		}
+	}
+	if !strings.Contains(install, `sha256sum -c -`) {
+		t.Errorf("test.yml gitleaks install must verify the download checksum (missing %q)", "sha256sum -c -")
+	}
+	if !strings.Contains(scan, `--log-opts="${BASE_SHA}..${HEAD_SHA}"`) {
+		t.Errorf("test.yml gitleaks scan must cover the PR's commits (missing %q)", `--log-opts="${BASE_SHA}..${HEAD_SHA}"`)
+	}
+	if ciOK := wf.Jobs["ci-ok"]; !ciNeedsJob(ciOK, "gitleaks") {
+		t.Errorf("test.yml ci-ok needs = %v, must include gitleaks so a found secret fails CI OK", ciOK.Needs)
 	}
 }

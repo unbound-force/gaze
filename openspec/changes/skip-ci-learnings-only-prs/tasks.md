@@ -83,3 +83,14 @@
       `specs/ci-workflow/spec.md` maps to the phase 3 contract
       test or a step of the design.md Rollout runbook
       (Testability)
+
+## 7. Align with sibling repos
+
+- [x] 7.1 Count only `.md` files under `.uf/dewey/learnings/` as
+      learnings, and classify submodules (mode `160000`) as code,
+      in both workflows' byte-identical classify step
+- [x] 7.2 Add the `gitleaks` job (runs on `code=false`, pinned
+      SHA-256, scans `base..head`) and add it to `ci-ok`'s needs
+- [x] 7.3 Update the contract test: new label and mode pins,
+      `ci-ok` needs, non-`.md` and submodule behavior scenarios,
+      and `TestCIWorkflow_GitleaksScansLearningsOnlyPRs`

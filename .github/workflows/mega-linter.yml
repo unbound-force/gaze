@@ -44,18 +44,18 @@ jobs:
           files="$(git diff --name-only --no-renames "${base}...${head}")"
           raw="$(git diff --raw --no-renames "${base}...${head}")"
           outside="$(printf '%s\n' "$files" \
-            | grep -v '^\.uf/dewey/learnings/' || true)"
+            | grep -v -E '^\.uf/dewey/learnings/.+\.md$' || true)"
           dotdot="$(printf '%s\n' "$files" \
             | grep -E '(^|/)\.\.(/|$)' || true)"
           links="$(printf '%s\n' "$raw" \
-            | awk '$1 ~ /120000/ || $2 ~ /120000/ { print $NF }')"
+            | awk '$1 ~ /120000|160000/ || $2 ~ /120000|160000/ { print $NF }')"
           if [ -z "$files" ] || [ -n "$outside" ] || [ -n "$dotdot" ] || [ -n "$links" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "files outside .uf/dewey/learnings/:"
+            echo "files other than .md under .uf/dewey/learnings/:"
             echo "$outside"
             echo "path traversal segments:"
             echo "$dotdot"
-            echo "symlinks:"
+            echo "symlinks and submodules:"
             echo "$links"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
