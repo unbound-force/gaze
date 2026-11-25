@@ -56,5 +56,5 @@
   language-specific failure diagnostic (Accuracy, Actionable Output),
   and the dispatch contract is pinned by the hermetic regression test
   (Testability).
-- [x] 3.4 Spec artifacts committed and pushed before implementation
+- [ ] 3.4 Spec artifacts committed and pushed before implementation
   begins (Spec Commit Gate).
