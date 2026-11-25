@@ -1,7 +1,9 @@
 package goprovider
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,5 +196,55 @@ func TestBuildGoTestCmd_EnvVarDeduplication(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected GAZE_COVERAGE_RUN=1 (not stale value) in cmd.Env")
+	}
+}
+
+func TestGenerateCoverProfile_NestedRunRefused(t *testing.T) {
+	// Inside a gaze coverage collection, generateCoverProfile must
+	// refuse before creating a profile or spawning go test. Otherwise
+	// a test that generates coverage for its own module re-runs
+	// itself without bound (each level runs `go test ./...` again).
+	t.Setenv("GAZE_COVERAGE_RUN", "1")
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	// With no go on PATH, an attempted spawn would fail with an exec
+	// error instead of ErrNestedCoverageRun.
+	t.Setenv("PATH", "")
+
+	path, err := generateCoverProfile(t.TempDir(), []string{"./..."}, false, io.Discard)
+	if !errors.Is(err, ErrNestedCoverageRun) {
+		t.Fatalf("generateCoverProfile error = %v, want ErrNestedCoverageRun", err)
+	}
+	if path != "" {
+		t.Errorf("generateCoverProfile path = %q, want empty", path)
+	}
+	entries, readErr := os.ReadDir(tmp)
+	if readErr != nil {
+		t.Fatalf("reading TMPDIR: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected no temp profile to be created, found %d entries", len(entries))
+	}
+}
+
+func TestGenerateCoverProfile_ProceedsWhenUnset(t *testing.T) {
+	// The guard's negative direction: with GAZE_COVERAGE_RUN empty,
+	// generation must proceed past the recursion guard. The empty-string
+	// pin (rather than ambient unset) keeps this test correct inside the
+	// E2E self-check, which spawns the test suite with GAZE_COVERAGE_RUN=1
+	// set; an ambient-unset variant would fail there exactly when the
+	// guard works.
+	t.Setenv("GAZE_COVERAGE_RUN", "")
+	t.Setenv("TMPDIR", t.TempDir())
+	// With no go on PATH, a run that proceeds past the guard fails with
+	// an exec error instead of recursing.
+	t.Setenv("PATH", "")
+
+	_, err := generateCoverProfile(t.TempDir(), []string{"./..."}, false, io.Discard)
+	if err == nil {
+		t.Fatal("expected error from generateCoverProfile with empty PATH (go test cannot spawn), got nil")
+	}
+	if errors.Is(err, ErrNestedCoverageRun) {
+		t.Fatalf("generateCoverProfile error = %v, want a spawn error: the guard fired with GAZE_COVERAGE_RUN unset", err)
 	}
 }
