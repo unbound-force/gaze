@@ -144,6 +144,13 @@ func flattenRun(run string) string {
 	return spaces.ReplaceAllString(continuations.ReplaceAllString(run, " "), " ")
 }
 
+// checkoutPinRe pins the changes-job checkout to a full commit SHA of
+// actions/checkout (CI-001). The SHA is format-pinned, not value-pinned:
+// Dependabot's actions group in .github/dependabot.yml bumps it, and a
+// literal-SHA assertion would fail CI on those bumps and block the
+// auto-merge behind them.
+var checkoutPinRe = regexp.MustCompile(`^actions/checkout@[0-9a-f]{40}$`)
+
 // The changes job classifies each PR as code or learnings-only. Both CI
 // workflows carry their own copy so their gated jobs can skip without a
 // cross-workflow needs, and the checkout needs full history because the
@@ -176,9 +183,8 @@ func TestCIWorkflow_ChangesJobWiring(t *testing.T) {
 		if checkout == nil {
 			t.Fatalf("%s changes job must check out the repo", filename)
 		}
-		const checkoutPin = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
-		if checkout.Uses != checkoutPin {
-			t.Errorf("%s changes checkout uses %q, want the exact SHA pin %q — a mutable tag would silently change what the classifier runs on (CI-001; precedent: release_workflow_test.go)", filename, checkout.Uses, checkoutPin)
+		if !checkoutPinRe.MatchString(checkout.Uses) {
+			t.Errorf("%s changes checkout uses %q, want actions/checkout pinned to a full 40-hex commit SHA — a mutable tag would silently change what the classifier runs on (CI-001; precedent: release_workflow_test.go)", filename, checkout.Uses)
 		}
 		fd, ok := checkout.With["fetch-depth"]
 		if !ok || fmt.Sprintf("%v", fd) != "0" {
