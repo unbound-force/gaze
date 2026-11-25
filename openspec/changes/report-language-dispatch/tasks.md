@@ -2,7 +2,7 @@
 
 ## 1. Dispatch gate widening (cmd/gaze)
 
-- [ ] 1.1 Widen the two external-analyzer gates in `runReport`'s extracted
+- [x] 1.1 Widen the two external-analyzer gates in `runReport`'s extracted
   helpers (`cmd/gaze/main.go`) from `p.analyzerFlag != ""` to
   `p.analyzerFlag != "" || p.languageFlag != ""` — the identical condition
   `runCrap`/`runQuality`/`runDocscan` already use (design D1):
@@ -56,5 +56,5 @@
   language-specific failure diagnostic (Accuracy, Actionable Output),
   and the dispatch contract is pinned by the hermetic regression test
   (Testability).
-- [ ] 3.4 Spec artifacts committed and pushed before implementation
+- [x] 3.4 Spec artifacts committed and pushed before implementation
   begins (Spec Commit Gate).
