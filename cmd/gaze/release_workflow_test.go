@@ -13,8 +13,8 @@ import (
 // shipWorkflow is the pinned reusable workflow release.yml calls. Bumping
 // ship means updating this pin and the version comment in release.yml.
 const (
-	shipWorkflow = "jflowers/ship/.github/workflows/go-release.yml@86af2e7b2d324a73f688431910f957ef7accebd4"
-	shipVersion  = "v0.2.1"
+	shipWorkflow = "jflowers/ship/.github/workflows/go-release.yml@7c6c0e199099d732e0db93c8c9d86b0064c2759c"
+	shipVersion  = "v0.9.0"
 )
 
 type releaseWorkflow struct {
