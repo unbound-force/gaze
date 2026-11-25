@@ -30,7 +30,7 @@ Gaze OpenCode integration initialized:
 Run /gaze for quality reports and /speckit.testreview for testability analysis.
 ```
 
-Use `--force` to overwrite all existing files:
+Use `--force` to overwrite all existing scaffolded files:
 
 ```bash
 gaze init --force
@@ -52,7 +52,7 @@ The scaffold creates 9 files: three subdirectories plus the DCP configuration at
 
 | File | Description | Ownership |
 |------|-------------|-----------|
-| `commands/gaze.md` | `/gaze` command — runs `gaze report --format=markdown` and delegates to the gaze-reporter agent, which shows the rendered report and adds judgment | User-owned |
+| `commands/gaze.md` | `/gaze` command — runs `gaze report --format=markdown` and delegates to the gaze-reporter agent, which shows the rendered report and adds judgment | Tool-owned |
 | `commands/gaze-fix.md` | `/gaze fix` command — batch remediation using the gaze-test-generator agent | Tool-owned |
 | `commands/speckit.testreview.md` | `/speckit.testreview` command — read-only spec testability analysis | Tool-owned |
 
@@ -73,11 +73,13 @@ The scaffold creates 9 files: three subdirectories plus the DCP configuration at
 
 Gaze distinguishes between two ownership models for scaffolded files:
 
-**User-owned files** (`commands/gaze.md`) are written once and never overwritten on subsequent `gaze init` runs. You can customize this file — add project-specific instructions or change how the command invokes Gaze. Your changes are preserved.
+**Tool-owned files** — all nine `.opencode/` assets listed in the tables above — use overwrite-on-diff behavior. When you run `gaze init`, each file is compared against the version embedded in the Gaze binary: if the content differs (e.g., because you upgraded Gaze), the file is updated and reported; if the content is identical, it is skipped. This keeps the scaffolded agents, commands, and reference materials current without requiring `--force`. Local customizations to these files are overwritten — keep a customized command under a different filename instead (see the escape hatch below).
 
-**Tool-owned files** (everything under `references/`, plus `agents/gaze-reporter.md`, `agents/gaze-test-generator.md`, `agents/divisor-gaze-testing.md`, `commands/gaze-fix.md`, `commands/speckit.testreview.md`, and `dcp.jsonc`) use overwrite-on-diff behavior. When you run `gaze init`, these files are compared against the version embedded in the Gaze binary. If the content differs (e.g., because you upgraded Gaze), the file is updated and reported. If the content is identical, the file is skipped. This keeps reference materials and tool-managed agents current without requiring `--force`. Local customizations to these files are overwritten — keep project-specific instructions in your own agent files instead.
+**User-owned files** — the CI workflow that [`gaze init --ci`](../reference/cli/init.md) writes to `.github/workflows/gaze-ai-report.yml` is the only user-owned scaffold output. It is written once and skipped on subsequent `--ci` runs; pass `--force` to regenerate it (see the [CI integration guide](ci-integration.md)). The `file(s) skipped (use --force to overwrite)` hint in the init summary refers to this workflow only — `.opencode/` files never need `--force`, because they update automatically when their content differs.
 
-The `--force` flag overrides both behaviors and overwrites all files unconditionally.
+**Escape hatch for customized commands:** gaze only ever writes the nine embedded `.opencode/` paths — plus the CI workflow when you pass `--ci` — so any other path under `.opencode/` is yours. To keep a customized `/gaze` command, name it `commands/gaze-local.md`: OpenCode maps each file under `.opencode/commands/` to a slash command by filename, so `/gaze-local` works, and gaze never writes that path, even under `--force`. Any other non-embedded filename works the same way.
+
+The `--force` flag overrides both behaviors and overwrites every scaffolded file — the nine `.opencode/` assets and the CI workflow.
 
 ## Divisor Review-Config Registration
 
@@ -174,27 +176,43 @@ This command does not modify any files — it produces a report with recommendat
 
 ## Upgrading
 
-When you upgrade Gaze (e.g., via `brew upgrade gaze`), run `gaze init` again to update tool-owned files:
+When you upgrade Gaze (e.g., via `brew upgrade gaze`), run `gaze init` again to update the scaffolded `.opencode/` files:
 
 ```bash
 gaze init
 ```
 
-Tool-owned files with changed content are automatically updated, including `agents/gaze-reporter.md` — local edits to that agent are overwritten. User-owned files are skipped, so your customizations to `commands/gaze.md` are preserved. The output shows what was updated:
+All nine `.opencode/` files use overwrite-on-diff behavior: files whose embedded content changed are rewritten — including `commands/gaze.md`, so local edits to the `/gaze` command are overwritten — and identical files are reported as skipped. When `commands/gaze.md` is updated, the summary ends with a tip pointing at the escape hatch:
 
 ```text
-Gaze OpenCode integration already up to date:
+Gaze OpenCode integration initialized:
+
+  skipped: .opencode/agents/divisor-gaze-testing.md (already exists)
+  skipped: .opencode/agents/gaze-test-generator.md (already exists)
+  skipped: .opencode/commands/gaze-fix.md (already exists)
+  skipped: .opencode/commands/speckit.testreview.md (already exists)
+  skipped: .opencode/dcp.jsonc (already exists)
+  skipped: .opencode/references/doc-scoring-model.md (already exists)
   updated: .opencode/agents/gaze-reporter.md (content changed)
+  updated: .opencode/commands/gaze.md (content changed)
   updated: .opencode/references/example-report.md (content changed)
-  skipped: .opencode/commands/gaze.md (already exists)
+
+Run /gaze for quality reports and /speckit.testreview for testability analysis.
+Tip: commands/gaze.md is tool-owned; to keep a customized /gaze command, name it commands/gaze-local.md (gaze never writes that path).
 ```
+
+If you customized `commands/gaze.md` in an earlier release, rename it to `commands/gaze-local.md` before upgrading — gaze never writes that path, and OpenCode exposes it as `/gaze-local`. If an upgrade has already overwritten a customized copy, recover the prior version from git — for example `git show <commit>:.opencode/commands/gaze.md > .opencode/commands/gaze-local.md` — and keep it under the new name.
+
+The CI workflow is the one scaffold output that does not update automatically: an existing workflow is skipped on `gaze init --ci` runs, and `--force` regenerates it.
 
 ## Version Marker
 
-Every scaffolded file includes a version marker comment:
+Every scaffolded Markdown file includes a version marker comment:
 
 ```html
 <!-- scaffolded by gaze v1.2.3 -->
 ```
 
 This marker is inserted after the YAML frontmatter (if present) or appended to the end of the file. It identifies which version of Gaze produced the file, which is useful for debugging when tool-owned files are not updating as expected.
+
+When a tool-owned file is updated, it is rewritten from the embedded asset carrying exactly one marker for the current version, so copies that accumulated duplicate markers under older releases are healed by their first update — including `commands/gaze.md`, which is rewritten on diff like every other tool-owned asset.
