@@ -119,10 +119,11 @@ issue: #372.)
   checks are saved and the runbook includes a rollback command.
 - **Trust boundary**: classification runs on a read-only checkout
   with no secrets, but the path prefix is a classification signal,
-  not a trust boundary: symlinks classify as code, and learnings
-  remain untrusted Markdown that Dewey indexes. Skipping MegaLinter
-  also skips its gitleaks scan on learnings-only PRs; the
-  push-to-main MegaLinter run still scans every merged learning.
+  not a trust boundary: only `.md` files count, symlinks and
+  submodules classify as code, and learnings remain untrusted
+  Markdown that Dewey indexes. Skipping MegaLinter also skips its
+  gitleaks scan on learnings-only PRs, so a dedicated `gitleaks`
+  job scans those PRs' commits and gates `CI OK`.
 - **Protected gates**: no coverage thresholds, CRAP limits, or
   severity definitions change; the gaze threshold check step is
   untouched and still runs on every code pull request, and `CI OK`

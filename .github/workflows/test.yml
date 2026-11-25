@@ -45,18 +45,18 @@ jobs:
           files="$(git diff --name-only --no-renames "${base}...${head}")"
           raw="$(git diff --raw --no-renames "${base}...${head}")"
           outside="$(printf '%s\n' "$files" \
-            | grep -v '^\.uf/dewey/learnings/' || true)"
+            | grep -v -E '^\.uf/dewey/learnings/.+\.md$' || true)"
           dotdot="$(printf '%s\n' "$files" \
             | grep -E '(^|/)\.\.(/|$)' || true)"
           links="$(printf '%s\n' "$raw" \
-            | awk '$1 ~ /120000/ || $2 ~ /120000/ { print $NF }')"
+            | awk '$1 ~ /120000|160000/ || $2 ~ /120000|160000/ { print $NF }')"
           if [ -z "$files" ] || [ -n "$outside" ] || [ -n "$dotdot" ] || [ -n "$links" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "files outside .uf/dewey/learnings/:"
+            echo "files other than .md under .uf/dewey/learnings/:"
             echo "$outside"
             echo "path traversal segments:"
             echo "$dotdot"
-            echo "symlinks:"
+            echo "symlinks and submodules:"
             echo "$links"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -162,9 +162,47 @@ jobs:
     secrets:
       opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
 
+  # Learnings-only PRs skip MegaLinter, and with it gitleaks: scan their
+  # commits for secrets here instead. Code PRs keep MegaLinter's scan.
+  gitleaks:
+    name: Gitleaks (learnings-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tarball}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" gitleaks
+
+      # .gitleaksignore at the repo root is applied automatically.
+      - name: Scan the pull request's commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . \
+            --log-opts="${BASE_SHA}..${HEAD_SHA}" \
+            --redact --verbose --no-banner
+
   ci-ok:
     name: CI OK
-    needs: [changes, unit-and-integration, e2e]
+    needs: [changes, unit-and-integration, e2e, gitleaks]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
