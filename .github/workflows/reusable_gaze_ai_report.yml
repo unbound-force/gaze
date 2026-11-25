@@ -75,6 +75,45 @@ on:
         required: false
         default: "1.25"
         type: string
+      # External-analyzer mode (opt-in): a non-empty `analyzer` input
+      # selects it. While `analyzer` is empty, every input below is
+      # inert and the workflow behaves exactly as before this change
+      # (Go mode).
+      analyzer:
+        description: "External analyzer for gaze report (e.g. gaze-analyzer-typescript). Non-empty selects analyzer mode; empty (default) keeps Go mode with --coverprofile."
+        required: false
+        default: ""
+        type: string
+      language:
+        description: "Language passed to gaze report as --language when non-empty in analyzer mode. Setting language alone does not select the mode; callers must also set analyzer."
+        required: false
+        default: ""
+        type: string
+      packages:
+        description: "Package pattern(s) for the gaze report invocation in analyzer mode, in place of the hard-coded ./... pattern. The default matches today's Go invocation."
+        required: false
+        default: "./..."
+        type: string
+      setup:
+        description: "Caller-provided shell script evaluated in the report step's shell before gaze report runs (e.g. to install the analyzer onto PATH). Reaches the shell only through an env binding, never interpolated into script text."
+        required: false
+        default: ""
+        type: string
+      node-version:
+        description: "Node.js version for the setup-node step; empty (default) skips the step."
+        required: false
+        default: ""
+        type: string
+      python-version:
+        description: "Python version for the setup-python step; empty (default) skips the step."
+        required: false
+        default: ""
+        type: string
+      coverage-path:
+        description: "In analyzer mode, path inside the downloaded coverage artifact to existence-check (file or directory); empty (default) omits the check. Go mode keeps the coverprofile file check."
+        required: false
+        default: ""
+        type: string
     secrets:
       opencode-config:
         description: "Full strict-JSON opencode config (provider, model, permissions, literal API key); exported verbatim as OPENCODE_CONFIG_CONTENT."
@@ -151,6 +190,9 @@ jobs:
           MAX_CRAPLOAD: ${{ inputs.max-crapload }}
           MAX_GAZE_CRAPLOAD: ${{ inputs.max-gaze-crapload }}
           MIN_CONTRACT_COVERAGE: ${{ inputs.min-contract-coverage }}
+          GAZE_ANALYZER: ${{ inputs.analyzer }}
+          GAZE_LANGUAGE: ${{ inputs.language }}
+          GAZE_PACKAGES: ${{ inputs.packages }}
         run: |
           unset GITHUB_TOKEN GH_TOKEN
           MODEL_ARG=""
@@ -172,11 +214,38 @@ jobs:
           if [ -n "$MIN_CONTRACT_COVERAGE" ]; then
             THRESHOLDS="$THRESHOLDS --min-contract-coverage=$MIN_CONTRACT_COVERAGE"
           fi
-          gaze report ./... \
-            --ai=opencode \
-            $MODEL_ARG \
-            --coverprofile="$COVERPROFILE" \
-            $THRESHOLDS
+          # Mode gate (CW-FR-101, design D1): a non-empty `analyzer`
+          # input selects analyzer mode — `--analyzer`, `--language`
+          # when non-empty, and the `packages` pattern, each consumed
+          # through its `env:` binding as a quoted POSIX variable —
+          # and omits `--coverprofile` (the analyzer reads its own
+          # coverage format from the workspace). An empty `analyzer`
+          # keeps the Go-mode command exactly as before this change.
+          # POSIX sh has no arrays, so the optional --language flag
+          # uses a nested branch instead of an unquoted accumulator
+          # expansion.
+          if [ -n "$GAZE_ANALYZER" ]; then
+            if [ -n "$GAZE_LANGUAGE" ]; then
+              gaze report "$GAZE_PACKAGES" \
+                --ai=opencode \
+                --analyzer="$GAZE_ANALYZER" \
+                --language="$GAZE_LANGUAGE" \
+                $MODEL_ARG \
+                $THRESHOLDS
+            else
+              gaze report "$GAZE_PACKAGES" \
+                --ai=opencode \
+                --analyzer="$GAZE_ANALYZER" \
+                $MODEL_ARG \
+                $THRESHOLDS
+            fi
+          else
+            gaze report ./... \
+              --ai=opencode \
+              $MODEL_ARG \
+              --coverprofile="$COVERPROFILE" \
+              $THRESHOLDS
+          fi
 
       - name: Report skipped
         if: env.HAS_OPENCODE_CONFIG != 'true'
