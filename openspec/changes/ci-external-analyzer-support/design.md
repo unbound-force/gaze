@@ -117,7 +117,7 @@ Similarly, if `package.json` absent but `pyproject.toml` exists, `ciVariant = "p
 
 If none of the three markers exist, `ci.skipped = true` and existing skip warning prints (preserving current warning for unrecognized repos).
 
-Design trade-off: Node/Python templates still need `gazeVersion` for the `uses:` pin. `goVersion` is Go-variant only; Node/Python variants have their own toolchain version placeholders. We can introduce `nodeVersion` and `pythonVersion` fields on `ciContext` or derive them from marker files. For v1, use static defaults: `nodeVersion = "20"`, `pythonVersion = "3.12"` (common LTS), with no file parsing — user edits if needed.
+Design trade-off: Node/Python templates still need `gazeVersion` for the `uses:` pin. `goVersion` is Go-variant only; Node/Python variants have their own toolchain version placeholders. We can introduce `nodeVersion` and `pythonVersion` fields on `ciContext` or derive them from marker files. For v1, use static defaults: `nodeVersion = "24"`, `pythonVersion = "3.12"` (current LTS), with no file parsing — user edits if needed.
 
 Rationale: simple, deterministic, no file parsing complexity for Node/Python versions. Go version parsing remains for Go variant only.
 

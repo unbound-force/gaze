@@ -487,6 +487,14 @@ func TestRun_CI_MissingGoMod_SkipsCI(t *testing.T) {
 	if !strings.Contains(output, "Warning: skipping CI scaffolding") {
 		t.Errorf("expected CI-skip warning, got:\n%s", output)
 	}
+	// The skip warning is the only remedy guidance a marker-less repo
+	// gets; pin that it names all three recognized markers (the exact
+	// phrase, since the generic missing-go.mod warning mentions go.mod
+	// independently) so a text refactor cannot regress to Go-only
+	// guidance (Actionable Output).
+	if !strings.Contains(output, "go.mod, package.json, or pyproject.toml") {
+		t.Errorf("CI-skip warning must name all three recognized markers, got:\n%s", output)
+	}
 	if strings.Contains(output, "CI next steps") {
 		t.Errorf("go.mod-skip run must suppress the CI next-steps section, got:\n%s", output)
 	}
@@ -798,7 +806,7 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 		setupUses      string
 		versionInput   string
 		testJobVersion string // quoted string in the test job's with block
-		withVersion    string // unquoted scalar in the report job's with block
+		withVersion    string // quoted string in the report job's with block (the fmt.Sprint comparison is quoting-agnostic)
 		installRun     string
 		testRun        string
 		stageRun       string // coverage staging step; empty = no staging step
@@ -1093,7 +1101,7 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 		for _, want := range []string{
 			"analyzer: gaze-analyzer-typescript",
 			"packages: ./src/...",
-			"node-version: 24",
+			"node-version: \"24\"",
 			"setup: npm ci && npm run build && npm link",
 			"cp -r coverage .gaze-artifact/",
 			"reusable_gaze_ai_report.yml@v2.4.0",
@@ -1120,8 +1128,17 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 		writeMarker(t, dir, "pyproject.toml", "[project]\nname = \"demo\"\n")
 
 		var buf bytes.Buffer
-		if _, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf}); err != nil {
+		result, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf})
+		if err != nil {
 			t.Fatalf("Run() returned error: %v", err)
+		}
+		// Same reporting contract as the node subtest: ten created
+		// files with the workflow among them.
+		if len(result.Created) != 10 {
+			t.Fatalf("expected 10 created files (9 .opencode/ + workflow), got %d: %v", len(result.Created), result.Created)
+		}
+		if !containsString(result.Created, ciWorkflowPath) {
+			t.Errorf("expected %s in Created, got: %v", ciWorkflowPath, result.Created)
 		}
 
 		content, err := os.ReadFile(ciWorkflowDiskPath(dir))
@@ -1131,7 +1148,7 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 		s := string(content)
 		for _, want := range []string{
 			"analyzer: gaze-analyzer-python",
-			"python-version: 3.12",
+			"python-version: \"3.12\"",
 			"setup: pip install -e .",
 			"pytest --cov",
 		} {
@@ -1153,8 +1170,17 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 		writeMarker(t, dir, "package.json", "{\"name\":\"demo\"}\n")
 
 		var buf bytes.Buffer
-		if _, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf}); err != nil {
+		result, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf})
+		if err != nil {
 			t.Fatalf("Run() returned error: %v", err)
+		}
+		// Same reporting contract as the other variants: ten created
+		// files with the workflow among them.
+		if len(result.Created) != 10 {
+			t.Fatalf("expected 10 created files (9 .opencode/ + workflow), got %d: %v", len(result.Created), result.Created)
+		}
+		if !containsString(result.Created, ciWorkflowPath) {
+			t.Errorf("expected %s in Created, got: %v", ciWorkflowPath, result.Created)
 		}
 
 		content, err := os.ReadFile(ciWorkflowDiskPath(dir))

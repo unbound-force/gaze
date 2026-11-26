@@ -64,6 +64,13 @@ jobs:
         with:
           name: coverage-out
           path: .gaze-artifact
+          # The staging step above guards a missing coverage/ dir, but
+          # mkdir -p still creates .gaze-artifact when coverage/ exists
+          # yet is empty, so the upload itself must fail loudly too —
+          # the default `warn` would defer the failure to the report
+          # job's download step, where the error no longer names the
+          # cause.
+          if-no-files-found: error
 
   gaze-ai-report:
     needs: test
@@ -78,7 +85,11 @@ jobs:
       gaze-version: v2.4.0
       analyzer: gaze-analyzer-typescript
       packages: ./src/...
-      node-version: 24
+      # Quoted on purpose: the workflow_call input is type string, and
+      # an unquoted numeric version would be a YAML integer (or, for
+      # x.10 values, a truncated float) that GitHub must coerce — and
+      # a hand edit like 3.10 silently becomes 3.1.
+      node-version: "24"
       # The report job runs on its own runner and does NOT inherit the
       # test job's installed packages: the analyzer binary must be
       # installed there before `gaze report` can spawn it. This default
