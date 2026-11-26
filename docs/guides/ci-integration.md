@@ -161,7 +161,7 @@ That gives CI two useful properties:
 to stderr — so a project-customized agent cannot change CI output.
 
 The [Reusable Workflow](#reusable-workflow) has this behavior from v2.4.0, the
-first release that contains it. Its `gaze-version` default is `v2.5.0`. A
+first release that contains it. Its `gaze-version` default is `v2.6.0`. A
 caller that pins `uses:` below `@v2.4.0`, or passes an older `gaze-version`,
 installs a binary whose adapter output is not validated. (Gaze's own CI
 dogfoods the reusable workflow with `build-from-source: true`, so it always
@@ -190,7 +190,7 @@ thresholds.
 | `max-gaze-crapload` | number | no | — | Fail when the GazeCRAPload exceeds this value. |
 | `min-contract-coverage` | number | no | — | Fail when average contract coverage falls below this percentage. |
 | `opencode-version` | string | no | `1.19.0` | opencode-ai npm version to install. |
-| `gaze-version` | string | no | `v2.5.0` | gaze release tag to install. Ignored when `build-from-source` is `true`. |
+| `gaze-version` | string | no | `v2.6.0` | gaze release tag to install. Ignored when `build-from-source` is `true`. |
 | `build-from-source` | boolean | no | `false` | Build gaze from the checked-out tree instead of installing `gaze-version`. Intended only for the gaze repository's own dogfood job; fails unless the checked-out module is `github.com/unbound-force/gaze/v2`. |
 | `go-version` | string | no | `1.25` | Go toolchain version for the report job. |
 
@@ -352,10 +352,10 @@ jobs:
     needs: test
     permissions:
       contents: read
-    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.5.0
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.6.0
     with:
       coverage-artifact: coverage-out
-      gaze-version: v2.5.0
+      gaze-version: v2.6.0
       max-crapload: 38
       max-gaze-crapload: 6
       min-contract-coverage: 8
