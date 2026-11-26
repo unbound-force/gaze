@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -158,13 +159,20 @@ func TestReadGoModVersion_MissingFileFallsBack(t *testing.T) {
 // TestRenderCIWorkflowTemplate_GoldenFile verifies the rendered
 // workflow matches the committed golden file byte-for-byte with both
 // placeholders substituted and none remaining (task 3.2, design D9).
+// It renders through renderCIWorkflowTemplateForVariant — the same
+// seam the write path uses for every variant, Go included — so the
+// golden guards the production renderer rather than a test-only twin.
 func TestRenderCIWorkflowTemplate_GoldenFile(t *testing.T) {
 	template, err := assets.ReadFile(ciWorkflowTemplatePath)
 	if err != nil {
 		t.Fatalf("reading embedded CI workflow template: %v", err)
 	}
 
-	rendered := renderCIWorkflowTemplate(template, goldenGazeVersion, goldenGoVersion)
+	rendered := renderCIWorkflowTemplateForVariant(template, ciContext{
+		gazeVersion: goldenGazeVersion,
+		goVersion:   goldenGoVersion,
+		variant:     ciVariantGo,
+	})
 
 	golden, err := os.ReadFile(filepath.Join("testdata", "golden-gaze-ai-report.yml"))
 	if err != nil {
@@ -174,11 +182,7 @@ func TestRenderCIWorkflowTemplate_GoldenFile(t *testing.T) {
 		t.Errorf("rendered workflow does not match golden file.\nRun: go run ./cmd/gaze init --ci # in a temp module, or regenerate the golden from the template\n--- rendered ---\n%s\n--- golden ---\n%s", rendered, golden)
 	}
 
-	for _, placeholder := range []string{gazeVersionPlaceholder, goVersionPlaceholder} {
-		if strings.Contains(string(rendered), placeholder) {
-			t.Errorf("rendered workflow still contains placeholder %s", placeholder)
-		}
-	}
+	assertNoPlaceholders(t, string(rendered))
 }
 
 // TestRenderCIWorkflowTemplate_YAMLStructure verifies the rendered
@@ -192,7 +196,11 @@ func TestRenderCIWorkflowTemplate_YAMLStructure(t *testing.T) {
 		t.Fatalf("reading embedded CI workflow template: %v", err)
 	}
 
-	rendered := string(renderCIWorkflowTemplate(template, goldenGazeVersion, goldenGoVersion))
+	rendered := string(renderCIWorkflowTemplateForVariant(template, ciContext{
+		gazeVersion: goldenGazeVersion,
+		goVersion:   goldenGoVersion,
+		variant:     ciVariantGo,
+	}))
 
 	var doc map[string]any
 	if err := yaml.Unmarshal([]byte(rendered), &doc); err != nil {
@@ -720,11 +728,7 @@ func TestRenderCIWorkflowTemplate_NodeGoldenFile(t *testing.T) {
 	rendered := renderVariantTemplate(t, ciWorkflowNodeTemplatePath,
 		filepath.Join("testdata", "golden-gaze-ai-report-node.yml"),
 		ciContext{gazeVersion: goldenGazeVersion, nodeVersion: defaultNodeVersion, variant: ciVariantNode})
-	for _, placeholder := range []string{gazeVersionPlaceholder, nodeVersionPlaceholder} {
-		if strings.Contains(rendered, placeholder) {
-			t.Errorf("rendered Node workflow still contains placeholder %s", placeholder)
-		}
-	}
+	assertNoPlaceholders(t, rendered)
 }
 
 // TestRenderCIWorkflowTemplate_PythonGoldenFile verifies the rendered
@@ -735,10 +739,24 @@ func TestRenderCIWorkflowTemplate_PythonGoldenFile(t *testing.T) {
 	rendered := renderVariantTemplate(t, ciWorkflowPythonTemplatePath,
 		filepath.Join("testdata", "golden-gaze-ai-report-python.yml"),
 		ciContext{gazeVersion: goldenGazeVersion, pythonVersion: defaultPythonVersion, variant: ciVariantPython})
-	for _, placeholder := range []string{gazeVersionPlaceholder, pythonVersionPlaceholder} {
-		if strings.Contains(rendered, placeholder) {
-			t.Errorf("rendered Python workflow still contains placeholder %s", placeholder)
-		}
+	assertNoPlaceholders(t, rendered)
+}
+
+// placeholderResidueRe matches any remaining template placeholder
+// token regardless of variant. The renderer substitutes every
+// variant's placeholders, so a cross-variant placeholder (e.g.
+// __GO_VERSION__ copy-pasted into the Node template) substitutes to
+// the ciContext value — empty in the golden fixtures — and would
+// vanish silently; a generic dunder-token scan catches it where the
+// per-variant lists the golden tests previously enumerated could not.
+var placeholderResidueRe = regexp.MustCompile(`__[A-Z][A-Z0-9_]*__`)
+
+// assertNoPlaceholders fails when a rendered workflow still contains
+// any placeholder token.
+func assertNoPlaceholders(t *testing.T, rendered string) {
+	t.Helper()
+	if residue := placeholderResidueRe.FindString(rendered); residue != "" {
+		t.Errorf("rendered workflow still contains placeholder %s", residue)
 	}
 }
 
@@ -796,8 +814,8 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 			setupStep:      "Set up Node",
 			setupUses:      "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
 			versionInput:   "node-version",
-			testJobVersion: "20",
-			withVersion:    "20",
+			testJobVersion: "24",
+			withVersion:    "24",
 			installRun:     "npm ci",
 			testRun:        "npm test -- --coverage",
 			stageRun:       "mkdir -p .gaze-artifact && cp -r coverage .gaze-artifact/",
@@ -1075,7 +1093,7 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 		for _, want := range []string{
 			"analyzer: gaze-analyzer-typescript",
 			"packages: ./src/...",
-			"node-version: 20",
+			"node-version: 24",
 			"setup: npm ci && npm run build && npm link",
 			"cp -r coverage .gaze-artifact/",
 			"reusable_gaze_ai_report.yml@v2.4.0",

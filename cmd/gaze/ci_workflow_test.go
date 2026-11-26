@@ -897,6 +897,26 @@ func reusableStep(t *testing.T, wf reusableWorkflow, name string) ciStep {
 	return ciStep{}
 }
 
+// reusableStepIndex returns the position of the named step within the
+// gaze-ai-report job's steps list, failing when absent. Resolving
+// steps by name alone cannot detect a reorder, and this job's order
+// is load-bearing (see the ordering assertions at the end of
+// TestCIWorkflow_ReusableExternalAnalyzerInputs).
+func reusableStepIndex(t *testing.T, wf reusableWorkflow, name string) int {
+	t.Helper()
+	job, ok := wf.Jobs["gaze-ai-report"]
+	if !ok {
+		t.Fatal("reusable workflow must contain the gaze-ai-report job")
+	}
+	for i, step := range job.Steps {
+		if step.Name == name {
+			return i
+		}
+	}
+	t.Fatalf("reusable workflow gaze-ai-report job must contain a step named %q", name)
+	return -1
+}
+
 // setupActionPinRe pins the toolchain setup actions to full commit
 // SHAs, format-pinned rather than value-pinned so Dependabot's
 // actions group can bump them (the checkoutPinRe precedent).
@@ -994,6 +1014,9 @@ func TestCIWorkflow_ReusableExternalAnalyzerInputs(t *testing.T) {
 	if !setupActionPinRe.MatchString(python.Uses) {
 		t.Errorf("Set up Python uses = %q, want a full-SHA actions/setup-python pin", python.Uses)
 	}
+	if got, _ := python.With["python-version"].(string); got != "${{ inputs.python-version }}" {
+		t.Errorf("Set up Python with.python-version = %q, want ${{ inputs.python-version }}", got)
+	}
 
 	// The download step's id backs the skipped-report arrival check,
 	// which reads its conclusion.
@@ -1060,5 +1083,33 @@ func TestCIWorkflow_ReusableExternalAnalyzerInputs(t *testing.T) {
 		if !strings.Contains(skipped.Run, want) {
 			t.Errorf("Report skipped must contain %q, got:\n%s", want, skipped.Run)
 		}
+	}
+
+	// Step order is load-bearing in this job and per-step content
+	// assertions cannot detect a reorder: the toolchain steps must
+	// precede Setup analyzer (the caller's setup snippet may invoke
+	// npm/pip), the analyzer must be installed before the report step
+	// spawns it, the coverage artifact must be downloaded before
+	// either report step reads it (Report skipped reads
+	// steps.download.conclusion), and the report must precede its
+	// skipped fallback. The gate-order precedent is
+	// release_workflow_test.go.
+	nodeIdx := reusableStepIndex(t, wf, "Set up Node")
+	pythonIdx := reusableStepIndex(t, wf, "Set up Python")
+	setupIdx := reusableStepIndex(t, wf, "Setup analyzer")
+	downloadIdx := reusableStepIndex(t, wf, "Download coverage")
+	reportIdx := reusableStepIndex(t, wf, "Run gaze AI report")
+	skippedIdx := reusableStepIndex(t, wf, "Report skipped")
+	if nodeIdx >= setupIdx || pythonIdx >= setupIdx {
+		t.Errorf("toolchain steps (Node %d, Python %d) must precede Setup analyzer (%d)", nodeIdx, pythonIdx, setupIdx)
+	}
+	if setupIdx >= reportIdx {
+		t.Errorf("Setup analyzer (%d) must precede Run gaze AI report (%d)", setupIdx, reportIdx)
+	}
+	if downloadIdx >= reportIdx || downloadIdx >= skippedIdx {
+		t.Errorf("Download coverage (%d) must precede the report steps (report %d, skipped %d)", downloadIdx, reportIdx, skippedIdx)
+	}
+	if reportIdx >= skippedIdx {
+		t.Errorf("Run gaze AI report (%d) must precede Report skipped (%d)", reportIdx, skippedIdx)
 	}
 }
