@@ -2,6 +2,7 @@ package scaffold
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,10 @@ import (
 // CI-scaffolding tests for tasks 3.1–3.6 of the init-ci-scaffold
 // change: version resolution, go.mod directive parsing, template
 // rendering (golden + YAML structure), skip-if-present semantics,
-// flag gating, and the CI next-steps section.
+// flag gating, and the CI next-steps section. The
+// ci-external-analyzer-support change adds variant detection and
+// Node/Python caller-workflow tests (detection matrix, golden files,
+// YAML structure, end-to-end scaffolding).
 
 // goldenGazeVersion and goldenGoVersion are the fixed render inputs
 // used by both golden-file tests. They must match the committed
@@ -647,6 +651,411 @@ func TestRun_CI_NextSteps(t *testing.T) {
 		}
 		if strings.Contains(buf.String(), "CI next steps") {
 			t.Errorf("go.mod-skip run must not print CI next steps, got:\n%s", buf.String())
+		}
+	})
+}
+
+// renderVariantTemplate loads and renders one variant caller workflow
+// and asserts it matches the committed golden file byte-for-byte. The
+// toolchain versions deliberately render from the
+// default{Node,Python}Version constants rather than local literals:
+// bumping a default must fail the golden comparison and force
+// regenerating the committed golden alongside the documented version
+// instead of silently diverging from it.
+func renderVariantTemplate(t *testing.T, templatePath, goldenPath string, ci ciContext) string {
+	t.Helper()
+	template, err := assets.ReadFile(templatePath)
+	if err != nil {
+		t.Fatalf("reading embedded CI workflow template %s: %v", templatePath, err)
+	}
+	rendered := renderCIWorkflowTemplateForVariant(template, ci)
+	golden, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("reading golden file %s: %v", goldenPath, err)
+	}
+	if !bytes.Equal(rendered, golden) {
+		t.Errorf("rendered workflow does not match golden file %s.\n--- rendered ---\n%s\n--- golden ---\n%s", goldenPath, rendered, golden)
+	}
+	return string(rendered)
+}
+
+// TestDetectCIVariant exercises the variant-detection matrix
+// (ci-external-analyzer-support, design D5): go.mod wins, then
+// package.json, then pyproject.toml; a directory with none of them
+// falls back to the Go variant, whose skip semantics the caller owns.
+func TestDetectCIVariant(t *testing.T) {
+	tests := []struct {
+		name        string
+		files       []string
+		goModAbsent bool
+		want        ciVariant
+	}{
+		{name: "go.mod present", files: []string{"go.mod"}, goModAbsent: false, want: ciVariantGo},
+		{name: "package.json only", files: []string{"package.json"}, goModAbsent: true, want: ciVariantNode},
+		{name: "pyproject.toml only", files: []string{"pyproject.toml"}, goModAbsent: true, want: ciVariantPython},
+		{name: "package.json wins over pyproject.toml", files: []string{"package.json", "pyproject.toml"}, goModAbsent: true, want: ciVariantNode},
+		{name: "no recognized marker defaults to go", files: nil, goModAbsent: true, want: ciVariantGo},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, file := range tt.files {
+				if err := os.WriteFile(filepath.Join(dir, file), []byte("{}\n"), 0o644); err != nil {
+					t.Fatalf("creating %s: %v", file, err)
+				}
+			}
+			if got := detectCIVariant(Options{TargetDir: dir}, tt.goModAbsent); got != tt.want {
+				t.Errorf("detectCIVariant(files=%v, goModAbsent=%v) = %q, want %q", tt.files, tt.goModAbsent, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderCIWorkflowTemplate_NodeGoldenFile verifies the rendered
+// Node caller workflow matches its committed golden file byte-for-byte
+// with all placeholders substituted and none remaining
+// (ci-external-analyzer-support, task 2.4).
+func TestRenderCIWorkflowTemplate_NodeGoldenFile(t *testing.T) {
+	rendered := renderVariantTemplate(t, ciWorkflowNodeTemplatePath,
+		filepath.Join("testdata", "golden-gaze-ai-report-node.yml"),
+		ciContext{gazeVersion: goldenGazeVersion, nodeVersion: defaultNodeVersion, variant: ciVariantNode})
+	for _, placeholder := range []string{gazeVersionPlaceholder, nodeVersionPlaceholder} {
+		if strings.Contains(rendered, placeholder) {
+			t.Errorf("rendered Node workflow still contains placeholder %s", placeholder)
+		}
+	}
+}
+
+// TestRenderCIWorkflowTemplate_PythonGoldenFile verifies the rendered
+// Python caller workflow matches its committed golden file
+// byte-for-byte with all placeholders substituted and none remaining
+// (ci-external-analyzer-support, task 2.4).
+func TestRenderCIWorkflowTemplate_PythonGoldenFile(t *testing.T) {
+	rendered := renderVariantTemplate(t, ciWorkflowPythonTemplatePath,
+		filepath.Join("testdata", "golden-gaze-ai-report-python.yml"),
+		ciContext{gazeVersion: goldenGazeVersion, pythonVersion: defaultPythonVersion, variant: ciVariantPython})
+	for _, placeholder := range []string{gazeVersionPlaceholder, pythonVersionPlaceholder} {
+		if strings.Contains(rendered, placeholder) {
+			t.Errorf("rendered Python workflow still contains placeholder %s", placeholder)
+		}
+	}
+}
+
+// workflowStep returns the named step of a decoded workflow job,
+// failing when absent.
+func workflowStep(t *testing.T, job map[string]any, name string) map[string]any {
+	t.Helper()
+	steps, ok := job["steps"].([]any)
+	if !ok {
+		t.Fatalf("job has no steps list: %v", job)
+	}
+	for _, s := range steps {
+		step, ok := s.(map[string]any)
+		if ok && step["name"] == name {
+			return step
+		}
+	}
+	t.Fatalf("job has no step named %q", name)
+	return nil
+}
+
+// TestRenderCIWorkflowTemplate_VariantYAMLStructure verifies the
+// rendered Node and Python caller workflows parse as YAML and carry
+// the ci-scaffolding spec's structural contract: least-privilege
+// permissions at both levels, CI-012 concurrency, the variant's
+// self-contained test job (toolchain setup pinned to the substituted
+// version, install, coverage run, upload), and the
+// reusable-workflow call passing analyzer, packages, and the variant
+// toolchain input with thresholds commented out. The golden-file
+// comparison rides along through renderVariantTemplate.
+func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
+	tests := []struct {
+		name           string
+		templatePath   string
+		goldenPath     string
+		ci             ciContext
+		analyzer       string
+		setupStep      string
+		setupUses      string
+		versionInput   string
+		testJobVersion string // quoted string in the test job's with block
+		withVersion    string // unquoted scalar in the report job's with block
+		installRun     string
+		testRun        string
+		coveragePath   string
+	}{
+		{
+			name:           "node",
+			templatePath:   ciWorkflowNodeTemplatePath,
+			goldenPath:     filepath.Join("testdata", "golden-gaze-ai-report-node.yml"),
+			ci:             ciContext{gazeVersion: goldenGazeVersion, nodeVersion: defaultNodeVersion, variant: ciVariantNode},
+			analyzer:       "gaze-analyzer-typescript",
+			setupStep:      "Set up Node",
+			setupUses:      "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+			versionInput:   "node-version",
+			testJobVersion: "20",
+			withVersion:    "20",
+			installRun:     "npm ci",
+			testRun:        "npm test -- --coverage",
+			coveragePath:   "coverage",
+		},
+		{
+			name:           "python",
+			templatePath:   ciWorkflowPythonTemplatePath,
+			goldenPath:     filepath.Join("testdata", "golden-gaze-ai-report-python.yml"),
+			ci:             ciContext{gazeVersion: goldenGazeVersion, pythonVersion: defaultPythonVersion, variant: ciVariantPython},
+			analyzer:       "gaze-analyzer-python",
+			setupStep:      "Set up Python",
+			setupUses:      "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+			versionInput:   "python-version",
+			testJobVersion: "3.12",
+			withVersion:    "3.12",
+			installRun:     "pip install -e . && pip install pytest pytest-cov",
+			testRun:        "pytest --cov --cov-report=xml --cov-report=term",
+			coveragePath:   "coverage.xml",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered := renderVariantTemplate(t, tt.templatePath, tt.goldenPath, tt.ci)
+
+			var doc map[string]any
+			if err := yaml.Unmarshal([]byte(rendered), &doc); err != nil {
+				t.Fatalf("rendered %s workflow does not parse as YAML: %v", tt.name, err)
+			}
+
+			if doc["name"] != "Gaze AI Report" {
+				t.Errorf("%s workflow name = %v, want \"Gaze AI Report\"", tt.name, doc["name"])
+			}
+
+			// Workflow-level least privilege.
+			perms, ok := doc["permissions"].(map[string]any)
+			if !ok || perms["contents"] != "read" {
+				t.Errorf("%s workflow-level permissions = %v, want contents: read", tt.name, doc["permissions"])
+			}
+
+			// CI-012 concurrency: superseded PR runs cancel, main runs queue.
+			conc, ok := doc["concurrency"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s concurrency block missing or not a mapping: %v", tt.name, doc["concurrency"])
+			}
+			if conc["group"] != "${{ github.ref }}-${{ github.workflow }}" {
+				t.Errorf("%s concurrency group = %v, unexpected", tt.name, conc["group"])
+			}
+			if conc["cancel-in-progress"] != "${{ github.ref != 'refs/heads/main' }}" {
+				t.Errorf("%s cancel-in-progress = %v, unexpected", tt.name, conc["cancel-in-progress"])
+			}
+
+			jobs, ok := doc["jobs"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s jobs missing or not a mapping: %v", tt.name, doc["jobs"])
+			}
+
+			// Self-contained variant test job.
+			testJob, ok := jobs["test"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s test job missing: %v", tt.name, jobs)
+			}
+			if testJob["runs-on"] != "ubuntu-latest" {
+				t.Errorf("%s test job runs-on = %v, want ubuntu-latest", tt.name, testJob["runs-on"])
+			}
+			if testJob["timeout-minutes"] != 30 {
+				t.Errorf("%s test job timeout-minutes = %v, want 30", tt.name, testJob["timeout-minutes"])
+			}
+			setup := workflowStep(t, testJob, tt.setupStep)
+			if setup["uses"] != tt.setupUses {
+				t.Errorf("%s setup step uses = %v, want %s", tt.name, setup["uses"], tt.setupUses)
+			}
+			setupWith, ok := setup["with"].(map[string]any)
+			if !ok || fmt.Sprint(setupWith[tt.versionInput]) != tt.testJobVersion {
+				t.Errorf("%s setup step with[%s] = %v, want %q", tt.name, tt.versionInput, setup["with"], tt.testJobVersion)
+			}
+			if got := workflowStep(t, testJob, "Install dependencies")["run"]; got != tt.installRun {
+				t.Errorf("%s install step run = %v, want %q", tt.name, got, tt.installRun)
+			}
+			if got := workflowStep(t, testJob, "Test with coverage")["run"]; got != tt.testRun {
+				t.Errorf("%s test step run = %v, want %q", tt.name, got, tt.testRun)
+			}
+			upload := workflowStep(t, testJob, "Upload coverage")
+			uploadWith, ok := upload["with"].(map[string]any)
+			if !ok || uploadWith["name"] != "coverage-out" || uploadWith["path"] != tt.coveragePath {
+				t.Errorf("%s upload step with = %v, want name coverage-out and path %s", tt.name, upload["with"], tt.coveragePath)
+			}
+
+			// The reusable-workflow caller job.
+			report, ok := jobs["gaze-ai-report"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s gaze-ai-report job missing: %v", tt.name, jobs)
+			}
+			if report["needs"] != "test" {
+				t.Errorf("%s gaze-ai-report needs = %v, want test", tt.name, report["needs"])
+			}
+			rperms, ok := report["permissions"].(map[string]any)
+			if !ok || rperms["contents"] != "read" {
+				t.Errorf("%s gaze-ai-report job-level permissions = %v, want contents: read", tt.name, report["permissions"])
+			}
+			wantUses := "unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@" + goldenGazeVersion
+			if report["uses"] != wantUses {
+				t.Errorf("%s gaze-ai-report uses = %v, want %v", tt.name, report["uses"], wantUses)
+			}
+
+			with, ok := report["with"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s gaze-ai-report with block missing: %v", tt.name, report["with"])
+			}
+			if len(with) != 5 {
+				t.Errorf("%s gaze-ai-report with block has %d inputs, want exactly 5 (thresholds stay commented out): %v", tt.name, len(with), with)
+			}
+			wantWith := map[string]string{
+				"coverage-artifact": "coverage-out",
+				"gaze-version":      goldenGazeVersion,
+				"analyzer":          tt.analyzer,
+				"packages":          "./src/...",
+				tt.versionInput:     tt.withVersion,
+			}
+			for key, want := range wantWith {
+				if got := fmt.Sprint(with[key]); got != want {
+					t.Errorf("%s gaze-ai-report with[%s] = %q, want %q", tt.name, key, got, want)
+				}
+			}
+			secrets, ok := report["secrets"].(map[string]any)
+			if !ok || secrets["opencode-config"] != "${{ secrets.OPENCODE_CONFIG_CONTENT }}" {
+				t.Errorf("%s secrets = %v, want opencode-config from OPENCODE_CONFIG_CONTENT", tt.name, report["secrets"])
+			}
+
+			// Raw-text contract: SHA-pinned actions and the comment-only
+			// threshold lines, mirroring the Go caller workflow — plus
+			// variant isolation from setup-go.
+			rawChecks := []string{
+				"actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+				"actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+				"# max-crapload: <N>",
+				"# max-gaze-crapload: <N>",
+				"# min-contract-coverage: <N>",
+			}
+			for _, want := range rawChecks {
+				if !strings.Contains(rendered, want) {
+					t.Errorf("%s rendered workflow missing %q", tt.name, want)
+				}
+			}
+			if strings.Contains(rendered, "actions/setup-go") {
+				t.Errorf("%s rendered workflow must not use setup-go", tt.name)
+			}
+		})
+	}
+}
+
+// TestRun_CI_VariantScaffolding verifies end-to-end variant
+// scaffolding (ci-external-analyzer-support): a package.json-only
+// directory gets the Node caller workflow and the analyzer-aware CI
+// next steps, a pyproject.toml-only directory gets the Python caller,
+// and a directory carrying both go.mod and package.json scaffolds the
+// Go workflow — go.mod keeps precedence.
+func TestRun_CI_VariantScaffolding(t *testing.T) {
+	writeMarker := func(t *testing.T, dir, name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("creating %s: %v", name, err)
+		}
+	}
+
+	t.Run("node project scaffolds the node workflow", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMarker(t, dir, "package.json", "{\"name\":\"demo\"}\n")
+
+		var buf bytes.Buffer
+		result, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf})
+		if err != nil {
+			t.Fatalf("Run() returned error: %v", err)
+		}
+		if len(result.Created) != 10 {
+			t.Fatalf("expected 10 created files (9 .opencode/ + workflow), got %d: %v", len(result.Created), result.Created)
+		}
+		if !containsString(result.Created, ciWorkflowPath) {
+			t.Errorf("expected %s in Created, got: %v", ciWorkflowPath, result.Created)
+		}
+
+		content, err := os.ReadFile(ciWorkflowDiskPath(dir))
+		if err != nil {
+			t.Fatalf("reading generated workflow: %v", err)
+		}
+		s := string(content)
+		for _, want := range []string{
+			"analyzer: gaze-analyzer-typescript",
+			"packages: ./src/...",
+			"node-version: 20",
+			"reusable_gaze_ai_report.yml@v2.4.0",
+		} {
+			if !strings.Contains(s, want) {
+				t.Errorf("node workflow missing %q:\n%s", want, s)
+			}
+		}
+		if strings.Contains(s, "actions/setup-go") {
+			t.Error("node workflow must not use setup-go")
+		}
+
+		output := buf.String()
+		if strings.Contains(output, "Warning: skipping CI scaffolding") {
+			t.Errorf("node project must not print the CI-skip warning, got:\n%s", output)
+		}
+		if !strings.Contains(output, "gaze report ./src/... --analyzer=gaze-analyzer-typescript --format=json") {
+			t.Errorf("CI next steps must carry the analyzer report command, got:\n%s", output)
+		}
+	})
+
+	t.Run("python project scaffolds the python workflow", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMarker(t, dir, "pyproject.toml", "[project]\nname = \"demo\"\n")
+
+		var buf bytes.Buffer
+		if _, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf}); err != nil {
+			t.Fatalf("Run() returned error: %v", err)
+		}
+
+		content, err := os.ReadFile(ciWorkflowDiskPath(dir))
+		if err != nil {
+			t.Fatalf("reading generated workflow: %v", err)
+		}
+		s := string(content)
+		for _, want := range []string{
+			"analyzer: gaze-analyzer-python",
+			"python-version: 3.12",
+			"pytest --cov",
+		} {
+			if !strings.Contains(s, want) {
+				t.Errorf("python workflow missing %q:\n%s", want, s)
+			}
+		}
+		if strings.Contains(s, "actions/setup-go") || strings.Contains(s, "gaze-analyzer-typescript") {
+			t.Error("python workflow must not reference setup-go or the TypeScript analyzer")
+		}
+		if output := buf.String(); !strings.Contains(output, "gaze report ./src/... --analyzer=gaze-analyzer-python --format=json") {
+			t.Errorf("CI next steps must carry the analyzer report command, got:\n%s", output)
+		}
+	})
+
+	t.Run("go.mod wins over package.json", func(t *testing.T) {
+		dir := t.TempDir()
+		writeGoMod(t, dir, "go 1.24")
+		writeMarker(t, dir, "package.json", "{\"name\":\"demo\"}\n")
+
+		var buf bytes.Buffer
+		if _, err := Run(Options{TargetDir: dir, Version: "v2.4.0", CI: true, Stdout: &buf}); err != nil {
+			t.Fatalf("Run() returned error: %v", err)
+		}
+
+		content, err := os.ReadFile(ciWorkflowDiskPath(dir))
+		if err != nil {
+			t.Fatalf("reading generated workflow: %v", err)
+		}
+		s := string(content)
+		if !strings.Contains(s, "actions/setup-go") || !strings.Contains(s, "go-version: \"1.24\"") {
+			t.Errorf("go.mod must win: workflow missing setup-go with go-version \"1.24\":\n%s", s)
+		}
+		if strings.Contains(s, "analyzer:") {
+			t.Errorf("go workflow must not pass an analyzer input:\n%s", s)
 		}
 	})
 }

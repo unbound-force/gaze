@@ -193,6 +193,12 @@ thresholds.
 | `gaze-version` | string | no | `v2.5.0` | gaze release tag to install. Ignored when `build-from-source` is `true`. |
 | `build-from-source` | boolean | no | `false` | Build gaze from the checked-out tree instead of installing `gaze-version`. Intended only for the gaze repository's own dogfood job; fails unless the checked-out module is `github.com/unbound-force/gaze/v2`. |
 | `go-version` | string | no | `1.25` | Go toolchain version for the report job. |
+| `analyzer` | string | no | `""` | External analyzer binary (e.g. `gaze-analyzer-typescript`, `gaze-analyzer-python`). When set, the report runs `gaze report <packages> --analyzer=<analyzer>` and `coverprofile` is omitted — the analyzer reads coverage from the artifact contents. |
+| `language` | string | no | `""` | Language override passed as `--language` when non-empty. |
+| `packages` | string | no | `./...` | Package pattern to analyze (e.g. `./src/...` to exclude scaffolded `.opencode/` code). Replaces the hard-coded `./...` positional argument. |
+| `setup` | string | no | `""` | Optional shell snippet run before the report to install/link the analyzer (e.g. `npm ci && npm run build && npm link`). |
+| `node-version` | string | no | `""` | Node.js version for `setup-node` (e.g. `20`). When empty, the step is skipped. |
+| `python-version` | string | no | `""` | Python version for `setup-python` (e.g. `3.12`). When empty, the step is skipped. |
 
 Secret `opencode-config` (optional): the consumer's entire strict-JSON
 opencode configuration — provider, model, permissions, and the literal API
@@ -303,16 +309,20 @@ you:
 gaze init --ci
 ```
 
-In a Go module rooted at the repository root, this writes
+In a repository with a recognized project marker at the root, this writes
 `.github/workflows/gaze-ai-report.yml` — a self-contained caller that owns
-its own `test` job (checkout → setup-go → `go test -race -count=1 -short
--coverprofile=coverage.out ./...` → upload-artifact) and calls the reusable
-workflow with the coverage artifact and the `OPENCODE_CONFIG_CONTENT`
-secret. The `uses:` pin is resolved from the running gaze binary's version
+its own `test` job and calls the reusable workflow with the coverage
+artifact and the `OPENCODE_CONFIG_CONTENT` secret:
+
+* **Go** (`go.mod` present): checkout → `setup-go` (version from `go` directive) → `go test -race -count=1 -short -coverprofile=coverage.out ./...` → upload `coverage.out`
+* **Node** (`package.json` present, no `go.mod`): checkout → `setup-node` (20) → `npm ci` → `npm test -- --coverage` → upload `coverage/`; caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 20`
+* **Python** (`pyproject.toml` present, no `go.mod`/`package.json`): checkout → `setup-python` (3.12) → `pip install -e . && pip install pytest pytest-cov` → `pytest --cov` → upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: 3.12`
+
+The `uses:` pin is resolved from the running gaze binary's version
 and validated (`>= v2.3.0`); dev builds fail closed rather than writing an
 unusable pin, and `--gaze-version` overrides the pin with the same
-validation. The `setup-go` version is read from the module's `go`
-directive. When no `go.mod` exists at the repository root, CI scaffolding
+validation. For Go, the `setup-go` version is read from the module's `go`
+directive. When no recognized marker (`go.mod`, `package.json`, `pyproject.toml`) exists at the repository root, CI scaffolding
 is skipped with a warning and only the `.opencode/` scaffolding runs.
 
 Two ownership notes:
@@ -388,12 +398,30 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 ```
 
+### External analyzers (TypeScript, Python)
+
+Consumers using an external analyzer (e.g. [reading-stone](https://github.com/zero-dot-force/reading-stone) for TypeScript, [snake-eyes](https://github.com/unbound-force/snake-eyes) for Python) pass `analyzer` and `packages` so the report runs without Go-native `coverprofile`:
+
+```yaml
+  gaze-ai-report:
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.5.0
+    with:
+      coverage-artifact: coverage-out
+      analyzer: gaze-analyzer-typescript
+      packages: ./src/...
+      node-version: 20
+    secrets:
+      opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
+```
+
+In analyzer mode the reusable workflow skips `--coverprofile` — the analyzer reads coverage data from its own artifact layout (e.g. `coverage/` or `coverage.xml`) — and the skipped-report validation only checks that the `download-artifact` step succeeded. `gaze init --ci` scaffolds the Node/Python caller automatically when `go.mod` is absent but `package.json` or `pyproject.toml` is present.
+
 ### Requirements and limitations
 
 - The calling job must grant at least `contents: read` — a called
   workflow can only downgrade permissions, never elevate them.
-- The workflow analyzes `./...` from the repository root: the caller
-  must be a Go module rooted at the repo root.
+- The Go workflow analyzes `./...` from the repository root: the caller
+  must be a Go module rooted at the repo root. External-analyzer callers analyze the configured `packages` pattern (e.g. `./src/...`).
 - Providers that authenticate via the GitHub token (for example GitHub
   Models) cannot work — the report step unsets `GITHUB_TOKEN` and
   `GH_TOKEN` before invoking the AI CLI.

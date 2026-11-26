@@ -315,6 +315,25 @@ func resolveCIPin(opts Options) (string, error) {
 // reusable workflow would have chosen for itself (design D5).
 const defaultGoVersion = "1.25"
 
+// defaultNodeVersion is the Node.js version substituted into the
+// generated CI workflow for Node projects (when package.json is
+// present and go.mod is absent). It matches a current LTS release.
+const defaultNodeVersion = "20"
+
+// defaultPythonVersion is the Python version substituted into the
+// generated CI workflow for Python projects (when pyproject.toml is
+// present and go.mod/package.json are absent).
+const defaultPythonVersion = "3.12"
+
+// ciVariant identifies which CI workflow template to render.
+type ciVariant string
+
+const (
+	ciVariantGo     ciVariant = "go"
+	ciVariantNode   ciVariant = "node"
+	ciVariantPython ciVariant = "python"
+)
+
 // goDirectivePattern is the grammar every Go version substituted into
 // the generated CI workflow must match: major[.minor[.patch]] with an
 // optional pre-release suffix (e.g. 1.25, 1.24, 1.25.0, 1.25.0-rc1)
@@ -390,11 +409,20 @@ type ciContext struct {
 	// directive was absent, unreadable, or invalid.
 	goVersion string
 
+	// nodeVersion is the Node.js version for Node projects.
+	nodeVersion string
+
+	// pythonVersion is the Python version for Python projects.
+	pythonVersion string
+
+	// variant identifies which CI workflow template to render.
+	variant ciVariant
+
 	// skipped is true when CI scaffolding was requested but skipped
-	// because the target has no go.mod at the repository root (design
-	// D6). The skip is non-fatal — the .opencode/ scaffolding
-	// proceeds — and suppresses the CI write path and the next-steps
-	// section.
+	// because the target has no recognized project marker at the
+	// repository root (design D6). The skip is non-fatal — the
+	// .opencode/ scaffolding proceeds — and suppresses the CI write
+	// path and the next-steps section.
 	skipped bool
 }
 
@@ -428,30 +456,59 @@ func checkGoMod(opts Options) (path string, absent bool) {
 	return path, false
 }
 
+// detectCIVariant determines which CI workflow template to use based on
+// project markers at the target directory. It checks for go.mod first
+// (Go), then package.json (Node), then pyproject.toml (Python). When
+// none are found, it returns ciVariantGo with skipped semantics handled
+// by the caller.
+func detectCIVariant(opts Options, goModAbsent bool) ciVariant {
+	if !goModAbsent {
+		return ciVariantGo
+	}
+	if _, err := os.Stat(filepath.Join(opts.TargetDir, "package.json")); err == nil {
+		return ciVariantNode
+	}
+	if _, err := os.Stat(filepath.Join(opts.TargetDir, "pyproject.toml")); err == nil {
+		return ciVariantPython
+	}
+	return ciVariantGo
+}
+
 // completeCIContext resolves the remaining CI-scaffolding inputs
 // (designs D5 and D6), gated on opts.CI so plain init output is
 // unchanged; a plain run gets the zero ciContext, and the gazeVersion
-// pin resolved by resolveCIPin is dropped with it. The reusable
-// AI-report workflow analyzes ./... from the repository root, so a
-// missing go.mod skips CI scaffolding with a distinct, non-fatal
-// warning (printCISkipWarning) and the .opencode/ asset walk proceeds
-// unchanged. With a go.mod present, the workflow's Go version is read
-// from its `go` directive via readGoModVersion — validated before
-// substitution, never passed through verbatim — falling back to
-// defaultGoVersion with a warning when the directive is absent,
-// unreadable, or outside the accepted grammar. The resolved context
-// feeds the workflow write path (task 1.4) and the next-steps section
-// (task 1.5).
+// pin resolved by resolveCIPin is dropped with it. For Go projects
+// (go.mod present), the workflow's Go version is read from its `go`
+// directive via readGoModVersion — validated before substitution,
+// never passed through verbatim — falling back to defaultGoVersion
+// with a warning when the directive is absent, unreadable, or outside
+// the accepted grammar. For Node/Python projects (go.mod absent but
+// package.json/pyproject.toml present), the variant-specific toolchain
+// version is set to its default. When no recognized marker exists, CI
+// scaffolding is skipped with a warning. The resolved context feeds the
+// workflow write path (task 1.4) and the next-steps section (task 1.5).
 func completeCIContext(opts Options, goModPath string, goModAbsent bool, gazeVersion string) ciContext {
 	if !opts.CI {
 		return ciContext{}
 	}
 	ci := ciContext{gazeVersion: gazeVersion}
 	if goModAbsent {
+		variant := detectCIVariant(opts, goModAbsent)
+		if variant == ciVariantNode {
+			ci.variant = ciVariantNode
+			ci.nodeVersion = defaultNodeVersion
+			return ci
+		}
+		if variant == ciVariantPython {
+			ci.variant = ciVariantPython
+			ci.pythonVersion = defaultPythonVersion
+			return ci
+		}
 		ci.skipped = true
 		printCISkipWarning(opts.Stdout)
 		return ci
 	}
+	ci.variant = ciVariantGo
 	version, fellBack := readGoModVersion(goModPath)
 	if fellBack {
 		_, _ = fmt.Fprintf(opts.Stdout,
@@ -477,12 +534,16 @@ const ciWorkflowPath = ".github/workflows/gaze-ai-report.yml"
 // (design D8) — the template is consumed by writeCIWorkflow, never
 // mirrored into .opencode/.
 const ciWorkflowTemplatePath = "assets/ci/gaze-ai-report.yml"
+const ciWorkflowNodeTemplatePath = "assets/ci/gaze-ai-report-node.yml"
+const ciWorkflowPythonTemplatePath = "assets/ci/gaze-ai-report-python.yml"
 
 // CI workflow template placeholders (design D9), substituted by
 // renderCIWorkflowTemplate.
 const (
-	gazeVersionPlaceholder = "__GAZE_VERSION__"
-	goVersionPlaceholder   = "__GO_VERSION__"
+	gazeVersionPlaceholder   = "__GAZE_VERSION__"
+	goVersionPlaceholder     = "__GO_VERSION__"
+	nodeVersionPlaceholder   = "__NODE_VERSION__"
+	pythonVersionPlaceholder = "__PYTHON_VERSION__"
 )
 
 // isCIAsset reports whether relPath (relative to the embedded assets
@@ -507,6 +568,30 @@ func renderCIWorkflowTemplate(template []byte, gazeVersion, goVersion string) []
 	rendered := strings.ReplaceAll(string(template), gazeVersionPlaceholder, gazeVersion)
 	rendered = strings.ReplaceAll(rendered, goVersionPlaceholder, goVersion)
 	return []byte(rendered)
+}
+
+// renderCIWorkflowTemplateForVariant substitutes all CI workflow
+// placeholders for the resolved variant. It is the variant-aware
+// counterpart to renderCIWorkflowTemplate used by the write path.
+func renderCIWorkflowTemplateForVariant(template []byte, ci ciContext) []byte {
+	rendered := strings.ReplaceAll(string(template), gazeVersionPlaceholder, ci.gazeVersion)
+	rendered = strings.ReplaceAll(rendered, goVersionPlaceholder, ci.goVersion)
+	rendered = strings.ReplaceAll(rendered, nodeVersionPlaceholder, ci.nodeVersion)
+	rendered = strings.ReplaceAll(rendered, pythonVersionPlaceholder, ci.pythonVersion)
+	return []byte(rendered)
+}
+
+// ciTemplatePathForVariant returns the embedded template path for the
+// given variant.
+func ciTemplatePathForVariant(variant ciVariant) string {
+	switch variant {
+	case ciVariantNode:
+		return ciWorkflowNodeTemplatePath
+	case ciVariantPython:
+		return ciWorkflowPythonTemplatePath
+	default:
+		return ciWorkflowTemplatePath
+	}
 }
 
 // writeCIWorkflow generates the AI-report caller workflow at
@@ -537,11 +622,12 @@ func writeCIWorkflow(opts Options, ci ciContext) (string, error) {
 		return "skipped", nil
 	}
 
-	template, err := assets.ReadFile(ciWorkflowTemplatePath)
+	templatePath := ciTemplatePathForVariant(ci.variant)
+	template, err := assets.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("reading embedded CI workflow template: %w", err)
 	}
-	content := renderCIWorkflowTemplate(template, ci.gazeVersion, ci.goVersion)
+	content := renderCIWorkflowTemplateForVariant(template, ci)
 
 	return writeNewFile(outPath, content, exists, ciWorkflowPath)
 }
@@ -794,7 +880,7 @@ func Run(opts Options) (*Result, error) {
 	// suppressed on the missing-go.mod skip (design D6), because
 	// guidance for a workflow that was never written is not actionable.
 	if opts.CI && !ci.skipped {
-		printCINextSteps(opts.Stdout)
+		printCINextSteps(opts.Stdout, ci)
 	}
 	return result, nil
 }
@@ -889,7 +975,7 @@ func printSummary(w io.Writer, r *Result) {
 // workflow that was never written would not be actionable. The section
 // prints identically whether the workflow was created, skipped as
 // existing, or overwritten with --force — the next steps are the same.
-func printCINextSteps(w io.Writer) {
+func printCINextSteps(w io.Writer, ci ciContext) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "CI next steps for %s:\n", ciWorkflowPath)
 	_, _ = fmt.Fprintln(w)
@@ -912,7 +998,14 @@ func printCINextSteps(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "   uncomment its threshold inputs. Paste this prompt to your AI agent:")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "     Read %s, run\n", ciWorkflowPath)
-	_, _ = fmt.Fprintln(w, "     `gaze report ./... --format=json`, and propose permissive initial")
+	switch ci.variant {
+	case ciVariantNode:
+		_, _ = fmt.Fprintln(w, "     `gaze report ./src/... --analyzer=gaze-analyzer-typescript --format=json`, and propose permissive initial")
+	case ciVariantPython:
+		_, _ = fmt.Fprintln(w, "     `gaze report ./src/... --analyzer=gaze-analyzer-python --format=json`, and propose permissive initial")
+	default:
+		_, _ = fmt.Fprintln(w, "     `gaze report ./... --format=json`, and propose permissive initial")
+	}
 	_, _ = fmt.Fprintln(w, "     max-crapload, max-gaze-crapload, and min-contract-coverage values")
 	_, _ = fmt.Fprintln(w, "     from the summary metrics. Wait for my approval of the final values,")
 	_, _ = fmt.Fprintln(w, "     then uncomment the threshold inputs in the workflow.")

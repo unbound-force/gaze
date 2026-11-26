@@ -121,8 +121,8 @@ you can use /gaze in OpenCode to generate quality reports.
 With --ci, also writes .github/workflows/gaze-ai-report.yml: a
 self-contained starter workflow that runs the test suite with coverage
 and calls gaze's reusable AI-report workflow. CI scaffolding requires
-a Go module at the repository root (the reusable workflow analyzes
-./... from there); when go.mod is absent, CI scaffolding is skipped
+a recognized project marker at the repository root (go.mod, package.json,
+or pyproject.toml); when none is found, CI scaffolding is skipped
 with a warning and the .opencode/ scaffolding proceeds.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
