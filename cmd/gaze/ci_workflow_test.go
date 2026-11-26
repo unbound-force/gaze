@@ -36,12 +36,14 @@ type ciJob struct {
 
 // ciStep decodes only the step fields the wiring contract pins.
 type ciStep struct {
-	Name string            `yaml:"name"`
-	ID   string            `yaml:"id"`
-	Uses string            `yaml:"uses"`
-	With map[string]any    `yaml:"with"`
-	Env  map[string]string `yaml:"env"`
-	Run  string            `yaml:"run"`
+	Name  string            `yaml:"name"`
+	ID    string            `yaml:"id"`
+	Uses  string            `yaml:"uses"`
+	With  map[string]any    `yaml:"with"`
+	Env   map[string]string `yaml:"env"`
+	Run   string            `yaml:"run"`
+	Shell string            `yaml:"shell"`
+	If    string            `yaml:"if"`
 }
 
 // ciNeeds accepts `needs:` in both spellings GitHub Actions allows: a
@@ -837,5 +839,199 @@ func TestCIWorkflow_GitleaksScansLearningsOnlyPRs(t *testing.T) {
 	}
 	if ciOK := wf.Jobs["ci-ok"]; !ciNeedsJob(ciOK, "gitleaks") {
 		t.Errorf("test.yml ci-ok needs = %v, must include gitleaks so a found secret fails CI OK", ciOK.Needs)
+	}
+}
+
+// --- ci-external-analyzer-support: reusable-workflow input contract ---
+
+// reusableInput decodes one workflow_call input's contract fields.
+type reusableInput struct {
+	Type     string `yaml:"type"`
+	Required bool   `yaml:"required"`
+	Default  any    `yaml:"default"`
+}
+
+// reusableWorkflow decodes the workflow_call input surface of the
+// reusable AI-report workflow. The gaze-version default's value is
+// deliberately not pinned here: it is release-gate-managed by
+// .github/scripts/validate-ai-report-default.sh, which forces it to
+// equal the release tag shipping the file.
+type reusableWorkflow struct {
+	On struct {
+		WorkflowCall struct {
+			Inputs map[string]reusableInput `yaml:"inputs"`
+		} `yaml:"workflow_call"`
+	} `yaml:"on"`
+	Jobs map[string]ciJob `yaml:"jobs"`
+}
+
+// loadReusableWorkflow reads and parses the reusable AI-report
+// workflow under .github/workflows.
+func loadReusableWorkflow(t *testing.T) reusableWorkflow {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "reusable_gaze_ai_report.yml"))
+	if err != nil {
+		t.Fatalf("read reusable_gaze_ai_report.yml: %v", err)
+	}
+	var wf reusableWorkflow
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("parse reusable_gaze_ai_report.yml: %v", err)
+	}
+	return wf
+}
+
+// reusableStep returns the named step of the reusable workflow's
+// gaze-ai-report job, failing when absent.
+func reusableStep(t *testing.T, wf reusableWorkflow, name string) ciStep {
+	t.Helper()
+	job, ok := wf.Jobs["gaze-ai-report"]
+	if !ok {
+		t.Fatal("reusable workflow must contain the gaze-ai-report job")
+	}
+	for _, step := range job.Steps {
+		if step.Name == name {
+			return step
+		}
+	}
+	t.Fatalf("reusable workflow gaze-ai-report job must contain a step named %q", name)
+	return ciStep{}
+}
+
+// setupActionPinRe pins the toolchain setup actions to full commit
+// SHAs, format-pinned rather than value-pinned so Dependabot's
+// actions group can bump them (the checkoutPinRe precedent).
+var setupActionPinRe = regexp.MustCompile(`^actions/setup-(node|python)@[0-9a-f]{40}$`)
+
+// TestCIWorkflow_ReusableExternalAnalyzerInputs pins the
+// external-analyzer input contract of the reusable AI-report workflow
+// (ci-external-analyzer-support): the six optional inputs exist with
+// Go-preserving defaults, the pre-existing Go inputs keep their
+// contract, the toolchain setup steps are gated on their inputs, and
+// the report and skipped-report steps branch on analyzer presence.
+func TestCIWorkflow_ReusableExternalAnalyzerInputs(t *testing.T) {
+	wf := loadReusableWorkflow(t)
+	inputs := wf.On.WorkflowCall.Inputs
+
+	// New optional inputs: Go callers that pin the workflow and pass
+	// none of them must observe identical behavior.
+	for name, wantDefault := range map[string]string{
+		"analyzer":       "",
+		"language":       "",
+		"packages":       "./...",
+		"setup":          "",
+		"node-version":   "",
+		"python-version": "",
+	} {
+		input, ok := inputs[name]
+		if !ok {
+			t.Errorf("reusable workflow must declare the %q input", name)
+			continue
+		}
+		if input.Type != "string" {
+			t.Errorf("%s input type = %q, want string", name, input.Type)
+		}
+		if input.Required {
+			t.Errorf("%s input must be optional", name)
+		}
+		if got := fmt.Sprintf("%v", input.Default); got != wantDefault {
+			t.Errorf("%s input default = %q, want %q", name, got, wantDefault)
+		}
+	}
+
+	// Pre-existing Go inputs must keep their contract.
+	goContract := []struct {
+		name         string
+		wantType     string
+		wantRequired bool
+		wantDefault  string
+	}{
+		{name: "coverage-artifact", wantType: "string", wantRequired: true},
+		{name: "coverprofile", wantType: "string", wantDefault: "coverage.out"},
+		{name: "opencode-version", wantType: "string", wantDefault: "1.19.0"},
+		{name: "go-version", wantType: "string", wantDefault: "1.25"},
+		{name: "build-from-source", wantType: "boolean", wantDefault: "false"},
+		{name: "gaze-version", wantType: "string"},
+		{name: "model", wantType: "string"},
+		{name: "max-crapload", wantType: "number"},
+		{name: "max-gaze-crapload", wantType: "number"},
+		{name: "min-contract-coverage", wantType: "number"},
+	}
+	for _, want := range goContract {
+		input, ok := inputs[want.name]
+		if !ok {
+			t.Errorf("reusable workflow must keep the %q input", want.name)
+			continue
+		}
+		if input.Type != want.wantType {
+			t.Errorf("%s input type = %q, want %s", want.name, input.Type, want.wantType)
+		}
+		if input.Required != want.wantRequired {
+			t.Errorf("%s input required = %v, want %v", want.name, input.Required, want.wantRequired)
+		}
+		if want.wantDefault != "" {
+			if got := fmt.Sprintf("%v", input.Default); got != want.wantDefault {
+				t.Errorf("%s input default = %q, want %q", want.name, got, want.wantDefault)
+			}
+		}
+	}
+
+	// Toolchain setup steps are gated on their inputs so Go callers
+	// never pay for them.
+	node := reusableStep(t, wf, "Set up Node")
+	if node.If != "inputs.node-version != ''" {
+		t.Errorf("Set up Node if = %q, want inputs.node-version != ''", node.If)
+	}
+	if !setupActionPinRe.MatchString(node.Uses) {
+		t.Errorf("Set up Node uses = %q, want a full-SHA actions/setup-node pin", node.Uses)
+	}
+	if got, _ := node.With["node-version"].(string); got != "${{ inputs.node-version }}" {
+		t.Errorf("Set up Node with.node-version = %q, want ${{ inputs.node-version }}", got)
+	}
+	python := reusableStep(t, wf, "Set up Python")
+	if python.If != "inputs.python-version != ''" {
+		t.Errorf("Set up Python if = %q, want inputs.python-version != ''", python.If)
+	}
+	if !setupActionPinRe.MatchString(python.Uses) {
+		t.Errorf("Set up Python uses = %q, want a full-SHA actions/setup-python pin", python.Uses)
+	}
+
+	// The analyzer setup snippet runs only when the secret is present
+	// and the caller supplied one.
+	setup := reusableStep(t, wf, "Setup analyzer")
+	if setup.If != "env.HAS_OPENCODE_CONFIG == 'true' && inputs.setup != ''" {
+		t.Errorf("Setup analyzer if = %q, want the secret-and-setup gate", setup.If)
+	}
+	if setup.Run != "${{ inputs.setup }}" {
+		t.Errorf("Setup analyzer run = %q, want ${{ inputs.setup }}", setup.Run)
+	}
+	if setup.Shell != "bash" {
+		t.Errorf("Setup analyzer shell = %q, want bash", setup.Shell)
+	}
+
+	// Report step: the analyzer/language/coverprofile arguments
+	// assemble conditionally, and the positional packages argument
+	// replaces the hard-coded ./... of the pre-analyzer era.
+	report := reusableStep(t, wf, "Run gaze AI report")
+	for _, want := range []string{
+		`ANALYZER_ARG="--analyzer=$ANALYZER"`,
+		`LANGUAGE_ARG="--language=$LANGUAGE"`,
+		`if [ -z "$ANALYZER" ] && [ -n "$COVERPROFILE" ]; then`,
+		`gaze report $PACKAGES`,
+	} {
+		if !strings.Contains(report.Run, want) {
+			t.Errorf("Run gaze AI report must contain %q, got:\n%s", want, report.Run)
+		}
+	}
+
+	// Skipped-report step: the coverprofile existence check applies
+	// only in Go mode.
+	skipped := reusableStep(t, wf, "Report skipped")
+	for _, want := range []string{
+		`if [ -z "$ANALYZER" ]; then`,
+		`test -f "$COVERPROFILE"`,
+	} {
+		if !strings.Contains(skipped.Run, want) {
+			t.Errorf("Report skipped must contain %q, got:\n%s", want, skipped.Run)
+		}
 	}
 }

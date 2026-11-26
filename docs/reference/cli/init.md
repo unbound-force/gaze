@@ -17,7 +17,7 @@ This command takes no positional arguments. It always operates on the current wo
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--force` | `bool` | `false` | Overwrite all scaffolded files — the nine `.opencode/` assets even when their content is identical, and the CI workflow when run with `--ci`. Without this flag, `.opencode/` files update automatically when their content differs; only the user-owned CI workflow needs `--force` to be regenerated. |
-| `--ci` | `bool` | `false` | Also scaffold `.github/workflows/gaze-ai-report.yml`, a starter caller for gaze's reusable AI-report workflow. Requires a `go.mod` at the repository root; skipped with a warning otherwise. |
+| `--ci` | `bool` | `false` | Also scaffold `.github/workflows/gaze-ai-report.yml`, a starter caller for gaze's reusable AI-report workflow. Scaffolds a Go caller when `go.mod` is present, a Node caller (TypeScript analyzer) when `package.json` is present, or a Python caller when `pyproject.toml` is present; skipped with a warning when none are found. |
 | `--gaze-version` | `string` | `""` | Gaze release tag (`>= v2.3.0`) pinning the scaffolded CI workflow's `uses:` reference. Requires `--ci`. |
 
 ## Scaffolded Files
@@ -57,18 +57,21 @@ When run in a project that already uses unbound-force tooling (a `.uf/` director
 
 The `--ci` flag additionally scaffolds `.github/workflows/gaze-ai-report.yml`: a self-contained starter workflow for gaze's [reusable AI-report workflow](https://github.com/unbound-force/gaze/blob/main/.github/workflows/reusable_gaze_ai_report.yml). Plain `gaze init` is unchanged — the flag is purely additive.
 
-The generated workflow owns both halves of the pipeline:
+The generated workflow owns both halves of the pipeline. The exact toolchain depends on the detected project marker:
 
-- A `test` job that checks out the code, sets up Go, runs `go test -race -count=1 -short -coverprofile=coverage.out ./...`, and uploads the profile as the `coverage-out` artifact.
-- A `gaze-ai-report` job that calls `unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@<version>` with the coverage artifact and the `OPENCODE_CONFIG_CONTENT` secret.
+* **Go** (`go.mod`): `test` job checks out, `setup-go` (from `go` directive), `go test -race -count=1 -short -coverprofile=coverage.out ./...`, upload `coverage.out`
+* **Node** (`package.json`, no `go.mod`): `setup-node` (20), `npm ci`, `npm test -- --coverage`, upload `coverage/`; caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 20`
+* **Python** (`pyproject.toml`, no `go.mod`/`package.json`): `setup-python` (3.12), `pip install -e . && pip install pytest pytest-cov`, `pytest --cov`, upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: 3.12`
+
+A `gaze-ai-report` job then calls `unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@<version>` with the coverage artifact and the `OPENCODE_CONFIG_CONTENT` secret.
 
 Behavior details:
 
 - **Report-only by default.** The threshold inputs (`max-crapload`, `max-gaze-crapload`, `min-contract-coverage`) are emitted commented out; the workflow exits 0 until a human chooses values and uncomments them. Governance gates belong to the repository owner, not the scaffolder.
 - **User-owned.** The workflow is never overwritten by later `gaze init --ci` runs (skip-if-present); only `--force` regenerates it, so threshold edits survive re-scaffolding.
 - **Version pinning.** The `uses:` reference is pinned to the gaze release tag resolved from the running binary's build-time version and validated as `>= v2.3.0` — the first release containing the reusable workflow. Dev builds (and any version below the floor) fail closed with an error instead of writing an unusable pin. `--gaze-version` overrides the pin with the same validation; it is rejected without `--ci`, since it affects only the CI scaffolding.
-- **Go version from `go.mod`.** The workflow's `setup-go` version is read from the module's `go` directive and validated before substitution — never passed through verbatim. When the directive is absent, unreadable, or malformed, the workflow falls back to the reusable workflow's default (`1.25`) with a warning.
-- **Go module required at the repository root.** The reusable workflow analyzes `./...` from the repository root, so `--ci` requires a `go.mod` there. When it is absent, CI scaffolding is skipped with a distinct, non-fatal warning and the `.opencode/` scaffolding proceeds unchanged.
+- **Go version from `go.mod`.** For Go callers, the workflow's `setup-go` version is read from the module's `go` directive and validated before substitution — never passed through verbatim. When the directive is absent, unreadable, or malformed, the workflow falls back to the reusable workflow's default (`1.25`) with a warning. Node/Python callers use fixed toolchain versions (`20` / `3.12`).
+- **Project marker required.** The caller workflow analyzes from the repository root. When no recognized marker (`go.mod`, `package.json`, `pyproject.toml`) exists at the root, CI scaffolding is skipped with a distinct, non-fatal warning and the `.opencode/` scaffolding proceeds unchanged.
 
 After a successful `--ci` run, the console prints a **CI next steps** section: the `gh secret set OPENCODE_CONFIG_CONTENT` one-liner (with a `jq -c .` minify tip — GitHub's multiline secret masking is unreliable), the second-secret pointer for masking API-key fragments echoed into logs, and a paste-able prompt for choosing initial threshold values from a baseline report.
 

@@ -160,7 +160,7 @@ Use threshold flags for CI enforcement. Gaze exits non-zero when limits are exce
 gaze crap --max-crapload=5 --max-gaze-crapload=3 --max-cognitive-complexity=15 ./...
 ```
 
-`gaze init --ci` scaffolds a starter GitHub Actions workflow that runs the test suite with coverage and calls gaze's reusable AI-report workflow — see [`gaze init`](docs/reference/cli/init.md).
+`gaze init --ci` scaffolds a starter GitHub Actions workflow that runs the test suite with coverage and calls gaze's reusable AI-report workflow — see [`gaze init`](docs/reference/cli/init.md). Go, Node.js, and Python projects are supported; non-Go repositories run the report through an external analyzer (`gaze-analyzer-typescript`, `gaze-analyzer-python`).
 
 For complete GitHub Actions workflow examples, coverage profile reuse, and threshold selection guidance, see the [CI Integration guide](docs/guides/ci-integration.md).
 

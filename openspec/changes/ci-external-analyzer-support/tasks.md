@@ -16,18 +16,18 @@
 
 ## 3. Scaffold tests and reusable workflow validation
 
-- [ ] 3.1 In `internal/scaffold/ci_test.go`: add variant detection matrix test (`TestDetectCIVariant`), Node/Python golden-file tests (`TestRenderCIWorkflowTemplate_NodeGoldenFile`, `PythonGoldenFile`), Node/Python YAML structure tests (permissions, concurrency, test job steps, reusable workflow inputs including `analyzer`), and ensure existing Go tests still pass unchanged.
-- [ ] 3.2 In `.github/workflows/reusable_gaze_ai_report.yml` validation (if applicable): ensure new inputs have correct types/defaults and don't break Go callers; add fixture job or documentation showing the workflow runs on a TypeScript repository (or manual verification via reading-stone).
+- [x] 3.1 In `internal/scaffold/ci_test.go`: add variant detection matrix test (`TestDetectCIVariant`), Node/Python golden-file tests (`TestRenderCIWorkflowTemplate_NodeGoldenFile`, `PythonGoldenFile`), Node/Python YAML structure tests (permissions, concurrency, test job steps, reusable workflow inputs including `analyzer`), and ensure existing Go tests still pass unchanged.
+- [x] 3.2 In `.github/workflows/reusable_gaze_ai_report.yml` validation (if applicable): ensure new inputs have correct types/defaults and don't break Go callers; add fixture job or documentation showing the workflow runs on a TypeScript repository (or manual verification via reading-stone).
 
 ## 4. Docs
 
 - [x] 4.1 In `docs/guides/ci-integration.md`: add section on external analyzers — explain `analyzer`/`language`/`packages`/`setup`/`node-version`/`python-version` inputs, show example Node caller workflow (from scaffolding), Python caller workflow, and coverage contract difference (analyzer reads its own coverage data).
 - [x] 4.2 In `docs/reference/cli/init.md`: update `--ci` flag docs to describe non-Go marker detection (`package.json` → Node, `pyproject.toml` → Python) and that `go.mod` absence no longer always skips.
-- [ ] 4.3 In `README.md` (if applicable): brief note on external-analyzer CI support.
+- [x] 4.3 In `README.md` (if applicable): brief note on external-analyzer CI support.
 
 ## 5. Verification
 
-- [ ] 5.1 Verify Go caller's behavior and existing golden file unchanged: run `go test ./internal/scaffold -run TestRenderCIWorkflowTemplate_GoldenFile` and `go test -race -count=1 -short ./...`.
+- [x] 5.1 Verify Go caller's behavior and existing golden file unchanged: run `go test ./internal/scaffold -run TestRenderCIWorkflowTemplate_GoldenFile` and `go test -race -count=1 -short ./...`.
 - [x] 5.2 In a temp dir with only `package.json` and no `go.mod`, run `gaze init --ci --gaze-version v2.5.0` and verify it writes a Node caller workflow with `analyzer: gaze-analyzer-typescript`, report-only thresholds commented out, and correct `uses:` pin.
 - [x] 5.3 Verify reusable workflow passes `--analyzer`, `--language`, and package pattern through (inspect workflow YAML and, if possible, run on a fixture TypeScript repo or via dogfood job).
 - [x] 5.4 Verify skipped-report path still checks coverage artifact for both modes (inspect workflow's skipped-report step for conditional check).
