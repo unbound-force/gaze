@@ -100,6 +100,7 @@ func TestReleaseWorkflow_CallsShip(t *testing.T) {
 		"tap":                   "unbound-force/homebrew-tap",
 		"go_install":            "github.com/unbound-force/gaze/v2/cmd/gaze",
 		"go_install_check":      `"$BIN" --version`,
+		"tap_install_check":     `"$HOMEBREW_PREFIX/bin/gaze" --version`,
 	}
 	assertExactMap(t, "with", release.With, wantWith)
 

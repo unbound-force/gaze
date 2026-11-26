@@ -123,6 +123,8 @@ jobs:
       # every release.
       go_install: github.com/unbound-force/gaze/v2/cmd/gaze
       go_install_check: '"$BIN" --version'
+      # The cask as installed from the published tap, after every release.
+      tap_install_check: '"$HOMEBREW_PREFIX/bin/gaze" --version'
     permissions:
       contents: write
       checks: read
