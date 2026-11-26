@@ -995,38 +995,65 @@ func TestCIWorkflow_ReusableExternalAnalyzerInputs(t *testing.T) {
 		t.Errorf("Set up Python uses = %q, want a full-SHA actions/setup-python pin", python.Uses)
 	}
 
+	// The download step's id backs the skipped-report arrival check,
+	// which reads its conclusion.
+	download := reusableStep(t, wf, "Download coverage")
+	if download.ID != "download" {
+		t.Errorf("Download coverage step id = %q, want \"download\" (the skipped-report arrival check reads its conclusion)", download.ID)
+	}
+
 	// The analyzer setup snippet runs only when the secret is present
-	// and the caller supplied one.
+	// and the caller supplied one, and arrives via env indirection —
+	// never interpolated directly into the run script.
 	setup := reusableStep(t, wf, "Setup analyzer")
 	if setup.If != "env.HAS_OPENCODE_CONFIG == 'true' && inputs.setup != ''" {
 		t.Errorf("Setup analyzer if = %q, want the secret-and-setup gate", setup.If)
 	}
-	if setup.Run != "${{ inputs.setup }}" {
-		t.Errorf("Setup analyzer run = %q, want ${{ inputs.setup }}", setup.Run)
+	if got := setup.Env["ANALYZER_SETUP"]; got != "${{ inputs.setup }}" {
+		t.Errorf("Setup analyzer env ANALYZER_SETUP = %q, want ${{ inputs.setup }} (env indirection)", got)
+	}
+	if setup.Run != `eval "$ANALYZER_SETUP"` {
+		t.Errorf("Setup analyzer run = %q, want eval \"$ANALYZER_SETUP\"", setup.Run)
 	}
 	if setup.Shell != "bash" {
 		t.Errorf("Setup analyzer shell = %q, want bash", setup.Shell)
 	}
 
 	// Report step: the analyzer/language/coverprofile arguments
-	// assemble conditionally, and the positional packages argument
-	// replaces the hard-coded ./... of the pre-analyzer era.
+	// assemble conditionally, the positional packages argument replaces
+	// the hard-coded ./... of the pre-analyzer era, and every assembled
+	// variable must actually reach the gaze report invocation —
+	// dropping one from the command line would silently degrade the
+	// report (Go mode re-running the full test suite without
+	// --coverprofile, analyzer mode falling back to Go analysis).
 	report := reusableStep(t, wf, "Run gaze AI report")
 	for _, want := range []string{
 		`ANALYZER_ARG="--analyzer=$ANALYZER"`,
 		`LANGUAGE_ARG="--language=$LANGUAGE"`,
+		`COVERPROFILE_ARG="--coverprofile=$COVERPROFILE"`,
 		`if [ -z "$ANALYZER" ] && [ -n "$COVERPROFILE" ]; then`,
 		`gaze report $PACKAGES`,
+		"--ai=opencode \\",
+		"$MODEL_ARG \\",
+		"$ANALYZER_ARG \\",
+		"$LANGUAGE_ARG \\",
+		"$COVERPROFILE_ARG \\",
+		"$THRESHOLDS\n",
 	} {
 		if !strings.Contains(report.Run, want) {
 			t.Errorf("Run gaze AI report must contain %q, got:\n%s", want, report.Run)
 		}
 	}
 
-	// Skipped-report step: the coverprofile existence check applies
-	// only in Go mode.
+	// Skipped-report step: both modes validate that the coverage
+	// artifact arrived via the download step's conclusion, and the
+	// coverprofile existence check applies only in Go mode.
 	skipped := reusableStep(t, wf, "Report skipped")
+	if got := skipped.Env["DOWNLOAD_CONCLUSION"]; got != "${{ steps.download.conclusion }}" {
+		t.Errorf("Report skipped env DOWNLOAD_CONCLUSION = %q, want ${{ steps.download.conclusion }}", got)
+	}
 	for _, want := range []string{
+		`test "$DOWNLOAD_CONCLUSION" = "success"`,
 		`if [ -z "$ANALYZER" ]; then`,
 		`test -f "$COVERPROFILE"`,
 	} {

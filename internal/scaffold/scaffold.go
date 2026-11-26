@@ -456,15 +456,14 @@ func checkGoMod(opts Options) (path string, absent bool) {
 	return path, false
 }
 
-// detectCIVariant determines which CI workflow template to use based on
-// project markers at the target directory. It checks for go.mod first
-// (Go), then package.json (Node), then pyproject.toml (Python). When
-// none are found, it returns ciVariantGo with skipped semantics handled
-// by the caller.
-func detectCIVariant(opts Options, goModAbsent bool) ciVariant {
-	if !goModAbsent {
-		return ciVariantGo
-	}
+// detectCIVariant determines which CI workflow template to use for a
+// directory whose go.mod is already established to be absent (the
+// caller checks that first): package.json selects the Node variant,
+// pyproject.toml the Python variant, and when neither marker exists it
+// returns ciVariantGo, which the caller turns into the skip path.
+// Keeping go.mod precedence out of this helper avoids a branch only
+// tests could reach.
+func detectCIVariant(opts Options) ciVariant {
 	if _, err := os.Stat(filepath.Join(opts.TargetDir, "package.json")); err == nil {
 		return ciVariantNode
 	}
@@ -493,7 +492,7 @@ func completeCIContext(opts Options, goModPath string, goModAbsent bool, gazeVer
 	}
 	ci := ciContext{gazeVersion: gazeVersion}
 	if goModAbsent {
-		variant := detectCIVariant(opts, goModAbsent)
+		variant := detectCIVariant(opts)
 		if variant == ciVariantNode {
 			ci.variant = ciVariantNode
 			ci.nodeVersion = defaultNodeVersion

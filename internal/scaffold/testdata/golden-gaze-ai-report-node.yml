@@ -50,11 +50,20 @@ jobs:
       - name: Test with coverage
         run: npm test -- --coverage
 
+      # Stage the coverage directory inside a staging root before
+      # upload: actions/upload-artifact strips the least-common-ancestor
+      # directory of the upload path, so uploading `coverage` directly
+      # would put coverage-final.json at the artifact root. Staging
+      # preserves the coverage/ prefix so the analyzer finds its files
+      # at the conventional workspace path after download.
+      - name: Stage coverage for upload
+        run: mkdir -p .gaze-artifact && cp -r coverage .gaze-artifact/
+
       - name: Upload coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: coverage-out
-          path: coverage
+          path: .gaze-artifact
 
   gaze-ai-report:
     needs: test
@@ -70,6 +79,13 @@ jobs:
       analyzer: gaze-analyzer-typescript
       packages: ./src/...
       node-version: 20
+      # The report job runs on its own runner and does NOT inherit the
+      # test job's installed packages: the analyzer binary must be
+      # installed there before `gaze report` can spawn it. This default
+      # assumes the analyzer is this repository's own root package —
+      # adjust it to wherever your analyzer lives (a workspace package,
+      # a published npm package, etc.).
+      setup: npm ci && npm run build && npm link
       # Report-only by default: the threshold inputs below are commented
       # out, so the workflow exits 0 until a human chooses values. To
       # enable one: run `gaze report ./src/... --analyzer=gaze-analyzer-typescript --format=json`, read the summary
