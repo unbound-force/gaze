@@ -680,21 +680,21 @@ func renderVariantTemplate(t *testing.T, templatePath, goldenPath string, ci ciC
 }
 
 // TestDetectCIVariant exercises the variant-detection matrix
-// (ci-external-analyzer-support, design D5): go.mod wins, then
-// package.json, then pyproject.toml; a directory with none of them
-// falls back to the Go variant, whose skip semantics the caller owns.
+// (ci-external-analyzer-support, design D5): the helper runs only for
+// directories whose go.mod is already established to be absent, so
+// package.json selects Node, pyproject.toml selects Python, and a
+// directory with neither marker returns the Go variant whose skip
+// semantics the caller owns.
 func TestDetectCIVariant(t *testing.T) {
 	tests := []struct {
-		name        string
-		files       []string
-		goModAbsent bool
-		want        ciVariant
+		name  string
+		files []string
+		want  ciVariant
 	}{
-		{name: "go.mod present", files: []string{"go.mod"}, goModAbsent: false, want: ciVariantGo},
-		{name: "package.json only", files: []string{"package.json"}, goModAbsent: true, want: ciVariantNode},
-		{name: "pyproject.toml only", files: []string{"pyproject.toml"}, goModAbsent: true, want: ciVariantPython},
-		{name: "package.json wins over pyproject.toml", files: []string{"package.json", "pyproject.toml"}, goModAbsent: true, want: ciVariantNode},
-		{name: "no recognized marker defaults to go", files: nil, goModAbsent: true, want: ciVariantGo},
+		{name: "package.json only", files: []string{"package.json"}, want: ciVariantNode},
+		{name: "pyproject.toml only", files: []string{"pyproject.toml"}, want: ciVariantPython},
+		{name: "package.json wins over pyproject.toml", files: []string{"package.json", "pyproject.toml"}, want: ciVariantNode},
+		{name: "no recognized marker defaults to go", files: nil, want: ciVariantGo},
 	}
 
 	for _, tt := range tests {
@@ -705,8 +705,8 @@ func TestDetectCIVariant(t *testing.T) {
 					t.Fatalf("creating %s: %v", file, err)
 				}
 			}
-			if got := detectCIVariant(Options{TargetDir: dir}, tt.goModAbsent); got != tt.want {
-				t.Errorf("detectCIVariant(files=%v, goModAbsent=%v) = %q, want %q", tt.files, tt.goModAbsent, got, tt.want)
+			if got := detectCIVariant(Options{TargetDir: dir}); got != tt.want {
+				t.Errorf("detectCIVariant(files=%v) = %q, want %q", tt.files, got, tt.want)
 			}
 		})
 	}
@@ -783,7 +783,9 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 		withVersion    string // unquoted scalar in the report job's with block
 		installRun     string
 		testRun        string
-		coveragePath   string
+		stageRun       string // coverage staging step; empty = no staging step
+		uploadPath     string
+		setupInput     string // analyzer-install snippet passed via `setup:`
 	}{
 		{
 			name:           "node",
@@ -798,7 +800,9 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 			withVersion:    "20",
 			installRun:     "npm ci",
 			testRun:        "npm test -- --coverage",
-			coveragePath:   "coverage",
+			stageRun:       "mkdir -p .gaze-artifact && cp -r coverage .gaze-artifact/",
+			uploadPath:     ".gaze-artifact",
+			setupInput:     "npm ci && npm run build && npm link",
 		},
 		{
 			name:           "python",
@@ -813,7 +817,9 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 			withVersion:    "3.12",
 			installRun:     "pip install -e . && pip install pytest pytest-cov",
 			testRun:        "pytest --cov --cov-report=xml --cov-report=term",
-			coveragePath:   "coverage.xml",
+			stageRun:       "", // coverage.xml is a single file: no LCA stripping to compensate for
+			uploadPath:     "coverage.xml",
+			setupInput:     "pip install -e .",
 		},
 	}
 
@@ -878,10 +884,15 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 			if got := workflowStep(t, testJob, "Test with coverage")["run"]; got != tt.testRun {
 				t.Errorf("%s test step run = %v, want %q", tt.name, got, tt.testRun)
 			}
+			if tt.stageRun != "" {
+				if got := workflowStep(t, testJob, "Stage coverage for upload")["run"]; got != tt.stageRun {
+					t.Errorf("%s staging step run = %v, want %q", tt.name, got, tt.stageRun)
+				}
+			}
 			upload := workflowStep(t, testJob, "Upload coverage")
 			uploadWith, ok := upload["with"].(map[string]any)
-			if !ok || uploadWith["name"] != "coverage-out" || uploadWith["path"] != tt.coveragePath {
-				t.Errorf("%s upload step with = %v, want name coverage-out and path %s", tt.name, upload["with"], tt.coveragePath)
+			if !ok || uploadWith["name"] != "coverage-out" || uploadWith["path"] != tt.uploadPath {
+				t.Errorf("%s upload step with = %v, want name coverage-out and path %s", tt.name, upload["with"], tt.uploadPath)
 			}
 
 			// The reusable-workflow caller job.
@@ -905,8 +916,8 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s gaze-ai-report with block missing: %v", tt.name, report["with"])
 			}
-			if len(with) != 5 {
-				t.Errorf("%s gaze-ai-report with block has %d inputs, want exactly 5 (thresholds stay commented out): %v", tt.name, len(with), with)
+			if len(with) != 6 {
+				t.Errorf("%s gaze-ai-report with block has %d inputs, want exactly 6 (thresholds stay commented out): %v", tt.name, len(with), with)
 			}
 			wantWith := map[string]string{
 				"coverage-artifact": "coverage-out",
@@ -914,11 +925,21 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 				"analyzer":          tt.analyzer,
 				"packages":          "./src/...",
 				tt.versionInput:     tt.withVersion,
+				"setup":             tt.setupInput,
 			}
 			for key, want := range wantWith {
 				if got := fmt.Sprint(with[key]); got != want {
 					t.Errorf("%s gaze-ai-report with[%s] = %q, want %q", tt.name, key, got, want)
 				}
+			}
+			// Tie the invoked analyzer to its installer: a template
+			// that passes `analyzer:` without a `setup:` input
+			// scaffolds a workflow whose report step cannot find the
+			// analyzer binary on a fresh runner — and it fails only
+			// after the consumer sets the opencode-config secret, the
+			// deferred-failure class this repository has fixed before.
+			if with["analyzer"] != nil && fmt.Sprint(with["setup"]) == "" {
+				t.Errorf("%s template passes analyzer %q but no setup input installs it — the report job cannot run", tt.name, tt.analyzer)
 			}
 			secrets, ok := report["secrets"].(map[string]any)
 			if !ok || secrets["opencode-config"] != "${{ secrets.OPENCODE_CONFIG_CONTENT }}" {
@@ -944,6 +965,75 @@ func TestRenderCIWorkflowTemplate_VariantYAMLStructure(t *testing.T) {
 				t.Errorf("%s rendered workflow must not use setup-go", tt.name)
 			}
 		})
+	}
+}
+
+// TestCIWorkflowTemplate_VariantPinParity pins the Node/Python
+// templates' copied constants to the reusable workflow they call
+// (review finding, ci-external-analyzer-support): the setup-node and
+// setup-python action pins embedded in the templates must match the
+// reusable workflow's own steps, and all three templates must agree on
+// the reusable-workflow uses: reference. Golden files alone would
+// happily record stale pins, so a rotation or rename applied to one
+// side must fail here rather than diverge silently.
+func TestCIWorkflowTemplate_VariantPinParity(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "reusable_gaze_ai_report.yml"))
+	if err != nil {
+		t.Fatalf("reading reusable workflow: %v", err)
+	}
+	var wf struct {
+		Jobs struct {
+			Report struct {
+				Steps []struct {
+					Name string `yaml:"name"`
+					Uses string `yaml:"uses"`
+				} `yaml:"steps"`
+			} `yaml:"gaze-ai-report"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("parsing reusable workflow: %v", err)
+	}
+	reusablePins := map[string]string{}
+	for _, step := range wf.Jobs.Report.Steps {
+		reusablePins[step.Name] = step.Uses
+	}
+
+	wantUses := "unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@" + gazeVersionPlaceholder
+	templates := []struct {
+		name      string
+		path      string
+		setupStep string
+	}{
+		{name: "node", path: ciWorkflowNodeTemplatePath, setupStep: "Set up Node"},
+		{name: "python", path: ciWorkflowPythonTemplatePath, setupStep: "Set up Python"},
+	}
+	for _, tt := range templates {
+		t.Run(tt.name, func(t *testing.T) {
+			template, err := assets.ReadFile(tt.path)
+			if err != nil {
+				t.Fatalf("reading embedded template: %v", err)
+			}
+			s := string(template)
+			if !strings.Contains(s, wantUses) {
+				t.Errorf("%s template must reference the reusable workflow via %q", tt.name, wantUses)
+			}
+			wantPin, ok := reusablePins[tt.setupStep]
+			if !ok || wantPin == "" {
+				t.Fatalf("reusable workflow has no %q step with a uses: pin", tt.setupStep)
+			}
+			if !strings.Contains(s, wantPin) {
+				t.Errorf("%s template's %s pin %q does not match the reusable workflow's — rotate both together", tt.name, tt.setupStep, wantPin)
+			}
+		})
+	}
+
+	goTemplate, err := assets.ReadFile(ciWorkflowTemplatePath)
+	if err != nil {
+		t.Fatalf("reading Go template: %v", err)
+	}
+	if !strings.Contains(string(goTemplate), wantUses) {
+		t.Error("Go template must reference the reusable workflow via the same placeholder pin")
 	}
 }
 
@@ -986,6 +1076,8 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 			"analyzer: gaze-analyzer-typescript",
 			"packages: ./src/...",
 			"node-version: 20",
+			"setup: npm ci && npm run build && npm link",
+			"cp -r coverage .gaze-artifact/",
 			"reusable_gaze_ai_report.yml@v2.4.0",
 		} {
 			if !strings.Contains(s, want) {
@@ -1022,6 +1114,7 @@ func TestRun_CI_VariantScaffolding(t *testing.T) {
 		for _, want := range []string{
 			"analyzer: gaze-analyzer-python",
 			"python-version: 3.12",
+			"setup: pip install -e .",
 			"pytest --cov",
 		} {
 			if !strings.Contains(s, want) {

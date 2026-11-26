@@ -60,8 +60,8 @@ The `--ci` flag additionally scaffolds `.github/workflows/gaze-ai-report.yml`: a
 The generated workflow owns both halves of the pipeline. The exact toolchain depends on the detected project marker:
 
 * **Go** (`go.mod`): `test` job checks out, `setup-go` (from `go` directive), `go test -race -count=1 -short -coverprofile=coverage.out ./...`, upload `coverage.out`
-* **Node** (`package.json`, no `go.mod`): `setup-node` (20), `npm ci`, `npm test -- --coverage`, upload `coverage/`; caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 20`
-* **Python** (`pyproject.toml`, no `go.mod`/`package.json`): `setup-python` (3.12), `pip install -e . && pip install pytest pytest-cov`, `pytest --cov`, upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: 3.12`
+* **Node** (`package.json`, no `go.mod`): `setup-node` (20), `npm ci`, `npm test -- --coverage`, staged `coverage/` upload; caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 20`, `setup: npm ci && npm run build && npm link` (installs the analyzer in the report job)
+* **Python** (`pyproject.toml`, no `go.mod`/`package.json`): `setup-python` (3.12), `pip install -e . && pip install pytest pytest-cov`, `pytest --cov`, upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: 3.12`, `setup: pip install -e .` (installs the analyzer in the report job)
 
 A `gaze-ai-report` job then calls `unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@<version>` with the coverage artifact and the `OPENCODE_CONFIG_CONTENT` secret.
 

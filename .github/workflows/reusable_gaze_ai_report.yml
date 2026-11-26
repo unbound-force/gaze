@@ -154,6 +154,7 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - name: Download coverage
+        id: download
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: ${{ inputs.coverage-artifact }}
@@ -192,7 +193,15 @@ jobs:
 
       - name: Setup analyzer
         if: env.HAS_OPENCODE_CONFIG == 'true' && inputs.setup != ''
-        run: ${{ inputs.setup }}
+        env:
+          # Env indirection per GitHub's script-injection guidance: the
+          # caller's snippet is data at the assignment site and only
+          # becomes code when eval parses it. The input is repo-owner
+          # controlled (the caller workflow is checked into the calling
+          # repository) and is by design an arbitrary setup snippet —
+          # the same trust boundary as the caller's own workflow steps.
+          ANALYZER_SETUP: ${{ inputs.setup }}
+        run: eval "$ANALYZER_SETUP"
         shell: bash
 
       - name: Run gaze AI report
@@ -243,6 +252,12 @@ jobs:
           if [ -n "$MIN_CONTRACT_COVERAGE" ]; then
             THRESHOLDS="$THRESHOLDS --min-contract-coverage=$MIN_CONTRACT_COVERAGE"
           fi
+          # $PACKAGES expands unquoted on purpose: the input accepts
+          # space-separated patterns, and the value comes from the
+          # caller's checked-in workflow (repo-owner trusted). The
+          # assembled *_ARG and $THRESHOLDS variables are each empty
+          # or a single argument, so their unquoted expansion only
+          # ever adds the flags assembled above.
           gaze report $PACKAGES \
             --ai=opencode \
             $MODEL_ARG \
@@ -258,6 +273,7 @@ jobs:
           COVERPROFILE: ${{ inputs.coverprofile }}
           ARTIFACT_NAME: ${{ inputs.coverage-artifact }}
           ANALYZER: ${{ inputs.analyzer }}
+          DOWNLOAD_CONCLUSION: ${{ steps.download.conclusion }}
         run: |
           if [ "$IS_FORK" = "true" ]; then
             echo "Skipping the gaze AI report: no opencode config secret available (secrets are unavailable on fork PRs)." | tee -a "$GITHUB_STEP_SUMMARY"
@@ -268,11 +284,21 @@ jobs:
           # Validate the artifact handoff contract even when the report
           # is skipped: every run that reaches this job asserts the
           # coverage data arrived (name, content, and path) instead of
-          # only the artifact name. In Go mode (no analyzer) the
-          # coverprofile file must exist inside the downloaded artifact;
-          # in analyzer mode the artifact holds whatever that analyzer
-          # reads, so the file check is dropped — the download-artifact
-          # step's success is the contract check for that mode.
+          # only the artifact name. Both modes assert the download
+          # step's conclusion explicitly — actions/download-artifact
+          # fails when the named artifact does not exist in the calling
+          # run, and actions/upload-artifact cannot create an empty
+          # artifact, so a successful download means the artifact
+          # arrived holding at least one file. In Go mode (no analyzer)
+          # the check goes further and requires the coverprofile file
+          # inside the downloaded artifact; in analyzer mode the
+          # artifact holds whatever that analyzer reads, so its shape
+          # is the analyzer's own contract and the download is the
+          # arrival check.
+          test "$DOWNLOAD_CONCLUSION" = "success" || {
+            echo "::error::coverage artifact '$ARTIFACT_NAME' did not arrive (download conclusion: ${DOWNLOAD_CONCLUSION:-none})"
+            exit 1
+          }
           if [ -z "$ANALYZER" ]; then
             test -f "$COVERPROFILE" || {
               echo "::error::coverprofile '$COVERPROFILE' not found after downloading artifact '$ARTIFACT_NAME'; check the artifact's internal layout and the coverprofile input"

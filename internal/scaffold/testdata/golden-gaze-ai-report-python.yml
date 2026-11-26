@@ -70,6 +70,13 @@ jobs:
       analyzer: gaze-analyzer-python
       packages: ./src/...
       python-version: 3.12
+      # The report job runs on its own runner and does NOT inherit the
+      # test job's installed packages: the analyzer binary must be
+      # installed there before `gaze report` can spawn it. This default
+      # assumes the analyzer is this repository's own package (its
+      # console scripts land on PATH via the editable install) — adjust
+      # it to wherever your analyzer lives.
+      setup: pip install -e .
       # Report-only by default: the threshold inputs below are commented
       # out, so the workflow exits 0 until a human chooses values. To
       # enable one: run `gaze report ./src/... --analyzer=gaze-analyzer-python --format=json`, read the summary
