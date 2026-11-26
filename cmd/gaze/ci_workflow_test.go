@@ -1051,6 +1051,13 @@ func TestCIWorkflow_ReusableExternalAnalyzerInputs(t *testing.T) {
 	// --coverprofile, analyzer mode falling back to Go analysis).
 	report := reusableStep(t, wf, "Run gaze AI report")
 	for _, want := range []string{
+		// Assembly guards, not just the assembled values: dropping an
+		// `if [ -n ... ]` guard would pass `--analyzer=` /
+		// `--language=` on every Go-mode run, degrading to Go-native
+		// analysis only because gaze happens to treat empty flags as
+		// absent — an unpinned cross-component coupling.
+		`if [ -n "$ANALYZER" ]; then`,
+		`if [ -n "$LANGUAGE" ]; then`,
 		`ANALYZER_ARG="--analyzer=$ANALYZER"`,
 		`LANGUAGE_ARG="--language=$LANGUAGE"`,
 		`COVERPROFILE_ARG="--coverprofile=$COVERPROFILE"`,
@@ -1079,6 +1086,14 @@ func TestCIWorkflow_ReusableExternalAnalyzerInputs(t *testing.T) {
 		`test "$DOWNLOAD_CONCLUSION" = "success"`,
 		`if [ -z "$ANALYZER" ]; then`,
 		`test -f "$COVERPROFILE"`,
+		// Enforcement, not just detection: each check's ::error::
+		// message is pinned together with the exit that makes failing
+		// it fail the job — dropping an exit 1 would convert the gate
+		// into an annotation-only silent pass (the ci-gate-integrity
+		// failure class, #101/#108/#116).
+		`coverage artifact '$ARTIFACT_NAME' did not arrive (download conclusion: ${DOWNLOAD_CONCLUSION:-none})`,
+		`not found after downloading artifact '$ARTIFACT_NAME'`,
+		`exit 1`,
 	} {
 		if !strings.Contains(skipped.Run, want) {
 			t.Errorf("Report skipped must contain %q, got:\n%s", want, skipped.Run)

@@ -74,7 +74,10 @@ jobs:
       gaze-version: __GAZE_VERSION__
       analyzer: gaze-analyzer-python
       packages: ./src/...
-      python-version: __PYTHON_VERSION__
+      # Quoted on purpose: the workflow_call input is type string, and
+      # an unquoted 3.12 is a YAML float a hand edit can truncate
+      # (3.10 becomes 3.1, and setup-python then looks for Python 3.1).
+      python-version: "__PYTHON_VERSION__"
       # The report job runs on its own runner and does NOT inherit the
       # test job's installed packages: the analyzer binary must be
       # installed there before `gaze report` can spawn it. This default

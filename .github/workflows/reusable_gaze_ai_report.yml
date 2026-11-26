@@ -102,7 +102,7 @@ on:
         default: ""
         type: string
       node-version:
-        description: "Node.js version for setup-node (e.g. 20). When empty, the step is skipped."
+        description: "Node.js version for setup-node (e.g. 24). When empty, the step is skipped."
         required: false
         default: ""
         type: string

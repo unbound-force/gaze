@@ -197,7 +197,7 @@ thresholds.
 | `language` | string | no | `""` | Language override passed as `--language` when non-empty. |
 | `packages` | string | no | `./...` | Package pattern to analyze (e.g. `./src/...` to exclude scaffolded `.opencode/` code). Replaces the hard-coded `./...` positional argument. |
 | `setup` | string | no | `""` | Optional shell snippet run before the report to install/link the analyzer (e.g. `npm ci && npm run build && npm link`). |
-| `node-version` | string | no | `""` | Node.js version for `setup-node` (e.g. `20`). When empty, the step is skipped. |
+| `node-version` | string | no | `""` | Node.js version for `setup-node` (e.g. `24`). When empty, the step is skipped. |
 | `python-version` | string | no | `""` | Python version for `setup-python` (e.g. `3.12`). When empty, the step is skipped. |
 
 Secret `opencode-config` (optional): the consumer's entire strict-JSON
@@ -315,8 +315,8 @@ its own `test` job and calls the reusable workflow with the coverage
 artifact and the `OPENCODE_CONFIG_CONTENT` secret:
 
 * **Go** (`go.mod` present): checkout → `setup-go` (version from `go` directive) → `go test -race -count=1 -short -coverprofile=coverage.out ./...` → upload `coverage.out`
-* **Node** (`package.json` present, no `go.mod`): checkout → `setup-node` (24) → `npm ci` → `npm test -- --coverage` → staged `coverage/` upload (staging preserves the `coverage/` prefix through the artifact); caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 24`, and `setup: npm ci && npm run build && npm link` so the report job installs the analyzer on its own runner
-* **Python** (`pyproject.toml` present, no `go.mod`/`package.json`): checkout → `setup-python` (3.12) → `pip install -e . && pip install pytest pytest-cov` → `pytest --cov` → upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: 3.12`, and `setup: pip install -e .` so the report job installs the analyzer on its own runner
+* **Node** (`package.json` present, no `go.mod`): checkout → `setup-node` (24) → `npm ci` → `npm test -- --coverage` → staged `coverage/` upload (staging preserves the `coverage/` prefix through the artifact); caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: "24"`, and `setup: npm ci && npm run build && npm link` so the report job installs the analyzer on its own runner
+* **Python** (`pyproject.toml` present, no `go.mod`/`package.json`): checkout → `setup-python` (3.12) → `pip install -e . && pip install pytest pytest-cov` → `pytest --cov` → upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: "3.12"`, and `setup: pip install -e .` so the report job installs the analyzer on its own runner
 
 The `uses:` pin is resolved from the running gaze binary's version
 and validated (`>= v2.3.0`); dev builds fail closed rather than writing an
@@ -404,16 +404,18 @@ Consumers using an external analyzer (e.g. [reading-stone](https://github.com/ze
 
 ```yaml
   gaze-ai-report:
-    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.5.0
+    uses: unbound-force/gaze/.github/workflows/reusable_gaze_ai_report.yml@v2.6.0
     with:
       coverage-artifact: coverage-out
       analyzer: gaze-analyzer-typescript
       packages: ./src/...
-      node-version: 24
+      node-version: "24"
       setup: npm ci && npm run build && npm link
     secrets:
       opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
 ```
+
+The `analyzer`, `packages`, `setup`, `node-version`, and `python-version` inputs exist only in gaze releases that ship external-analyzer support (v2.6.0 and later). Pinning an older tag together with these inputs fails at workflow load time — GitHub rejects a `with:` block naming inputs the called workflow does not define — so keep the `uses:` pin at or above the release that introduced the inputs you pass.
 
 The `setup` input is required in practice whenever `analyzer` is set: the report job runs on its own runner, so the analyzer binary must be installed there before `gaze report` can spawn it — the snippet above assumes the analyzer is the calling repository's own root package; adjust it to wherever your analyzer lives. In analyzer mode the reusable workflow skips `--coverprofile` — the analyzer reads coverage data from its own artifact layout (e.g. `coverage/` or `coverage.xml`) — and the skipped-report path validates the artifact's arrival through the download step's conclusion (`actions/download-artifact` fails when the named artifact does not exist, and an empty artifact cannot be uploaded). `gaze init --ci` scaffolds the Node/Python caller automatically when `go.mod` is absent but `package.json` or `pyproject.toml` is present.
 

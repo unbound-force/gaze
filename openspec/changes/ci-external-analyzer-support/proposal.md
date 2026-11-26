@@ -97,4 +97,4 @@ Pure template rendering functions remain testable with golden files; new variant
 
 - Choosing default test commands for Node/Python that don't match every project's setup — mitigated by making templates clearly editable and documenting that the user should adjust the test command to their project's test runner.
 - Analyzer coverage artifacts vary in shape — mitigated by making coverage check flexible (skip or generic directory check) rather than hard-coding a file name.
-- `node-version`/`python-version` defaults empty means no toolchain setup unless requested — consumer must opt in; scaffolded Node/Python templates will set sensible defaults (e.g., node 20, python 3.12) so generated workflows are immediately runnable.
+- `node-version`/`python-version` defaults empty means no toolchain setup unless requested — consumer must opt in; scaffolded Node/Python templates will set sensible defaults (e.g., node 24, python 3.12) so generated workflows are immediately runnable.
