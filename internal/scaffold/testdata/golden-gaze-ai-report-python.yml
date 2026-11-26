@@ -55,6 +55,11 @@ jobs:
         with:
           name: coverage-out
           path: coverage.xml
+          # Fail here, at the cause: upload-artifact's default `warn`
+          # would defer a missing coverage.xml to the report job's
+          # download step, where the error no longer names the real
+          # problem.
+          if-no-files-found: error
 
   gaze-ai-report:
     needs: test

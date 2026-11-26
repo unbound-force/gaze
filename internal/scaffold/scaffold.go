@@ -317,8 +317,13 @@ const defaultGoVersion = "1.25"
 
 // defaultNodeVersion is the Node.js version substituted into the
 // generated CI workflow for Node projects (when package.json is
-// present and go.mod is absent). It matches a current LTS release.
-const defaultNodeVersion = "20"
+// present and go.mod is absent). Node 24 is the current LTS (in
+// maintenance until 2028-04); bump it as that date approaches so
+// scaffolded workflows never pin an EOL runtime. The value is
+// mirrored in the node golden file, the variant docs
+// (ci-integration.md, init.md), and the ci_test.go structure/e2e
+// pins — update all of them together.
+const defaultNodeVersion = "24"
 
 // defaultPythonVersion is the Python version substituted into the
 // generated CI workflow for Python projects (when pyproject.toml is
@@ -427,14 +432,15 @@ type ciContext struct {
 }
 
 // printCISkipWarning prints the design-D6 warning for a --ci run in a
-// repository without a Go module at the root. It names the
-// requirement (the reusable workflow analyzes ./... from the
-// repository root) and the remedy (create the module, re-run), and it
-// stays distinct from the generic missing-go.mod warning that
-// precedes it in Run's output.
+// repository without a recognized project marker at the root. It
+// names the requirement (the reusable workflow analyzes the
+// repository root and needs a Go, Node, or Python project there) and
+// the remedy (create a marker, re-run), and it stays distinct from
+// the generic missing-go.mod warning that precedes it in Run's
+// output.
 func printCISkipWarning(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "Warning: skipping CI scaffolding (--ci): the reusable gaze AI-report workflow analyzes ./... from the repository root and requires a Go module there.")
-	_, _ = fmt.Fprintln(w, "Run `go mod init` at the repository root, then re-run `gaze init --ci` to generate the workflow.")
+	_, _ = fmt.Fprintln(w, "Warning: skipping CI scaffolding (--ci): the reusable gaze AI-report workflow needs a recognized project marker at the repository root (go.mod, package.json, or pyproject.toml).")
+	_, _ = fmt.Fprintln(w, "Create one of those markers (for a Go module: `go mod init`), then re-run `gaze init --ci` to generate the workflow.")
 	_, _ = fmt.Fprintln(w, "The .opencode/ scaffolding is unaffected.")
 }
 
@@ -463,6 +469,12 @@ func checkGoMod(opts Options) (path string, absent bool) {
 // returns ciVariantGo, which the caller turns into the skip path.
 // Keeping go.mod precedence out of this helper avoids a branch only
 // tests could reach.
+//
+// os.Stat's error is deliberately collapsed to a presence check: a
+// marker that exists but cannot be read (permission denied, transient
+// I/O error) falls through to the skip path, whose visible warning
+// names the missing markers rather than silently misrouting — the
+// same degrade-visibly trade readGoModVersion makes.
 func detectCIVariant(opts Options) ciVariant {
 	if _, err := os.Stat(filepath.Join(opts.TargetDir, "package.json")); err == nil {
 		return ciVariantNode
@@ -537,7 +549,7 @@ const ciWorkflowNodeTemplatePath = "assets/ci/gaze-ai-report-node.yml"
 const ciWorkflowPythonTemplatePath = "assets/ci/gaze-ai-report-python.yml"
 
 // CI workflow template placeholders (design D9), substituted by
-// renderCIWorkflowTemplate.
+// renderCIWorkflowTemplateForVariant.
 const (
 	gazeVersionPlaceholder   = "__GAZE_VERSION__"
 	goVersionPlaceholder     = "__GO_VERSION__"
@@ -556,22 +568,17 @@ func isCIAsset(relPath string) bool {
 	return strings.HasPrefix(relPath, "ci/")
 }
 
-// renderCIWorkflowTemplate substitutes the CI workflow template's two
-// placeholders — __GAZE_VERSION__ (the validated gaze release tag,
-// design D4) and __GO_VERSION__ (the grammar-validated Go toolchain
-// version, design D5). It is a pure function of the template bytes so
-// the generated workflow is golden-file testable (design D9); both
-// substituted values are validated upstream (resolveGazeVersion,
-// parseGoModVersion), so no escaping is needed here.
-func renderCIWorkflowTemplate(template []byte, gazeVersion, goVersion string) []byte {
-	rendered := strings.ReplaceAll(string(template), gazeVersionPlaceholder, gazeVersion)
-	rendered = strings.ReplaceAll(rendered, goVersionPlaceholder, goVersion)
-	return []byte(rendered)
-}
-
-// renderCIWorkflowTemplateForVariant substitutes all CI workflow
-// placeholders for the resolved variant. It is the variant-aware
-// counterpart to renderCIWorkflowTemplate used by the write path.
+// renderCIWorkflowTemplateForVariant substitutes every CI workflow
+// placeholder — __GAZE_VERSION__ (the validated gaze release tag,
+// design D4), __GO_VERSION__ (the grammar-validated Go toolchain
+// version, design D5), and the Node/Python toolchain versions — for
+// the resolved variant. It is a pure function of the template bytes
+// so every generated workflow is golden-file testable through this
+// same seam the write path uses (design D9); substituted values are
+// validated upstream (resolveGazeVersion, parseGoModVersion, the
+// version constants), so no escaping is needed here. Substitutions
+// for placeholders a template does not contain are no-ops, so each
+// variant's template names only the placeholders it uses.
 func renderCIWorkflowTemplateForVariant(template []byte, ci ciContext) []byte {
 	rendered := strings.ReplaceAll(string(template), gazeVersionPlaceholder, ci.gazeVersion)
 	rendered = strings.ReplaceAll(rendered, goVersionPlaceholder, ci.goVersion)

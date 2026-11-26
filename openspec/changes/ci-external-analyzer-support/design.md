@@ -186,6 +186,7 @@ Each template has its own placeholders:
 - Node test command varies (`npm test`, `vitest`, `jest`): template chooses a sensible default (`npm ci` + `npm test -- --coverage`), documented as editable. The scaffolded workflow is user-owned, so the user can change it.
 - Coverage artifact shape varies: Node's `coverage/` dir vs Go's `coverage.out` file — reusable workflow's analyzer-mode check must handle directory artifacts (check existence of artifact directory, not specific file).
 - SHA pins for setup-node/setup-python need to be current at ship time.
+- Residual risk — analyzer-mode execution: the reusable workflow's analyzer mode has no automated execution in this repository. The dogfood job (`test.yml` gaze-ai-report) runs Go mode with `build-from-source: true`, and the analyzer-mode shell plumbing (argument assembly, `eval "$ANALYZER_SETUP"`, the download-conclusion arrival check) is verified only by static contract tests pinning the workflow YAML — a shell defect outside the pinned fragments would ship green. This matches repo precedent for workflow changes. A follow-up canary (the `install-canary.yml` precedent) running the reusable workflow once in analyzer mode against a fixture repository would close the gap.
 
 ## Constitution Check
 

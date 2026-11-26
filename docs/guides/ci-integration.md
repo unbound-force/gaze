@@ -315,7 +315,7 @@ its own `test` job and calls the reusable workflow with the coverage
 artifact and the `OPENCODE_CONFIG_CONTENT` secret:
 
 * **Go** (`go.mod` present): checkout → `setup-go` (version from `go` directive) → `go test -race -count=1 -short -coverprofile=coverage.out ./...` → upload `coverage.out`
-* **Node** (`package.json` present, no `go.mod`): checkout → `setup-node` (20) → `npm ci` → `npm test -- --coverage` → staged `coverage/` upload (staging preserves the `coverage/` prefix through the artifact); caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 20`, and `setup: npm ci && npm run build && npm link` so the report job installs the analyzer on its own runner
+* **Node** (`package.json` present, no `go.mod`): checkout → `setup-node` (24) → `npm ci` → `npm test -- --coverage` → staged `coverage/` upload (staging preserves the `coverage/` prefix through the artifact); caller passes `analyzer: gaze-analyzer-typescript`, `packages: ./src/...`, `node-version: 24`, and `setup: npm ci && npm run build && npm link` so the report job installs the analyzer on its own runner
 * **Python** (`pyproject.toml` present, no `go.mod`/`package.json`): checkout → `setup-python` (3.12) → `pip install -e . && pip install pytest pytest-cov` → `pytest --cov` → upload `coverage.xml`; caller passes `analyzer: gaze-analyzer-python`, `packages: ./src/...`, `python-version: 3.12`, and `setup: pip install -e .` so the report job installs the analyzer on its own runner
 
 The `uses:` pin is resolved from the running gaze binary's version
@@ -409,7 +409,7 @@ Consumers using an external analyzer (e.g. [reading-stone](https://github.com/ze
       coverage-artifact: coverage-out
       analyzer: gaze-analyzer-typescript
       packages: ./src/...
-      node-version: 20
+      node-version: 24
       setup: npm ci && npm run build && npm link
     secrets:
       opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
