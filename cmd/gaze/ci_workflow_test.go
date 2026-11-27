@@ -13,11 +13,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// These tests pin the learnings-only PR skip wiring (design D8,
-// CIW-FR-006 of skip-ci-learnings-only-prs): a `changes` job in both CI
-// workflows classifies each PR, the heavy jobs gate on it, ci-ok
-// aggregates the gated jobs for branch protection, and the duplicated
-// classify step cannot drift between the two workflows.
+// These tests pin the chore-PR skip wiring: a `scope` job in both CI
+// workflows calls jflowers/ship's pr-scope.yml, which outputs
+// code == 'false' only for Dewey learnings PRs and gh-hud toolkit
+// rollouts; the heavy jobs gate on it, and ci-ok aggregates the gated
+// jobs into the one check branch protection requires. The classifier
+// itself is ship's, and ship tests it.
 
 type ciWorkflow struct {
 	Jobs map[string]ciJob `yaml:"jobs"`
@@ -26,6 +27,7 @@ type ciWorkflow struct {
 // ciJob decodes only the job fields the wiring contract pins.
 type ciJob struct {
 	Name        string            `yaml:"name"`
+	Uses        string            `yaml:"uses"`
 	Needs       ciNeeds           `yaml:"needs"`
 	If          string            `yaml:"if"`
 	Timeout     int               `yaml:"timeout-minutes"`
@@ -82,31 +84,6 @@ func loadCIWorkflow(t *testing.T, filename string) ciWorkflow {
 	return wf
 }
 
-// ciChangesJob returns the changes job, failing when it is absent.
-func ciChangesJob(t *testing.T, filename string) ciJob {
-	t.Helper()
-	job, ok := loadCIWorkflow(t, filename).Jobs["changes"]
-	if !ok {
-		t.Fatalf("%s must contain the changes job", filename)
-	}
-	return job
-}
-
-// classifyRun returns the run script of the changes job's classify step.
-func classifyRun(t *testing.T, filename string, job ciJob) string {
-	t.Helper()
-	for _, step := range job.Steps {
-		if step.ID == "classify" {
-			if step.Run == "" {
-				t.Fatalf("%s classify step has an empty run", filename)
-			}
-			return step.Run
-		}
-	}
-	t.Fatalf("%s changes job must contain a step with id classify", filename)
-	return ""
-}
-
 // ciNeedsJob reports whether the job declares the given dependency.
 func ciNeedsJob(job ciJob, dep string) bool {
 	for _, need := range job.Needs {
@@ -137,67 +114,37 @@ func ciRunStep(t *testing.T, filename, jobID string) ciStep {
 	return runs[0]
 }
 
-// flattenRun collapses a run script's line continuations and whitespace
-// runs into single spaces so a multi-line expression (the ci-ok jq
-// pipeline) can be pinned as one substring.
-func flattenRun(run string) string {
-	continuations := regexp.MustCompile(`\\\s+`)
-	spaces := regexp.MustCompile(`\s+`)
-	return spaces.ReplaceAllString(continuations.ReplaceAllString(run, " "), " ")
-}
+// shipScopePinRe pins the scope job to ship's pr-scope.yml at a full
+// commit SHA (CI-001). The SHA is format-pinned, not value-pinned:
+// Dependabot bumps reusable-workflow pins, and a literal-SHA assertion
+// would fail CI on those bumps and block the auto-merge behind them.
+var shipScopePinRe = regexp.MustCompile(`^jflowers/ship/\.github/workflows/pr-scope\.yml@[0-9a-f]{40}$`)
 
-// checkoutPinRe pins the changes-job checkout to a full commit SHA of
-// actions/checkout (CI-001). The SHA is format-pinned, not value-pinned:
-// Dependabot's actions group in .github/dependabot.yml bumps it, and a
-// literal-SHA assertion would fail CI on those bumps and block the
-// auto-merge behind them.
-var checkoutPinRe = regexp.MustCompile(`^actions/checkout@[0-9a-f]{40}$`)
-
-// The changes job classifies each PR as code or learnings-only. Both CI
-// workflows carry their own copy so their gated jobs can skip without a
-// cross-workflow needs, and the checkout needs full history because the
-// classifier diffs base...head itself.
-func TestCIWorkflow_ChangesJobWiring(t *testing.T) {
+// Both CI workflows carry their own scope job so their gated jobs can
+// skip without a cross-workflow needs. It needs only contents: read.
+func TestCIWorkflow_ScopeJobWiring(t *testing.T) {
 	for _, filename := range []string{"test.yml", "mega-linter.yml"} {
-		job := ciChangesJob(t, filename)
-
-		if job.Name != "Changes" {
-			t.Errorf("%s changes name = %q, want %q", filename, job.Name, "Changes")
+		job, ok := loadCIWorkflow(t, filename).Jobs["scope"]
+		if !ok {
+			t.Fatalf("%s must contain the scope job", filename)
 		}
-		if job.Timeout != 5 {
-			t.Errorf("%s changes timeout-minutes = %d, want 5", filename, job.Timeout)
+		if !shipScopePinRe.MatchString(job.Uses) {
+			t.Errorf("%s scope uses %q, want jflowers/ship's pr-scope.yml pinned to a full 40-hex commit SHA", filename, job.Uses)
 		}
 		if len(job.Permissions) != 1 || job.Permissions["contents"] != "read" {
-			t.Errorf("%s changes permissions = %v, want exactly contents: read", filename, job.Permissions)
+			t.Errorf("%s scope permissions = %v, want exactly contents: read", filename, job.Permissions)
 		}
-		wantOutput := "${{ steps.classify.outputs.code }}"
-		if len(job.Outputs) != 1 || job.Outputs["code"] != wantOutput {
-			t.Errorf("%s changes outputs = %v, want exactly code: %q", filename, job.Outputs, wantOutput)
-		}
-
-		var checkout *ciStep
-		for i, step := range job.Steps {
-			if strings.HasPrefix(step.Uses, "actions/checkout@") {
-				checkout = &job.Steps[i]
-				break
-			}
-		}
-		if checkout == nil {
-			t.Fatalf("%s changes job must check out the repo", filename)
-		}
-		if !checkoutPinRe.MatchString(checkout.Uses) {
-			t.Errorf("%s changes checkout uses %q, want actions/checkout pinned to a full 40-hex commit SHA — a mutable tag would silently change what the classifier runs on (CI-001; precedent: release_workflow_test.go)", filename, checkout.Uses)
-		}
-		fd, ok := checkout.With["fetch-depth"]
-		if !ok || fmt.Sprintf("%v", fd) != "0" {
-			t.Errorf("%s changes checkout fetch-depth = %v (present=%t), want 0", filename, fd, ok)
+		if len(job.Needs) != 0 || job.If != "" {
+			t.Errorf("%s scope must run unconditionally (needs = %v, if = %q)", filename, job.Needs, job.If)
 		}
 	}
 }
 
-// unit-and-integration, e2e, and megalinter must skip on learnings-only
-// PRs: each needs changes and carries exactly the != 'false' gate.
-func TestCIWorkflow_GatedJobsSkipOnLearningsOnly(t *testing.T) {
+// unit-and-integration, e2e, and megalinter run only when scope says
+// code: each needs scope and carries exactly the == 'true' gate, so a
+// failed or missing scope output skips them (and fails CI OK) instead
+// of running them by default.
+func TestCIWorkflow_GatedJobsSkipOnChorePRs(t *testing.T) {
 	gated := []struct {
 		workflow string
 		job      string
@@ -206,22 +153,15 @@ func TestCIWorkflow_GatedJobsSkipOnLearningsOnly(t *testing.T) {
 		{"test.yml", "e2e"},
 		{"mega-linter.yml", "megalinter"},
 	}
-	wantIf := "needs.changes.outputs.code != 'false'"
+	const wantIf = "needs.scope.outputs.code == 'true'"
 	for _, g := range gated {
 		job, ok := loadCIWorkflow(t, g.workflow).Jobs[g.job]
 		if !ok {
 			t.Errorf("%s must contain the %s job", g.workflow, g.job)
 			continue
 		}
-		found := false
-		for _, need := range job.Needs {
-			if need == "changes" {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("%s %s needs = %v, must include changes", g.workflow, g.job, job.Needs)
+		if !ciNeedsJob(job, "scope") {
+			t.Errorf("%s %s needs = %v, must include scope", g.workflow, g.job, job.Needs)
 		}
 		if job.If != wantIf {
 			t.Errorf("%s %s if = %q, want %q", g.workflow, g.job, job.If, wantIf)
@@ -230,8 +170,9 @@ func TestCIWorkflow_GatedJobsSkipOnLearningsOnly(t *testing.T) {
 }
 
 // ci-ok aggregates the gated jobs so branch protection can require one
-// check name. It runs on !cancelled() so a failed or skipped dependency
-// still reports instead of hanging the merge box.
+// check name. It runs on always(): a failed dependency still reports,
+// and a cancelled run reports a red CI OK rather than a skip, which
+// would count as passing.
 func TestCIWorkflow_CIOKAggregatesGatedJobs(t *testing.T) {
 	job, ok := loadCIWorkflow(t, "test.yml").Jobs["ci-ok"]
 	if !ok {
@@ -240,15 +181,15 @@ func TestCIWorkflow_CIOKAggregatesGatedJobs(t *testing.T) {
 	if job.Name != "CI OK" {
 		t.Errorf("ci-ok name = %q, want %q", job.Name, "CI OK")
 	}
-	if job.If != "${{ !cancelled() }}" {
-		t.Errorf("ci-ok if = %q, want %q", job.If, "${{ !cancelled() }}")
+	if job.If != "always()" {
+		t.Errorf("ci-ok if = %q, want %q", job.If, "always()")
 	}
 	if job.Timeout != 5 {
 		t.Errorf("ci-ok timeout-minutes = %d, want 5", job.Timeout)
 	}
 	got := append([]string(nil), job.Needs...)
 	sort.Strings(got)
-	want := []string{"changes", "e2e", "gitleaks", "unit-and-integration"}
+	want := []string{"e2e", "gitleaks", "scope", "unit-and-integration"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("ci-ok needs = %v, want exactly %v", got, want)
 	}
@@ -256,7 +197,8 @@ func TestCIWorkflow_CIOKAggregatesGatedJobs(t *testing.T) {
 
 // Drift guard: a new test.yml job must make an explicit gate decision —
 // join ci-ok's needs or be declared advisory. The test fails naming the
-// job so the decision cannot be made by accident.
+// job so the decision cannot be made by accident. Advisory jobs must
+// still depend on a gated job, so they inherit the chore-PR skip.
 func TestCIWorkflow_EveryJobHasGateDecision(t *testing.T) {
 	wf := loadCIWorkflow(t, "test.yml")
 	ciOK, ok := wf.Jobs["ci-ok"]
@@ -266,11 +208,12 @@ func TestCIWorkflow_EveryJobHasGateDecision(t *testing.T) {
 	// Advisory jobs are deliberately outside ci-ok's needs: a provider
 	// outage or rejected narrative cannot block a merge.
 	advisory := map[string]bool{"gaze-ai-report": true}
+	gated := map[string]bool{"unit-and-integration": true, "e2e": true}
 	inNeeds := make(map[string]bool, len(ciOK.Needs))
 	for _, need := range ciOK.Needs {
 		inNeeds[need] = true
 	}
-	for name := range wf.Jobs {
+	for name, job := range wf.Jobs {
 		if name == "ci-ok" {
 			continue
 		}
@@ -281,541 +224,99 @@ func TestCIWorkflow_EveryJobHasGateDecision(t *testing.T) {
 		case !needed && !allowed:
 			t.Errorf("job %q is neither in ci-ok.needs nor on the advisory allowlist [gaze-ai-report]; make an explicit gate decision for it", name)
 		}
-	}
-}
-
-// The classify step is duplicated so each workflow stays self-contained;
-// any change must be applied to both copies in lockstep.
-func TestCIWorkflow_ClassifyStepIdenticalAcrossWorkflows(t *testing.T) {
-	testRun := classifyRun(t, "test.yml", ciChangesJob(t, "test.yml"))
-	linterRun := classifyRun(t, "mega-linter.yml", ciChangesJob(t, "mega-linter.yml"))
-	if testRun != linterRun {
-		t.Errorf("classify step run differs between test.yml and mega-linter.yml:\n--- test.yml ---\n%s\n--- mega-linter.yml ---\n%s", testRun, linterRun)
-	}
-}
-
-// A code file renamed into .uf/dewey/learnings/ must classify as code, not
-// as a learnings-only change (CIW-FR-001 rename scenario, design D1): with
-// rename collapsing disabled the name-only diff lists both the old and the
-// new path, so the pre-rename code path still falls outside the learnings
-// prefix. Both diff invocations — the --name-only and the --raw one — must
-// carry --no-renames and diff the three-dot base...head range so the
-// classification is the PR's net diff from its merge base.
-func TestCIWorkflow_RenameIntoLearningsPathCountsAsCode(t *testing.T) {
-	const threeDotRange = `"${base}...${head}"`
-	for _, filename := range []string{"test.yml", "mega-linter.yml"} {
-		run := classifyRun(t, filename, ciChangesJob(t, filename))
-		for _, mode := range []string{"--name-only", "--raw"} {
-			var diffLines []string
-			for _, line := range strings.Split(run, "\n") {
-				if strings.Contains(line, "git diff "+mode) {
-					diffLines = append(diffLines, line)
-				}
+		if allowed {
+			inherits := false
+			for _, need := range job.Needs {
+				inherits = inherits || gated[need]
 			}
-			if len(diffLines) == 0 {
-				t.Errorf("%s changes classify: no `git diff %s` invocation found in the run script", filename, mode)
-				continue
-			}
-			for _, line := range diffLines {
-				if !strings.Contains(line, "--no-renames") {
-					t.Errorf("%s changes classify: `git diff %s` lacks --no-renames, so a code file renamed into .uf/dewey/learnings/ collapses to a single learnings path and skips CI: %q", filename, mode, strings.TrimSpace(line))
-				}
-				if !strings.Contains(line, threeDotRange) {
-					t.Errorf("%s changes classify: `git diff %s` lacks the three-dot range %s, so the classification is not the PR's net diff from the merge base: %q", filename, mode, threeDotRange, strings.TrimSpace(line))
-				}
+			if !inherits {
+				t.Errorf("advisory job %q needs = %v, must include a gated job so it skips on chore PRs", name, job.Needs)
 			}
 		}
 	}
 }
 
-// A symlink under .uf/dewey/learnings/ must classify as code (CIW-FR-001
-// symlink scenario, design D1): the learnings path prefix is a
-// classification signal, not a trust boundary, so the classifier scans the
-// raw diff for mode 120000 on either side of each change and feeds the
-// symlink list into the fail-closed code=true verdict. The code=true
-// branch must also label and print both the outside-file and symlink
-// lists — CIW-FR-001's log-listing MUST — so those echo lines are pinned
-// here too.
-func TestCIWorkflow_SymlinkUnderLearningsCountsAsCode(t *testing.T) {
-	for _, filename := range []string{"test.yml", "mega-linter.yml"} {
-		run := classifyRun(t, filename, ciChangesJob(t, filename))
-		if !strings.Contains(run, `printf '%s\n' "$raw"`) {
-			t.Errorf("%s changes classify: the symlink scan must read the captured git diff --raw output (missing %q)", filename, `printf '%s\n' "$raw"`)
-		}
-		const modeCheck = `$1 ~ /120000|160000/ || $2 ~ /120000|160000/`
-		if !strings.Contains(run, modeCheck) {
-			t.Errorf("%s changes classify: the raw-diff scan must match symlink mode 120000 and submodule mode 160000 on either the old or the new side of a change (missing %q)", filename, modeCheck)
-		}
-		const linksInVerdict = `[ -n "$links" ]`
-		if !strings.Contains(run, linksInVerdict) {
-			t.Errorf("%s changes classify: the fail-closed code=true verdict must include the symlink list (missing %q), or a learnings-path symlink would classify as learnings-only", filename, linksInVerdict)
-		}
-		const outsideLabel = `echo "files other than .md under .uf/dewey/learnings/:"`
-		if !strings.Contains(run, outsideLabel) {
-			t.Errorf("%s changes classify: the code=true branch must label the outside-file list (missing %q), per CIW-FR-001's log-listing MUST", filename, outsideLabel)
-		}
-		const outsideValue = `echo "$outside"`
-		if !strings.Contains(run, outsideValue) {
-			t.Errorf("%s changes classify: the code=true branch must log the outside-file list (missing %q), per CIW-FR-001's log-listing MUST", filename, outsideValue)
-		}
-		const linksLabel = `echo "symlinks and submodules:"`
-		if !strings.Contains(run, linksLabel) {
-			t.Errorf("%s changes classify: the code=true branch must label the symlink list (missing %q), per CIW-FR-001's log-listing MUST", filename, linksLabel)
-		}
-		const linksValue = `echo "$links"`
-		if !strings.Contains(run, linksValue) {
-			t.Errorf("%s changes classify: the code=true branch must log the symlink list (missing %q), per CIW-FR-001's log-listing MUST", filename, linksValue)
-		}
-	}
+// ciOKEnv is the env the ci-ok step must read its inputs from, so the
+// run script itself carries no expressions.
+var ciOKEnv = map[string]string{
+	"SCOPE":    "${{ needs.scope.result }}",
+	"CODE":     "${{ needs.scope.outputs.code }}",
+	"UNIT":     "${{ needs.unit-and-integration.result }}",
+	"E2E":      "${{ needs.e2e.result }}",
+	"GITLEAKS": "${{ needs.gitleaks.result }}",
 }
 
-// A failing git diff must fail the changes job instead of being masked by
-// the filtering pipelines (CIW-FR-001 diff-failure scenario, design D1):
-// the classify script starts with set -euo pipefail and every git diff
-// invocation is a standalone command substitution captured into a
-// variable — no inline pipes or `|| true` — so a non-zero git exit
-// propagates before any grep or awk runs.
-func TestCIWorkflow_DiffFailureFailsClosed(t *testing.T) {
-	capturedDiff := regexp.MustCompile(`^\s*\w+="\$\(\s*git diff [^)|]*\)"\s*$`)
-	for _, filename := range []string{"test.yml", "mega-linter.yml"} {
-		run := classifyRun(t, filename, ciChangesJob(t, filename))
-		lines := strings.Split(run, "\n")
-		if got := strings.TrimSpace(lines[0]); got != "set -euo pipefail" {
-			t.Errorf("%s changes classify: first line = %q, want %q — without strict mode a failing git diff cannot fail the job", filename, got, "set -euo pipefail")
-		}
-		diffLines := 0
-		for _, line := range lines {
-			if !strings.Contains(line, "git diff") {
-				continue
-			}
-			diffLines++
-			if !capturedDiff.MatchString(line) {
-				t.Errorf("%s changes classify: git diff must be captured into a variable before filtering, not piped or masked by a trailing || true (found: %q)", filename, strings.TrimSpace(line))
-			}
-		}
-		if diffLines == 0 {
-			t.Errorf("%s changes classify: the run script must invoke git diff at least once", filename)
-		}
-	}
-}
-
-// CI OK must fail when any needed job concluded failure or cancelled, and
-// its log must name the job and its result (CIW-FR-003, design D3): the
-// aggregate step reads needs as JSON from an env var, prints one
-// `job: result` line per need, then enforces with jq -e that every result
-// is success or skipped — anything else fails the job.
-func TestCIWorkflow_CIOKFailsOnFailedOrCancelledNeed(t *testing.T) {
-	step := ciRunStep(t, "test.yml", "ci-ok")
-	if got := step.Env["NEEDS"]; got != "${{ toJSON(needs) }}" {
-		t.Errorf("test.yml ci-ok run step env NEEDS = %q, want %q — needs JSON must arrive via an env var, not as script text", got, "${{ toJSON(needs) }}")
-	}
-	flat := flattenRun(step.Run)
-	perNeedLine := `printf '%s\n' "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'`
-	if !strings.Contains(flat, perNeedLine) {
-		t.Errorf("test.yml ci-ok run step must print one `job: result` line per needed job before deciding (missing %q)", perNeedLine)
-	}
-	passPredicate := `jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")'`
-	if !strings.Contains(flat, passPredicate) {
-		t.Errorf("test.yml ci-ok run step must enforce with jq -e that every needed job concluded success or skipped (missing %q)", passPredicate)
-	}
-	if printAt, verdictAt := strings.Index(flat, perNeedLine), strings.Index(flat, passPredicate); printAt >= 0 && verdictAt >= 0 && printAt > verdictAt {
-		t.Errorf("test.yml ci-ok run step must print the per-need `job: result` lines before the jq -e verdict, so a red CI OK names the job that failed it")
-	}
-}
-
-// A failed changes job must block the PR through CI OK (CIW-FR-003
-// classification-failure scenario, design D2/D3): the gated jobs need
-// changes so they are skipped when the classifier fails, ci-ok lists
-// changes in its needs, and ci-ok runs on !cancelled() — never always(),
-// which would convert a concurrency-cancelled run into a failed CI OK —
-// so the changes failure is aggregated into a red CI OK instead of
-// leaving the merge box waiting on a check that never reports.
-func TestCIWorkflow_ClassificationFailureBlocksPR(t *testing.T) {
-	wf := loadCIWorkflow(t, "test.yml")
-	for _, jobID := range []string{"unit-and-integration", "e2e"} {
-		job, ok := wf.Jobs[jobID]
-		if !ok {
-			t.Errorf("test.yml must contain the %s job", jobID)
-			continue
-		}
-		if !ciNeedsJob(job, "changes") {
-			t.Errorf("test.yml %s needs = %v, must include changes so a failed classifier skips (never runs) the heavy jobs", jobID, job.Needs)
-		}
-	}
-	ciOK, ok := wf.Jobs["ci-ok"]
-	if !ok {
-		t.Fatal("test.yml must contain the ci-ok job")
-	}
-	if !ciNeedsJob(ciOK, "changes") {
-		t.Errorf("test.yml ci-ok needs = %v, must include changes so a failed classifier fails CI OK", ciOK.Needs)
-	}
-	if ciOK.If != "${{ !cancelled() }}" {
-		t.Errorf("test.yml ci-ok if = %q, want %q — with the default success() condition a failed changes job would skip CI OK and the PR would hang", ciOK.If, "${{ !cancelled() }}")
-	}
-	if strings.Contains(ciOK.If, "always()") {
-		t.Errorf("test.yml ci-ok if = %q must not use always(), which converts a concurrency-cancelled run into a failed CI OK (design D3)", ciOK.If)
-	}
-}
-
-// A changed path carrying a `..` segment must classify as code —
-// defense-in-depth for the CIW-FR-001 learnings prefix check: git never
-// emits `..` path segments in a diff, so a hypothetical traversal path
-// (`.uf/dewey/learnings/../escape.go`) bypassing the prefix check cannot
-// be exercised through a real git repository and the pin is necessarily
-// textual, mirroring TestCIWorkflow_SymlinkUnderLearningsCountsAsCode.
-// The classifier computes a dotdot list from the name-only diff, feeds it
-// into the fail-closed code=true verdict, and logs it.
-func TestCIWorkflow_DotdotSegmentFailsClosed(t *testing.T) {
-	for _, filename := range []string{"test.yml", "mega-linter.yml"} {
-		run := classifyRun(t, filename, ciChangesJob(t, filename))
-		const nameOnlyFeed = `dotdot="$(printf '%s\n' "$files"`
-		if !strings.Contains(run, nameOnlyFeed) {
-			t.Errorf("%s changes classify: the dotdot scan must read the captured name-only diff, not the raw one (missing %q)", filename, nameOnlyFeed)
-		}
-		const dotdotScan = `grep -E '(^|/)\.\.(/|$)' || true`
-		if !strings.Contains(run, dotdotScan) {
-			t.Errorf("%s changes classify: the name-only diff must be scanned for `..` path segments (missing %q)", filename, dotdotScan)
-		}
-		const dotdotInVerdict = `[ -n "$dotdot" ]`
-		if !strings.Contains(run, dotdotInVerdict) {
-			t.Errorf("%s changes classify: the fail-closed code=true verdict must include the dotdot list (missing %q), or a `..` path would bypass the learnings prefix check", filename, dotdotInVerdict)
-		}
-		const dotdotLabel = `echo "path traversal segments:"`
-		if !strings.Contains(run, dotdotLabel) {
-			t.Errorf("%s changes classify: the code=true branch must label the traversal findings (missing %q)", filename, dotdotLabel)
-		}
-		const dotdotValue = `echo "$dotdot"`
-		if !strings.Contains(run, dotdotValue) {
-			t.Errorf("%s changes classify: the code=true branch must log the dotdot list (missing %q)", filename, dotdotValue)
-		}
-	}
-}
-
-// ciGit runs a git command in dir, failing the test on a non-zero exit.
-func ciGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	var combined strings.Builder
-	cmd.Stdout = &combined
-	cmd.Stderr = &combined
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, combined.String())
-	}
-}
-
-// ciGitHead returns the HEAD commit SHA of the repository in dir.
-func ciGitHead(t *testing.T, dir string) string {
-	t.Helper()
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	var out strings.Builder
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(out.String())
-}
-
-// initClassifyRepo creates a temporary git repository whose sole base
-// commit adds main.go, returning the repository directory and the base
-// commit SHA for the classify script's diff range. Commit signing is
-// disabled so a globally configured gpgsign cannot break the fixtures.
-func initClassifyRepo(t *testing.T) (dir, base string) {
-	t.Helper()
-	dir = t.TempDir()
-	ciGit(t, dir, "init", "-q")
-	ciGit(t, dir, "config", "user.email", "gaze@example.com")
-	ciGit(t, dir, "config", "user.name", "Gaze Test")
-	ciGit(t, dir, "config", "commit.gpgsign", "false")
-	writeClassifyFile(t, dir, "main.go", "package main\n")
-	ciGit(t, dir, "add", "-A")
-	ciGit(t, dir, "commit", "-q", "-m", "base")
-	return dir, ciGitHead(t, dir)
-}
-
-// writeClassifyFile writes content at the repo-relative path inside dir,
-// creating parent directories as needed.
-func writeClassifyFile(t *testing.T, dir, path, content string) {
-	t.Helper()
-	full := filepath.Join(dir, filepath.FromSlash(path))
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
-	}
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", full, err)
-	}
-}
-
-// readClassifyOutput reads the captured GITHUB_OUTPUT file; when the
-// script died before writing anything it degrades to a placeholder so the
-// original failure is not masked by a read error.
-func readClassifyOutput(path string) string {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Sprintf("(no GITHUB_OUTPUT written: %v)", err)
-	}
-	return string(raw)
-}
-
-// The pins above check the classify script's text; this test executes the
-// actual script extracted from test.yml — GitHub expression placeholders
-// substituted — against real temporary git repositories, so the CIW-FR-001
-// classification behavior is pinned end to end: a learnings-only diff
-// classifies code=false, while mixed, renamed-into-learnings, and symlink
-// diffs, the empty diff, and push events (CIW-FR-005) all fail closed to
-// code=true (design D1).
-func TestCIWorkflow_ClassifyScriptBehavior(t *testing.T) {
+// The CI OK verdict is pinned by execution: the run script is taken
+// from the workflow and run with bash against needs-shaped env values.
+// It passes only when scope succeeded and the jobs it chose concluded
+// as chosen — the code jobs success and gitleaks skipped for code,
+// the reverse for chores — and fails on anything else, including a
+// gated job that ran (or skipped) against the scope decision.
+func TestCIWorkflow_CIOKTruthTable(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("skipping: bash not found in PATH")
 	}
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("skipping: git not found in PATH")
+	step := ciRunStep(t, "test.yml", "ci-ok")
+	for name, want := range ciOKEnv {
+		if got := step.Env[name]; got != want {
+			t.Errorf("test.yml ci-ok env %s = %q, want %q", name, got, want)
+		}
 	}
-
-	// commitLearningsOnly builds the learnings-only head commit shared by
-	// the skip scenario and the push scenario (which must classify
-	// code=true regardless of the diff).
-	commitLearningsOnly := func(t *testing.T, dir, base string) string {
-		t.Helper()
-		writeClassifyFile(t, dir, ".uf/dewey/learnings/a.md", "# learning\n")
-		ciGit(t, dir, "add", "-A")
-		ciGit(t, dir, "commit", "-q", "-m", "learnings-only")
-		return ciGitHead(t, dir)
+	if strings.Contains(step.Run, "${{") {
+		t.Fatalf("test.yml ci-ok run script must read its inputs from env, not expressions:\n%s", step.Run)
 	}
-
-	scenarios := []struct {
-		name      string
-		eventName string // empty means pull_request
-		head      func(t *testing.T, dir, base string) string
-		want      string
-		wantLog   []string // strings the script's stdout must contain
-	}{
-		{
-			name:    "learnings-only pull request",
-			head:    commitLearningsOnly,
-			want:    "false",
-			wantLog: []string{"learnings-only pull request"},
-		},
-		{
-			name: "mixed learnings and code pull request",
-			head: func(t *testing.T, dir, base string) string {
-				writeClassifyFile(t, dir, ".uf/dewey/learnings/a.md", "# learning\n")
-				writeClassifyFile(t, dir, "main.go", "package main\n\nfunc extra() {}\n")
-				ciGit(t, dir, "add", "-A")
-				ciGit(t, dir, "commit", "-q", "-m", "mixed")
-				return ciGitHead(t, dir)
-			},
-			want:    "true",
-			wantLog: []string{"files other than .md under .uf/dewey/learnings/:", "main.go"},
-		},
-		{
-			name: "code file renamed into learnings",
-			head: func(t *testing.T, dir, base string) string {
-				// git mv needs the destination directory to exist.
-				if err := os.MkdirAll(filepath.Join(dir, ".uf", "dewey", "learnings"), 0o755); err != nil {
-					t.Fatalf("mkdir learnings dir: %v", err)
-				}
-				ciGit(t, dir, "mv", "main.go", ".uf/dewey/learnings/main.go")
-				ciGit(t, dir, "commit", "-q", "-m", "rename into learnings")
-				return ciGitHead(t, dir)
-			},
-			want: "true",
-		},
-		{
-			name: "symlink under learnings",
-			head: func(t *testing.T, dir, base string) string {
-				learnings := filepath.Join(dir, ".uf", "dewey", "learnings")
-				if err := os.MkdirAll(learnings, 0o755); err != nil {
-					t.Fatalf("mkdir %s: %v", learnings, err)
-				}
-				link := filepath.Join(learnings, "link.md")
-				if err := os.Symlink("main.go", link); err != nil {
-					t.Fatalf("symlink %s: %v", link, err)
-				}
-				ciGit(t, dir, "add", "-A")
-				ciGit(t, dir, "commit", "-q", "-m", "symlink under learnings")
-				return ciGitHead(t, dir)
-			},
-			want:    "true",
-			wantLog: []string{"symlinks and submodules:", ".uf/dewey/learnings/link.md"},
-		},
-		{
-			name: "non-markdown file under learnings",
-			head: func(t *testing.T, dir, base string) string {
-				writeClassifyFile(t, dir, ".uf/dewey/learnings/notes.txt", "note\n")
-				ciGit(t, dir, "add", "-A")
-				ciGit(t, dir, "commit", "-q", "-m", "non-markdown under learnings")
-				return ciGitHead(t, dir)
-			},
-			want:    "true",
-			wantLog: []string{"files other than .md under .uf/dewey/learnings/:", ".uf/dewey/learnings/notes.txt"},
-		},
-		{
-			name: "submodule under learnings",
-			head: func(t *testing.T, dir, base string) string {
-				// A gitlink entry is enough: the classifier only reads modes. The
-				// .md name makes the mode check, not the suffix rule, catch it.
-				ciGit(t, dir, "update-index", "--add", "--cacheinfo",
-					"160000,"+base+",.uf/dewey/learnings/sub.md")
-				ciGit(t, dir, "commit", "-q", "-m", "submodule under learnings")
-				return ciGitHead(t, dir)
-			},
-			want:    "true",
-			wantLog: []string{"symlinks and submodules:", ".uf/dewey/learnings/sub.md"},
-		},
-		{
-			name: "empty diff fails closed",
-			head: func(t *testing.T, dir, base string) string {
-				return base // no head commit: the base...head diff is empty
-			},
-			want: "true",
-		},
-		{
-			name:      "push event fails closed",
-			eventName: "push",
-			head:      commitLearningsOnly,
-			want:      "true",
-		},
-	}
-
-	scriptTemplate := classifyRun(t, "test.yml", ciChangesJob(t, "test.yml"))
-	for _, sc := range scenarios {
-		t.Run(sc.name, func(t *testing.T) {
-			dir, base := initClassifyRepo(t)
-			head := sc.head(t, dir, base)
-			event := sc.eventName
-			if event == "" {
-				event = "pull_request"
-			}
-			script := scriptTemplate
-			script = strings.ReplaceAll(script, "${{ github.event_name }}", event)
-			script = strings.ReplaceAll(script, "${{ github.event.pull_request.base.sha }}", base)
-			script = strings.ReplaceAll(script, "${{ github.event.pull_request.head.sha }}", head)
-			if strings.Contains(script, "${{") {
-				t.Fatalf("%s: classify script still carries an unsubstituted GitHub expression:\n%s", sc.name, script)
-			}
-
-			outPath := filepath.Join(t.TempDir(), "github-output")
-			var stdout, stderr strings.Builder
-			cmd := exec.Command("bash", "-c", script)
-			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "GITHUB_OUTPUT="+outPath)
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-			if err := cmd.Run(); err != nil {
-				t.Fatalf("%s: classify script must exit 0, got %v\nstdout:\n%s\nstderr:\n%s\nGITHUB_OUTPUT:\n%s",
-					sc.name, err, stdout.String(), stderr.String(), readClassifyOutput(outPath))
-			}
-			out := readClassifyOutput(outPath)
-			var got string
-			for _, line := range strings.Split(out, "\n") {
-				if strings.HasPrefix(line, "code=") {
-					got = strings.TrimPrefix(line, "code=")
-				}
-			}
-			if got == "" {
-				t.Fatalf("%s: GITHUB_OUTPUT must contain a code= line\nstdout:\n%s\nstderr:\n%s\nGITHUB_OUTPUT:\n%s",
-					sc.name, stdout.String(), stderr.String(), out)
-			}
-			if got != sc.want {
-				t.Errorf("%s: classified code=%s, want code=%s\nstdout:\n%s\nstderr:\n%s\nGITHUB_OUTPUT:\n%s",
-					sc.name, got, sc.want, stdout.String(), stderr.String(), out)
-			}
-			// CIW-FR-001's log-listing MUST: the job log must name the
-			// files and symlinks behind a code=true verdict, so stdout is
-			// asserted, not just captured for failure diagnostics.
-			for _, want := range sc.wantLog {
-				if !strings.Contains(stdout.String(), want) {
-					t.Errorf("%s: classify log must contain %q\nstdout:\n%s\nstderr:\n%s\nGITHUB_OUTPUT:\n%s",
-						sc.name, want, stdout.String(), stderr.String(), out)
-				}
-			}
-		})
-	}
-}
-
-// The ci-ok jq verdict's text is pinned by
-// TestCIWorkflow_CIOKFailsOnFailedOrCancelledNeed; this test extracts the
-// program from the workflow and runs it against needs-shaped JSON, so the
-// verdict's truth table is pinned by execution (CIW-FR-003): every needed
-// job concluding success or skipped exits 0, and any failure or cancelled
-// result exits non-zero.
-func TestCIWorkflow_CIOKJqTruthTable(t *testing.T) {
-	if _, err := exec.LookPath("jq"); err != nil {
-		t.Skip("skipping: jq not found in PATH")
-	}
-	flat := flattenRun(ciRunStep(t, "test.yml", "ci-ok").Run)
-	match := regexp.MustCompile(`jq -e\s+'([^']+)'`).FindStringSubmatch(flat)
-	if match == nil {
-		t.Fatal("test.yml ci-ok run step must carry a jq -e verdict program")
-	}
-	program := match[1]
 
 	rows := []struct {
-		name  string
-		needs string
-		pass  bool
+		name                             string
+		scope, code, unit, e2e, gitleaks string
+		pass                             bool
 	}{
-		{
-			name:  "all success",
-			needs: `{"changes":{"result":"success"},"unit-and-integration":{"result":"success"},"e2e":{"result":"success"}}`,
-			pass:  true,
-		},
-		{
-			name:  "mixed success and skipped",
-			needs: `{"changes":{"result":"success"},"unit-and-integration":{"result":"skipped"},"e2e":{"result":"success"}}`,
-			pass:  true,
-		},
-		{
-			name:  "all skipped",
-			needs: `{"changes":{"result":"skipped"},"unit-and-integration":{"result":"skipped"},"e2e":{"result":"skipped"}}`,
-			pass:  true,
-		},
-		{
-			name:  "any failure",
-			needs: `{"changes":{"result":"success"},"unit-and-integration":{"result":"failure"},"e2e":{"result":"success"}}`,
-			pass:  false,
-		},
-		{
-			name:  "any cancelled",
-			needs: `{"changes":{"result":"cancelled"},"unit-and-integration":{"result":"success"},"e2e":{"result":"success"}}`,
-			pass:  false,
-		},
+		{"code PR passes", "success", "true", "success", "success", "skipped", true},
+		{"chore PR passes", "success", "false", "skipped", "skipped", "success", true},
+		{"scope failed", "failure", "", "skipped", "skipped", "skipped", false},
+		{"scope cancelled", "cancelled", "", "skipped", "skipped", "skipped", false},
+		{"unexpected code output", "success", "", "skipped", "skipped", "skipped", false},
+		{"unit failed", "success", "true", "failure", "success", "skipped", false},
+		{"e2e cancelled", "success", "true", "success", "cancelled", "skipped", false},
+		{"code job skipped on a code PR", "success", "true", "success", "skipped", "skipped", false},
+		{"gitleaks ran on a code PR", "success", "true", "success", "success", "success", false},
+		{"gitleaks failed on a chore PR", "success", "false", "skipped", "skipped", "failure", false},
+		{"code job ran on a chore PR", "success", "false", "success", "skipped", "success", false},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
-			cmd := exec.Command("jq", "-e", program)
-			cmd.Stdin = strings.NewReader(row.needs)
+			cmd := exec.Command("bash", "-c", step.Run)
+			cmd.Env = append(os.Environ(),
+				"SCOPE="+row.scope, "CODE="+row.code, "UNIT="+row.unit,
+				"E2E="+row.e2e, "GITLEAKS="+row.gitleaks)
 			var combined strings.Builder
 			cmd.Stdout = &combined
 			cmd.Stderr = &combined
 			err := cmd.Run()
 			if row.pass && err != nil {
-				t.Errorf("%s: jq -e verdict must exit 0 for needs %s, got %v\noutput:\n%s", row.name, row.needs, err, combined.String())
+				t.Errorf("CI OK must pass, got %v\noutput:\n%s", err, combined.String())
 			}
 			if !row.pass && err == nil {
-				t.Errorf("%s: jq -e verdict must exit non-zero for needs %s, but it exited 0\noutput:\n%s", row.name, row.needs, combined.String())
+				t.Errorf("CI OK must fail, but it passed\noutput:\n%s", combined.String())
 			}
 		})
 	}
 }
 
-// Learnings-only PRs skip MegaLinter and with it gitleaks, so the
-// gitleaks job scans their commits instead: it runs only when changes
-// classifies the PR as learnings-only, verifies the pinned download
-// checksum, scans base..head, and is aggregated by ci-ok so a found
-// secret fails CI OK.
-func TestCIWorkflow_GitleaksScansLearningsOnlyPRs(t *testing.T) {
+// Chore PRs skip MegaLinter and with it gitleaks, so the gitleaks job
+// scans their commits instead: it runs only when scope says the PR is a
+// chore, verifies the pinned download checksum, scans base..head, and
+// is aggregated by ci-ok so a found secret fails CI OK.
+func TestCIWorkflow_GitleaksScansChorePRs(t *testing.T) {
 	wf := loadCIWorkflow(t, "test.yml")
 	job, ok := wf.Jobs["gitleaks"]
 	if !ok {
 		t.Fatal("test.yml must contain the gitleaks job")
 	}
-	if !ciNeedsJob(job, "changes") {
-		t.Errorf("test.yml gitleaks needs = %v, must include changes", job.Needs)
+	if !ciNeedsJob(job, "scope") {
+		t.Errorf("test.yml gitleaks needs = %v, must include scope", job.Needs)
 	}
-	const wantIf = "needs.changes.outputs.code == 'false'"
+	const wantIf = "needs.scope.outputs.code == 'false'"
 	if job.If != wantIf {
 		t.Errorf("test.yml gitleaks if = %q, want %q — it must run on exactly the PRs that skip MegaLinter", job.If, wantIf)
 	}
@@ -919,7 +420,7 @@ func reusableStepIndex(t *testing.T, wf reusableWorkflow, name string) int {
 
 // setupActionPinRe pins the toolchain setup actions to full commit
 // SHAs, format-pinned rather than value-pinned so Dependabot's
-// actions group can bump them (the checkoutPinRe precedent).
+// actions group can bump them (the shipScopePinRe precedent).
 var setupActionPinRe = regexp.MustCompile(`^actions/setup-(node|python)@[0-9a-f]{40}$`)
 
 // TestCIWorkflow_ReusableExternalAnalyzerInputs pins the

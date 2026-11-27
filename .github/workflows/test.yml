@@ -20,53 +20,18 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  changes:
-    name: Changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  # Decides whether the heavy jobs must run: jflowers/ship's pr-scope.yml
+  # outputs code == 'false' only for Dewey learnings PRs and gh-hud
+  # toolkit rollouts, and 'true' for pushes and everything else.
+  scope:
+    uses: jflowers/ship/.github/workflows/pr-scope.yml@3b0ce8bf47183be402df9eaec16644c213eee5f7 # main, after v0.11.0
     permissions:
       contents: read
-    outputs:
-      code: ${{ steps.classify.outputs.code }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-        with:
-          fetch-depth: 0
-      - name: Classify change
-        id: classify
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          files="$(git diff --name-only --no-renames "${base}...${head}")"
-          raw="$(git diff --raw --no-renames "${base}...${head}")"
-          outside="$(printf '%s\n' "$files" \
-            | grep -v -E '^\.uf/dewey/learnings/.+\.md$' || true)"
-          dotdot="$(printf '%s\n' "$files" \
-            | grep -E '(^|/)\.\.(/|$)' || true)"
-          links="$(printf '%s\n' "$raw" \
-            | awk '$1 ~ /120000|160000/ || $2 ~ /120000|160000/ { print $NF }')"
-          if [ -z "$files" ] || [ -n "$outside" ] || [ -n "$dotdot" ] || [ -n "$links" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "files other than .md under .uf/dewey/learnings/:"
-            echo "$outside"
-            echo "path traversal segments:"
-            echo "$dotdot"
-            echo "symlinks and submodules:"
-            echo "$links"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "learnings-only pull request"
-          fi
 
   unit-and-integration:
     name: Unit + Integration Tests (Go ${{ matrix.go-version }})
-    needs: changes
-    if: needs.changes.outputs.code != 'false'
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -122,8 +87,8 @@ jobs:
 
   e2e:
     name: E2E Tests (Go ${{ matrix.go-version }})
-    needs: changes
-    if: needs.changes.outputs.code != 'false'
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -142,8 +107,8 @@ jobs:
       - name: Self-Check Tests
         run: go test -race -count=1 -run 'TestRunSelfCheck' -timeout 30m ./cmd/gaze/...
 
-  # Skips transitively on learnings-only PRs: this job needs
-  # unit-and-integration, which the changes job gates. Advisory and
+  # Skips transitively on chore PRs: this job needs
+  # unit-and-integration, which the scope job gates. Advisory and
   # deliberately outside ci-ok's needs: a provider outage or rejected
   # narrative cannot block a merge.
   gaze-ai-report:
@@ -162,12 +127,13 @@ jobs:
     secrets:
       opencode-config: ${{ secrets.OPENCODE_CONFIG_CONTENT }}
 
-  # Learnings-only PRs skip MegaLinter, and with it gitleaks: scan their
-  # commits for secrets here instead. Code PRs keep MegaLinter's scan.
+  # Chore PRs (learnings, toolkit rollouts) skip MegaLinter, and with it
+  # gitleaks: scan their commits for secrets here instead. Code PRs keep
+  # MegaLinter's scan. The job name is kept so its check name is stable.
   gitleaks:
     name: Gitleaks (learnings-only)
-    needs: changes
-    if: needs.changes.outputs.code == 'false'
+    needs: scope
+    if: needs.scope.outputs.code == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -200,21 +166,42 @@ jobs:
             --log-opts="${BASE_SHA}..${HEAD_SHA}" \
             --redact --verbose --no-banner
 
+  # The required check. Passes only when scope succeeded and the jobs it
+  # chose concluded as chosen: unit-and-integration and e2e for code PRs
+  # and pushes, gitleaks for chore PRs. A skipped job counts as passing
+  # and a skipped matrix job reports no per-leg checks, so this is the
+  # only check branch protection should require. always(), not
+  # !cancelled(): a cancelled run must report a red CI OK, never a skip.
   ci-ok:
     name: CI OK
-    needs: [changes, unit-and-integration, e2e, gitleaks]
-    if: ${{ !cancelled() }}
+    needs: [scope, unit-and-integration, e2e, gitleaks]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Aggregate CI result
         env:
-          NEEDS: ${{ toJSON(needs) }}
+          SCOPE: ${{ needs.scope.result }}
+          CODE: ${{ needs.scope.outputs.code }}
+          UNIT: ${{ needs.unit-and-integration.result }}
+          E2E: ${{ needs.e2e.result }}
+          GITLEAKS: ${{ needs.gitleaks.result }}
         run: |
           set -euo pipefail
-          printf '%s\n' "$NEEDS" \
-            | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          printf '%s\n' "$NEEDS" | jq -e \
-            'to_entries | all(.value.result == "success"
-                               or .value.result == "skipped")' \
-            > /dev/null
+          echo "scope=$SCOPE code=$CODE unit-and-integration=$UNIT e2e=$E2E gitleaks=$GITLEAKS"
+          [ "$SCOPE" = success ] || { echo "::error::scope: $SCOPE"; exit 1; }
+          case "$CODE" in
+            true) want_code=success want_chore=skipped ;;
+            false) want_code=skipped want_chore=success ;;
+            *) echo "::error::scope code '$CODE'"; exit 1 ;;
+          esac
+          fail=0
+          for pair in "unit-and-integration=$UNIT:$want_code" "e2e=$E2E:$want_code" "gitleaks=$GITLEAKS:$want_chore"; do
+            job=${pair%%=*} rest=${pair#*=}
+            got=${rest%%:*} want=${rest#*:}
+            if [ "$got" != "$want" ]; then
+              echo "::error::$job: $got, want $want"
+              fail=1
+            fi
+          done
+          exit "$fail"

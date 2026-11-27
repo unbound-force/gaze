@@ -19,53 +19,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  # Chore PRs (Dewey learnings, gh-hud toolkit rollouts) skip MegaLinter;
+  # test.yml's gitleaks job scans their commits for secrets instead.
+  scope:
+    uses: jflowers/ship/.github/workflows/pr-scope.yml@3b0ce8bf47183be402df9eaec16644c213eee5f7 # main, after v0.11.0
     permissions:
       contents: read
-    outputs:
-      code: ${{ steps.classify.outputs.code }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-        with:
-          fetch-depth: 0
-      - name: Classify change
-        id: classify
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          files="$(git diff --name-only --no-renames "${base}...${head}")"
-          raw="$(git diff --raw --no-renames "${base}...${head}")"
-          outside="$(printf '%s\n' "$files" \
-            | grep -v -E '^\.uf/dewey/learnings/.+\.md$' || true)"
-          dotdot="$(printf '%s\n' "$files" \
-            | grep -E '(^|/)\.\.(/|$)' || true)"
-          links="$(printf '%s\n' "$raw" \
-            | awk '$1 ~ /120000|160000/ || $2 ~ /120000|160000/ { print $NF }')"
-          if [ -z "$files" ] || [ -n "$outside" ] || [ -n "$dotdot" ] || [ -n "$links" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "files other than .md under .uf/dewey/learnings/:"
-            echo "$outside"
-            echo "path traversal segments:"
-            echo "$dotdot"
-            echo "symlinks and submodules:"
-            echo "$links"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "learnings-only pull request"
-          fi
 
   megalinter:
     name: MegaLinter
-    needs: changes
-    if: needs.changes.outputs.code != 'false'
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
